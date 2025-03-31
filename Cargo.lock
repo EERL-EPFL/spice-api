@@ -320,9 +320,9 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "axum"
-version = "0.8.1"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d6fd624c75e18b3b4c6b9caf42b1afe24437daaee904069137d8bab077be8b8"
+checksum = "de45108900e1f9b9242f7f2e254aa3e2c029c921c258fe9e6b4217eeebd54288"
 dependencies = [
  "axum-core",
  "axum-macros",
@@ -355,12 +355,12 @@ dependencies = [
 
 [[package]]
 name = "axum-core"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df1362f362fd16024ae199c1970ce98f9661bf5ef94b9808fee734bc3698b733"
+checksum = "68464cd0412f486726fb3373129ef5d2993f90c34bc2bc1c1e9943b2f4fc7ca6"
 dependencies = [
  "bytes",
- "futures-util",
+ "futures-core",
  "http",
  "http-body",
  "http-body-util",
@@ -375,9 +375,9 @@ dependencies = [
 
 [[package]]
 name = "axum-keycloak-auth"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "144275e3b165eb272fe6aa921e7a22157c8c668668240fa08240c12d8238d213"
+checksum = "5f0600cf134ccd6043fdba58329494df59dbf6d8b2fd65a4070d8a4d1743e33d"
 dependencies = [
  "atomic-time",
  "axum",
@@ -2727,9 +2727,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "1.1.7"
+version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3417812d38049e8ec3d588c03570f8c60de811d2453fb48e424045a1600ffd86"
+checksum = "013d6c9e421b9c44c6eb6ebbee283b2a2c90eab2682088c4a2449706a42d117f"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2747,7 +2747,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "strum",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "time",
  "tracing",
  "url",
@@ -2756,9 +2756,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-cli"
-version = "1.1.7"
+version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf2a390d6528f8e5c9ecd327bbb1a4c6cd7ab8333ef0da97010d5dc8f83f01c4"
+checksum = "9ba295ef27c085889da408eca3634a6b04093257126e57087e0fd744ebad8f67"
 dependencies = [
  "chrono",
  "clap",
@@ -2773,9 +2773,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-macros"
-version = "1.1.7"
+version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d705ba84e1c74c8ac27784e4ac6f21584058c1dc0cadb9d39b43e109fcf8139c"
+checksum = "31feeff3ad5e999c64b2b8fd30933b2871911567c4d62dcf70b3effd970c7891"
 dependencies = [
  "heck 0.4.1",
  "proc-macro2",
@@ -2787,9 +2787,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-migration"
-version = "1.1.7"
+version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c38451d5112e3a518a02251b5e6d3bc72e626957a44a79264716808a4c28ee0"
+checksum = "d90a9cc4881a3fd2cbff38dffe0cff40d61169c246aa572849288f83a29c5b19"
 dependencies = [
  "async-trait",
  "clap",

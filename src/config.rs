@@ -10,6 +10,7 @@ pub struct Config {
     pub keycloak_url: String,
     pub keycloak_realm: String,
     pub deployment: String,
+    pub admin_role: String,
 }
 
 impl Config {
@@ -34,6 +35,7 @@ impl Config {
             keycloak_realm: env::var("KEYCLOAK_REALM").expect("KEYCLOAK_REALM must be set"),
             deployment: env::var("DEPLOYMENT")
                 .expect("DEPLOYMENT must be set, this can be local, dev, stage, or prod"),
+            admin_role: "spice-admin".to_string(), // Admin role name in Keycloak
             db_url,
         }
     }
