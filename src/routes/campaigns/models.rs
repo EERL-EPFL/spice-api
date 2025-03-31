@@ -30,7 +30,6 @@ pub struct Campaign {
     longitude: Option<f64>,
     start_date: Option<DateTime<Utc>>,
     end_date: Option<DateTime<Utc>>,
-    // user_id: Option<Uuid>,
 }
 
 impl From<Model> for Campaign {
@@ -44,7 +43,6 @@ impl From<Model> for Campaign {
             longitude: model.longitude,
             start_date: model.start_date,
             end_date: model.end_date,
-            // user_id: model.user_id,
         }
     }
 }
