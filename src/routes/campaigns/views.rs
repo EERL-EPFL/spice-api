@@ -73,6 +73,6 @@ where
     description = "Prints the Keycloak token payload to the console for debugging purposes."
 )]
 pub async fn debug_token(Extension(token): Extension<KeycloakToken<Role>>) -> impl IntoResponse {
-    println!("Token payload: {:#?}", token);
+    println!("Token payload: {token:#?}");
     (StatusCode::OK, "Token debug information printed to console")
 }
