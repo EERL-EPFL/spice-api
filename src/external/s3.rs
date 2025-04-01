@@ -1,5 +1,4 @@
 use crate::config::Config;
-use anyhow::Result;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::{Client as S3Client, config::Region};

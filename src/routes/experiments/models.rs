@@ -3,16 +3,14 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
 use sea_orm::{
-    ActiveValue, Condition, DatabaseConnection, EntityTrait, FromQueryResult, Order, QueryOrder,
-    QuerySelect, entity::prelude::*,
+    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
+    entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(
-    ToSchema, Serialize, Deserialize, FromQueryResult, ToUpdateModel, ToCreateModel, Clone,
-)]
+#[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "super::db::ActiveModel"]
 pub struct Experiment {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
@@ -30,6 +28,8 @@ pub struct Experiment {
     temperature_end: Option<Decimal>,
     is_calibration: bool,
     remarks: Option<String>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    assets: Vec<crate::routes::s3::models::Asset>,
 }
 
 impl From<Model> for Experiment {
@@ -47,6 +47,7 @@ impl From<Model> for Experiment {
             temperature_end: model.temperature_end,
             is_calibration: model.is_calibration,
             remarks: model.remarks,
+            assets: vec![],
         }
     }
 }
@@ -95,7 +96,16 @@ impl CRUDResource for Experiment {
                     "{} not found",
                     Self::RESOURCE_NAME_SINGULAR
                 )))?;
-        Ok(Self::ApiModel::from(model))
+
+        let s3_assets = model
+            .find_related(crate::routes::s3::db::Entity)
+            .all(db)
+            .await?;
+
+        let mut model: Self::ApiModel = model.into();
+        model.assets = s3_assets.into_iter().map(Into::into).collect();
+
+        Ok(model)
     }
 
     async fn update(

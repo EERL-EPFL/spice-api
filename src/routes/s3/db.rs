@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "s3_assets")]
 pub struct Model {
@@ -13,7 +14,7 @@ pub struct Model {
     pub size_bytes: Option<i64>,
     #[sea_orm(column_type = "Text", nullable)]
     pub uploaded_by: Option<String>,
-    pub uploaded_at: DateTimeWithTimeZone,
+    pub uploaded_at: DateTime<Utc>,
     pub is_deleted: bool,
     #[sea_orm(column_type = "Text")]
     pub r#type: String,
