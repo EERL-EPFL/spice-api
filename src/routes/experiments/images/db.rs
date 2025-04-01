@@ -1,5 +1,5 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "images")]
 pub struct Model {
@@ -10,6 +10,8 @@ pub struct Model {
     pub filename: String,
     pub timestamp: Option<DateTimeWithTimeZone>,
     pub order_index: Option<i32>,
+    pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
@@ -9,6 +10,8 @@ pub struct Model {
     pub temperature_celsius: Option<Decimal>,
     pub nm_value: Option<Decimal>,
     pub error: Option<Decimal>,
+    pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

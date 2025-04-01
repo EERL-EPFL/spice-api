@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
@@ -28,6 +29,8 @@ pub struct Model {
     pub background_region_key: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub remarks: Option<String>,
+    pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

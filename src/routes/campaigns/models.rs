@@ -17,12 +17,9 @@ use uuid::Uuid;
 pub struct Campaign {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
-    #[crudcrate(
-        create_model = false,
-        update_model = false,
-        on_create = chrono::Utc::now(),
-        on_update = chrono::Utc::now()
-    )]
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
+    created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
     comment: Option<String>,
     name: String,
@@ -36,6 +33,7 @@ impl From<Model> for Campaign {
     fn from(model: Model) -> Self {
         Self {
             last_updated: model.last_updated,
+            created_at: model.created_at,
             comment: model.comment,
             id: model.id,
             name: model.name,

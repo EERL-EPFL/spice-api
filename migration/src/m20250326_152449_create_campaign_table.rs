@@ -20,26 +20,25 @@ impl MigrationTrait for Migration {
             comment TEXT,
             start_date TIMESTAMPTZ,
             end_date TIMESTAMPTZ,
-            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
         -- EXPERIMENTS
         CREATE TABLE IF NOT EXISTS experiments (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            experiment_code TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL UNIQUE,
             campaign_id UUID REFERENCES campaign(id),
-            user_identifier TEXT,
-            experiment_date DATE,
-            experiment_time TIME,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            image_capture_started_at TIMESTAMPTZ,
-            image_capture_ended_at TIMESTAMPTZ,
+            created_by TEXT,
+            experiment_date TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             temperature_ramp NUMERIC,
             temperature_start NUMERIC,
             temperature_end NUMERIC,
-            cooling_rate NUMERIC,
-            temperature_calibration_slope NUMERIC,
-            temperature_calibration_intercept NUMERIC
+            is_calibration BOOLEAN DEFAULT FALSE,
+            remarks TEXT,
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (name, campaign_id)
         );
 
         -- SAMPLES
@@ -58,7 +57,10 @@ impl MigrationTrait for Migration {
             initial_concentration_gram_l NUMERIC,
             well_volume_liters NUMERIC,
             background_region_key TEXT,
-            remarks TEXT
+            remarks TEXT,
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            
         );
 
         -- TRAYS
@@ -72,7 +74,9 @@ impl MigrationTrait for Migration {
             upper_left_corner_x INTEGER,
             upper_left_corner_y INTEGER,
             lower_right_corner_x INTEGER,
-            lower_right_corner_y INTEGER
+            lower_right_corner_y INTEGER,
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
         -- WELLS
@@ -81,6 +85,8 @@ impl MigrationTrait for Migration {
             tray_id UUID NOT NULL REFERENCES trays(id),
             row_label CHAR(1) NOT NULL,
             column_number INTEGER NOT NULL,
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (tray_id, row_label, column_number)
         );
 
@@ -90,6 +96,8 @@ impl MigrationTrait for Migration {
             experiment_id UUID NOT NULL REFERENCES experiments(id),
             filename TEXT NOT NULL,
             timestamp TIMESTAMPTZ,
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             order_index INTEGER
         );
 
@@ -100,7 +108,8 @@ impl MigrationTrait for Migration {
             config_type TEXT, -- 'trays', 'temperature', 'regions'
             original_filename TEXT,
             content TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
         -- TEMPERATURE PROBES
@@ -109,6 +118,8 @@ impl MigrationTrait for Migration {
             experiment_id UUID NOT NULL REFERENCES experiments(id),
             probe_name TEXT,
             column_index INTEGER,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             correction_factor NUMERIC
         );
 
@@ -117,6 +128,8 @@ impl MigrationTrait for Migration {
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             well_id UUID NOT NULL REFERENCES wells(id),
             timestamp TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             temperature_celsius NUMERIC
         );
 
@@ -126,6 +139,8 @@ impl MigrationTrait for Migration {
             experiment_id UUID NOT NULL REFERENCES experiments(id),
             treatment_code TEXT,
             dilution_factor NUMERIC,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             notes TEXT
         );
 
@@ -135,6 +150,8 @@ impl MigrationTrait for Migration {
             experiment_id UUID NOT NULL REFERENCES experiments(id),
             region_name TEXT,
             treatment_id UUID REFERENCES treatments(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             wells UUID[]
         );
 
@@ -144,6 +161,8 @@ impl MigrationTrait for Migration {
             well_id UUID NOT NULL REFERENCES wells(id),
             freezing_temperature_celsius NUMERIC,
             is_frozen BOOLEAN,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             region_id UUID REFERENCES regions(id)
         );
 
@@ -153,7 +172,9 @@ impl MigrationTrait for Migration {
             region_id UUID NOT NULL REFERENCES regions(id),
             temperature_celsius NUMERIC,
             nm_value NUMERIC,
-            error NUMERIC
+            error NUMERIC,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
         -- S3 ASSETS
@@ -166,6 +187,8 @@ impl MigrationTrait for Migration {
             uploaded_by TEXT,
             uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             type TEXT NOT NULL,   -- 'image', 'netcdf', 'xlsx'
             role TEXT             -- 'raw_image', 'merged_xlsx', 'plot', etc.
         );

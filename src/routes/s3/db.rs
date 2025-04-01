@@ -1,5 +1,5 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "s3_assets")]
 pub struct Model {
@@ -19,6 +19,8 @@ pub struct Model {
     pub r#type: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub role: Option<String>,
+    pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

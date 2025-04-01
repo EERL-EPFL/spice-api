@@ -6,21 +6,17 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(column_type = "Text", unique)]
-    pub experiment_code: String,
+    pub name: String,
     pub campaign_id: Option<Uuid>,
-    #[sea_orm(column_type = "Text", nullable)]
-    pub user_identifier: Option<String>,
+    pub created_by: Option<String>,
     pub experiment_date: Option<DateTime<Utc>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub image_capture_started_at: Option<DateTime<Utc>>,
-    pub image_capture_ended_at: Option<DateTime<Utc>>,
+    pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
     pub temperature_ramp: Option<f64>,
     pub temperature_start: Option<f64>,
     pub temperature_end: Option<f64>,
-    pub cooling_rate: Option<f64>,
-    pub temperature_calibration_slope: Option<f64>,
-    pub temperature_calibration_intercept: Option<f64>,
+    pub is_calibration: bool,
+    pub remarks: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "campaign")]
 pub struct Model {
@@ -16,6 +17,7 @@ pub struct Model {
     pub start_date: Option<DateTime<Utc>>,
     pub end_date: Option<DateTime<Utc>>,
     pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

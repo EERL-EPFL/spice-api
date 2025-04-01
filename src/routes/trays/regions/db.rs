@@ -1,5 +1,5 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
-
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "regions")]
 pub struct Model {
@@ -10,6 +10,8 @@ pub struct Model {
     pub region_name: Option<String>,
     pub treatment_id: Option<Uuid>,
     pub wells: Option<Vec<Uuid>>,
+    pub last_updated: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

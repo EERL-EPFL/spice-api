@@ -17,38 +17,36 @@ use uuid::Uuid;
 pub struct Experiment {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
-    experiment_code: String,
+    name: String,
     campaign_id: Option<Uuid>,
-    user_identifier: Option<String>,
+    created_by: Option<String>,
     experiment_date: Option<DateTime<Utc>>,
-    created_at: Option<DateTime<Utc>>,
-    image_capture_started_at: Option<DateTime<Utc>>,
-    image_capture_ended_at: Option<DateTime<Utc>>,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
+    created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
+    last_updated: DateTime<Utc>,
     temperature_ramp: Option<f64>,
     temperature_start: Option<f64>,
     temperature_end: Option<f64>,
-    cooling_rate: Option<f64>,
-    temperature_calibration_slope: Option<f64>,
-    temperature_calibration_intercept: Option<f64>,
+    is_calibration: bool,
+    remarks: Option<String>,
 }
 
 impl From<Model> for Experiment {
     fn from(model: Model) -> Self {
         Self {
             id: model.id,
-            experiment_code: model.experiment_code,
+            name: model.name,
             campaign_id: model.campaign_id,
-            user_identifier: model.user_identifier,
+            created_by: model.created_by,
             experiment_date: model.experiment_date,
             created_at: model.created_at,
-            image_capture_started_at: model.image_capture_started_at,
-            image_capture_ended_at: model.image_capture_ended_at,
+            last_updated: model.last_updated,
             temperature_ramp: model.temperature_ramp,
             temperature_start: model.temperature_start,
             temperature_end: model.temperature_end,
-            cooling_rate: model.cooling_rate,
-            temperature_calibration_slope: model.temperature_calibration_slope,
-            temperature_calibration_intercept: model.temperature_calibration_intercept,
+            is_calibration: model.is_calibration,
+            remarks: model.remarks,
         }
     }
 }
@@ -121,53 +119,27 @@ impl CRUDResource for Experiment {
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
             ("id", Self::ColumnType::Id),
-            ("experiment_code", Self::ColumnType::ExperimentCode),
+            ("name", Self::ColumnType::Name),
             ("campaign_id", Self::ColumnType::CampaignId),
-            ("user_identifier", Self::ColumnType::UserIdentifier),
             ("experiment_date", Self::ColumnType::ExperimentDate),
+            ("created_by", Self::ColumnType::CreatedBy),
             ("created_at", Self::ColumnType::CreatedAt),
-            (
-                "image_capture_started_at",
-                Self::ColumnType::ImageCaptureStartedAt,
-            ),
-            (
-                "image_capture_ended_at",
-                Self::ColumnType::ImageCaptureEndedAt,
-            ),
             ("temperature_ramp", Self::ColumnType::TemperatureRamp),
             ("temperature_start", Self::ColumnType::TemperatureStart),
             ("temperature_end", Self::ColumnType::TemperatureEnd),
-            ("cooling_rate", Self::ColumnType::CoolingRate),
-            (
-                "temperature_calibration_slope",
-                Self::ColumnType::TemperatureCalibrationSlope,
-            ),
-            (
-                "temperature_calibration_intercept",
-                Self::ColumnType::TemperatureCalibrationIntercept,
-            ),
         ]
     }
 
     fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
-            ("name", Self::ColumnType::ExperimentCode),
+            ("name", Self::ColumnType::Name),
             ("campaign_id", Self::ColumnType::CampaignId),
-            ("user_identifier", Self::ColumnType::UserIdentifier),
+            ("created_by", Self::ColumnType::CreatedBy),
             ("experiment_date", Self::ColumnType::ExperimentDate),
             ("created_at", Self::ColumnType::CreatedAt),
-            (
-                "image_capture_started_at",
-                Self::ColumnType::ImageCaptureStartedAt,
-            ),
-            (
-                "image_capture_ended_at",
-                Self::ColumnType::ImageCaptureEndedAt,
-            ),
             ("temperature_ramp", Self::ColumnType::TemperatureRamp),
             ("temperature_start", Self::ColumnType::TemperatureStart),
             ("temperature_end", Self::ColumnType::TemperatureEnd),
-            ("cooling_rate", Self::ColumnType::CoolingRate),
         ]
     }
 }
