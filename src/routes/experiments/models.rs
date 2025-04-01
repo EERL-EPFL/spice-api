@@ -18,7 +18,8 @@ pub struct Experiment {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     name: String,
-    campaign_id: Option<Uuid>,
+    campaign_id: Uuid,
+    sample_id: Uuid,
     username: Option<String>,
     performed_at: Option<DateTime<Utc>>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
@@ -38,6 +39,7 @@ impl From<Model> for Experiment {
             id: model.id,
             name: model.name,
             campaign_id: model.campaign_id,
+            sample_id: model.sample_id,
             username: model.username,
             performed_at: model.performed_at,
             created_at: model.created_at,
@@ -82,6 +84,7 @@ impl CRUDResource for Experiment {
             .limit(limit)
             .all(db)
             .await?;
+
         Ok(models.into_iter().map(Self::ApiModel::from).collect())
     }
 
@@ -121,6 +124,7 @@ impl CRUDResource for Experiment {
             ("id", Self::ColumnType::Id),
             ("name", Self::ColumnType::Name),
             ("campaign_id", Self::ColumnType::CampaignId),
+            ("sample_id", Self::ColumnType::SampleId),
             ("performed_at", Self::ColumnType::PerformedAt),
             ("username", Self::ColumnType::Username),
             ("created_at", Self::ColumnType::CreatedAt),
@@ -134,6 +138,7 @@ impl CRUDResource for Experiment {
         vec![
             ("name", Self::ColumnType::Name),
             ("campaign_id", Self::ColumnType::CampaignId),
+            ("sample_id", Self::ColumnType::SampleId),
             ("performed_at", Self::ColumnType::PerformedAt),
             ("username", Self::ColumnType::Username),
             ("created_at", Self::ColumnType::CreatedAt),

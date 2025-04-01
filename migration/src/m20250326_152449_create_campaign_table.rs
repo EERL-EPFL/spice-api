@@ -24,27 +24,9 @@ impl MigrationTrait for Migration {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
-        -- EXPERIMENTS
-        CREATE TABLE IF NOT EXISTS experiments (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            name TEXT NOT NULL UNIQUE,
-            campaign_id UUID REFERENCES campaign(id),
-            username TEXT,
-            performed_at TIMESTAMPTZ,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            temperature_ramp NUMERIC,
-            temperature_start NUMERIC,
-            temperature_end NUMERIC,
-            is_calibration BOOLEAN DEFAULT FALSE,
-            remarks TEXT,
-            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            UNIQUE (name, campaign_id)
-        );
-
         -- SAMPLES
         CREATE TABLE IF NOT EXISTS samples (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            experiment_id UUID NOT NULL UNIQUE REFERENCES experiments(id),
             name TEXT NOT NULL,
             type TEXT NOT NULL,
             treatment TEXT,
@@ -60,7 +42,24 @@ impl MigrationTrait for Migration {
             remarks TEXT,
             last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            
+        );
+        
+        -- EXPERIMENTS
+        CREATE TABLE IF NOT EXISTS experiments (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            name TEXT NOT NULL UNIQUE,
+            username TEXT,
+            performed_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            temperature_ramp NUMERIC,
+            temperature_start NUMERIC,
+            temperature_end NUMERIC,
+            is_calibration BOOLEAN DEFAULT FALSE,
+            remarks TEXT,
+            last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            campaign_id UUID NOT NULL REFERENCES campaign(id),
+            sample_id UUID NOT NULL REFERENCES samples(id),
+            UNIQUE (name, campaign_id)
         );
 
         -- TRAYS

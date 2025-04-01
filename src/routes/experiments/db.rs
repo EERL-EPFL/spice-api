@@ -7,7 +7,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub name: String,
-    pub campaign_id: Option<Uuid>,
+    pub campaign_id: Uuid,
+    pub sample_id: Uuid,
     pub username: Option<String>,
     pub performed_at: Option<DateTime<Utc>>,
     pub last_updated: DateTime<Utc>,
