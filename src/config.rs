@@ -11,10 +11,10 @@ pub struct Config {
     pub keycloak_realm: String,
     pub deployment: String,
     pub admin_role: String,
-    pub s3_access_key: Option<String>,
-    pub s3_secret_key: Option<String>,
-    pub s3_bucket: Option<String>,
-    pub s3_url: Option<String>,
+    pub s3_access_key: String,
+    pub s3_secret_key: String,
+    pub s3_bucket_id: String,
+    pub s3_url: String,
 }
 
 impl Config {
@@ -40,10 +40,10 @@ impl Config {
             deployment: env::var("DEPLOYMENT")
                 .expect("DEPLOYMENT must be set, this can be local, dev, stage, or prod"),
             admin_role: "spice-admin".to_string(), // Admin role name in Keycloak
-            s3_access_key: env::var("S3_ACCESS_KEY").ok(),
-            s3_secret_key: env::var("S3_SECRET_KEY").ok(),
-            s3_bucket: env::var("S3_BUCKET").ok(),
-            s3_url: env::var("S3_URL").ok(),
+            s3_access_key: env::var("S3_ACCESS_KEY").expect("S3_ACCESS_KEY must be set"),
+            s3_secret_key: env::var("S3_SECRET_KEY").expect("S3_SECRET_KEY must be set"),
+            s3_bucket_id: env::var("S3_BUCKET_ID").expect("S3_BUCKET must be set"),
+            s3_url: env::var("S3_URL").expect("S3_URL must be set"),
             db_url,
         }
     }

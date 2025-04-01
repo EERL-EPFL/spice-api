@@ -1,5 +1,6 @@
 mod common;
 mod config;
+mod external;
 mod routes;
 
 use migration::{Migrator, MigratorTrait};
