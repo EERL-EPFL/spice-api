@@ -40,6 +40,7 @@ impl MigrationTrait for Migration {
             well_volume_liters NUMERIC,
             background_region_key TEXT,
             remarks TEXT,
+            campaign_id UUID REFERENCES campaign(id),
             last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -57,9 +58,7 @@ impl MigrationTrait for Migration {
             is_calibration BOOLEAN DEFAULT FALSE,
             remarks TEXT,
             last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            campaign_id UUID NOT NULL REFERENCES campaign(id),
-            sample_id UUID NOT NULL REFERENCES samples(id),
-            UNIQUE (name, campaign_id)
+            sample_id UUID NOT NULL REFERENCES samples(id)
         );
 
         -- TRAYS

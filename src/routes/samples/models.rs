@@ -17,31 +17,30 @@ use uuid::Uuid;
 pub struct Sample {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
-    experiment_id: Uuid,
     name: String,
     r#type: String,
     treatment: Option<String>,
     material_description: Option<String>,
     extraction_procedure: Option<String>,
     filter_substrate: Option<String>,
-    suspension_volume_liters: Option<f64>,
-    air_volume_liters: Option<f64>,
-    water_volume_liters: Option<f64>,
-    initial_concentration_gram_l: Option<f64>,
-    well_volume_liters: Option<f64>,
+    suspension_volume_liters: Option<Decimal>,
+    air_volume_liters: Option<Decimal>,
+    water_volume_liters: Option<Decimal>,
+    initial_concentration_gram_l: Option<Decimal>,
+    well_volume_liters: Option<Decimal>,
     background_region_key: Option<String>,
     remarks: Option<String>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
     created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
+    campaign_id: Option<Uuid>,
 }
 
 impl From<Model> for Sample {
     fn from(model: Model) -> Self {
         Self {
             id: model.id,
-            experiment_id: model.experiment_id,
             name: model.name,
             r#type: model.r#type,
             treatment: model.treatment,
@@ -57,6 +56,7 @@ impl From<Model> for Sample {
             remarks: model.remarks,
             created_at: model.created_at,
             last_updated: model.last_updated,
+            campaign_id: model.campaign_id,
         }
     }
 }
@@ -129,7 +129,6 @@ impl CRUDResource for Sample {
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
             ("id", Self::ColumnType::Id),
-            ("experiment_id", Self::ColumnType::ExperimentId),
             ("name", Self::ColumnType::Name),
             ("type", Self::ColumnType::Type),
             ("treatment", Self::ColumnType::Treatment),
@@ -158,12 +157,14 @@ impl CRUDResource for Sample {
                 Self::ColumnType::BackgroundRegionKey,
             ),
             ("created_at", Self::ColumnType::CreatedAt),
+            ("last_updated", Self::ColumnType::LastUpdated),
+            ("campaign_id", Self::ColumnType::CampaignId),
+            ("remarks", Self::ColumnType::Remarks),
         ]
     }
 
     fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
-            ("experiment_id", Self::ColumnType::ExperimentId),
             ("name", Self::ColumnType::Name),
             ("type", Self::ColumnType::Type),
             ("treatment", Self::ColumnType::Treatment),
@@ -192,6 +193,7 @@ impl CRUDResource for Sample {
                 Self::ColumnType::BackgroundRegionKey,
             ),
             ("created_at", Self::ColumnType::CreatedAt),
+            ("remarks", Self::ColumnType::Remarks),
         ]
     }
 }

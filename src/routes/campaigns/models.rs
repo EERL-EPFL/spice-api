@@ -3,16 +3,14 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
 use sea_orm::{
-    ActiveValue, Condition, DatabaseConnection, EntityTrait, FromQueryResult, Order, QueryOrder,
-    QuerySelect, entity::prelude::*,
+    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
+    entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(
-    ToSchema, Serialize, Deserialize, FromQueryResult, ToUpdateModel, ToCreateModel, Clone,
-)]
+#[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "super::db::ActiveModel"]
 pub struct Campaign {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
@@ -23,10 +21,14 @@ pub struct Campaign {
     last_updated: DateTime<Utc>,
     comment: Option<String>,
     name: String,
-    latitude: Option<f64>,
-    longitude: Option<f64>,
+    latitude: Option<Decimal>,
+    longitude: Option<Decimal>,
     start_date: Option<DateTime<Utc>>,
     end_date: Option<DateTime<Utc>>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    experiments: Vec<crate::routes::experiments::models::Experiment>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    samples: Vec<crate::routes::samples::models::Sample>,
 }
 
 impl From<Model> for Campaign {
@@ -41,6 +43,8 @@ impl From<Model> for Campaign {
             longitude: model.longitude,
             start_date: model.start_date,
             end_date: model.end_date,
+            experiments: vec![],
+            samples: vec![],
         }
     }
 }
@@ -79,15 +83,38 @@ impl CRUDResource for Campaign {
     }
 
     async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self::ApiModel, DbErr> {
-        let model =
-            Self::EntityType::find_by_id(id)
-                .one(db)
-                .await?
-                .ok_or(DbErr::RecordNotFound(format!(
+        let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {
+            Some(model) => model,
+            None => {
+                return Err(DbErr::RecordNotFound(format!(
                     "{} not found",
                     Self::RESOURCE_NAME_SINGULAR
-                )))?;
-        Ok(Self::ApiModel::from(model))
+                )));
+            }
+        };
+
+        let samples = model
+            .find_related(crate::routes::samples::db::Entity)
+            .all(db)
+            .await?;
+
+        let mut experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
+
+        for sample in &samples {
+            let sample_experiments = sample
+                .find_related(crate::routes::experiments::db::Entity)
+                .all(db)
+                .await?;
+            for experiment in sample_experiments {
+                experiments.push(experiment.into());
+            }
+        }
+
+        let mut model: Self::ApiModel = model.into();
+        model.experiments = experiments;
+        model.samples = samples.into_iter().map(Into::into).collect();
+
+        Ok(model)
     }
 
     async fn update(

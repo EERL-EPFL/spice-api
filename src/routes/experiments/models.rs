@@ -18,7 +18,6 @@ pub struct Experiment {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     name: String,
-    campaign_id: Uuid,
     sample_id: Uuid,
     username: Option<String>,
     performed_at: Option<DateTime<Utc>>,
@@ -26,9 +25,9 @@ pub struct Experiment {
     created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
-    temperature_ramp: Option<f64>,
-    temperature_start: Option<f64>,
-    temperature_end: Option<f64>,
+    temperature_ramp: Option<Decimal>,
+    temperature_start: Option<Decimal>,
+    temperature_end: Option<Decimal>,
     is_calibration: bool,
     remarks: Option<String>,
 }
@@ -38,7 +37,6 @@ impl From<Model> for Experiment {
         Self {
             id: model.id,
             name: model.name,
-            campaign_id: model.campaign_id,
             sample_id: model.sample_id,
             username: model.username,
             performed_at: model.performed_at,
@@ -123,7 +121,6 @@ impl CRUDResource for Experiment {
         vec![
             ("id", Self::ColumnType::Id),
             ("name", Self::ColumnType::Name),
-            ("campaign_id", Self::ColumnType::CampaignId),
             ("sample_id", Self::ColumnType::SampleId),
             ("performed_at", Self::ColumnType::PerformedAt),
             ("username", Self::ColumnType::Username),
@@ -137,7 +134,6 @@ impl CRUDResource for Experiment {
     fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
             ("name", Self::ColumnType::Name),
-            ("campaign_id", Self::ColumnType::CampaignId),
             ("sample_id", Self::ColumnType::SampleId),
             ("performed_at", Self::ColumnType::PerformedAt),
             ("username", Self::ColumnType::Username),
