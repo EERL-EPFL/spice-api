@@ -1,0 +1,197 @@
+use super::db::Model;
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
+use sea_orm::{
+    ActiveValue, Condition, DatabaseConnection, EntityTrait, FromQueryResult, Order, QueryOrder,
+    QuerySelect, entity::prelude::*,
+};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+use uuid::Uuid;
+
+#[derive(
+    ToSchema, Serialize, Deserialize, FromQueryResult, ToUpdateModel, ToCreateModel, Clone,
+)]
+#[active_model = "super::db::ActiveModel"]
+pub struct Sample {
+    #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
+    id: Uuid,
+    experiment_id: Uuid,
+    name: String,
+    r#type: String,
+    treatment: Option<String>,
+    material_description: Option<String>,
+    extraction_procedure: Option<String>,
+    filter_substrate: Option<String>,
+    suspension_volume_liters: Option<f64>,
+    air_volume_liters: Option<f64>,
+    water_volume_liters: Option<f64>,
+    initial_concentration_gram_l: Option<f64>,
+    well_volume_liters: Option<f64>,
+    background_region_key: Option<String>,
+    remarks: Option<String>,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
+    created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
+    last_updated: DateTime<Utc>,
+}
+
+impl From<Model> for Sample {
+    fn from(model: Model) -> Self {
+        Self {
+            id: model.id,
+            experiment_id: model.experiment_id,
+            name: model.name,
+            r#type: model.r#type,
+            treatment: model.treatment,
+            material_description: model.material_description,
+            extraction_procedure: model.extraction_procedure,
+            filter_substrate: model.filter_substrate,
+            suspension_volume_liters: model.suspension_volume_liters,
+            air_volume_liters: model.air_volume_liters,
+            water_volume_liters: model.water_volume_liters,
+            initial_concentration_gram_l: model.initial_concentration_gram_l,
+            well_volume_liters: model.well_volume_liters,
+            background_region_key: model.background_region_key,
+            remarks: model.remarks,
+            created_at: model.created_at,
+            last_updated: model.last_updated,
+        }
+    }
+}
+
+#[async_trait]
+impl CRUDResource for Sample {
+    type EntityType = super::db::Entity;
+    type ColumnType = super::db::Column;
+    type ModelType = super::db::Model;
+    type ActiveModelType = super::db::ActiveModel;
+    type ApiModel = Sample;
+    type CreateModel = SampleCreate;
+    type UpdateModel = SampleUpdate;
+
+    const ID_COLUMN: Self::ColumnType = super::db::Column::Id;
+    const RESOURCE_NAME_PLURAL: &'static str = "samples";
+    const RESOURCE_NAME_SINGULAR: &'static str = "sample";
+    const RESOURCE_DESCRIPTION: &'static str =
+        "This resource manages samples associated with experiments.";
+
+    async fn get_all(
+        db: &DatabaseConnection,
+        condition: Condition,
+        order_column: Self::ColumnType,
+        order_direction: Order,
+        offset: u64,
+        limit: u64,
+    ) -> Result<Vec<Self::ApiModel>, DbErr> {
+        let models = Self::EntityType::find()
+            .filter(condition)
+            .order_by(order_column, order_direction)
+            .offset(offset)
+            .limit(limit)
+            .all(db)
+            .await?;
+        Ok(models.into_iter().map(Self::ApiModel::from).collect())
+    }
+
+    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self::ApiModel, DbErr> {
+        let model =
+            Self::EntityType::find_by_id(id)
+                .one(db)
+                .await?
+                .ok_or(DbErr::RecordNotFound(format!(
+                    "{} not found",
+                    Self::RESOURCE_NAME_SINGULAR
+                )))?;
+        Ok(Self::ApiModel::from(model))
+    }
+
+    async fn update(
+        db: &DatabaseConnection,
+        id: Uuid,
+        update_data: Self::UpdateModel,
+    ) -> Result<Self::ApiModel, DbErr> {
+        let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or(DbErr::RecordNotFound(format!(
+                "{} not found",
+                Self::RESOURCE_NAME_PLURAL
+            )))?
+            .into();
+
+        let updated_model = update_data.merge_into_activemodel(existing);
+        let updated = updated_model.update(db).await?;
+        Ok(Self::ApiModel::from(updated))
+    }
+
+    fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
+        vec![
+            ("id", Self::ColumnType::Id),
+            ("experiment_id", Self::ColumnType::ExperimentId),
+            ("name", Self::ColumnType::Name),
+            ("type", Self::ColumnType::Type),
+            ("treatment", Self::ColumnType::Treatment),
+            (
+                "material_description",
+                Self::ColumnType::MaterialDescription,
+            ),
+            (
+                "extraction_procedure",
+                Self::ColumnType::ExtractionProcedure,
+            ),
+            ("filter_substrate", Self::ColumnType::FilterSubstrate),
+            (
+                "suspension_volume_liters",
+                Self::ColumnType::SuspensionVolumeLiters,
+            ),
+            ("air_volume_liters", Self::ColumnType::AirVolumeLiters),
+            ("water_volume_liters", Self::ColumnType::WaterVolumeLiters),
+            (
+                "initial_concentration_gram_l",
+                Self::ColumnType::InitialConcentrationGramL,
+            ),
+            ("well_volume_liters", Self::ColumnType::WellVolumeLiters),
+            (
+                "background_region_key",
+                Self::ColumnType::BackgroundRegionKey,
+            ),
+            ("created_at", Self::ColumnType::CreatedAt),
+        ]
+    }
+
+    fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
+        vec![
+            ("experiment_id", Self::ColumnType::ExperimentId),
+            ("name", Self::ColumnType::Name),
+            ("type", Self::ColumnType::Type),
+            ("treatment", Self::ColumnType::Treatment),
+            (
+                "material_description",
+                Self::ColumnType::MaterialDescription,
+            ),
+            (
+                "extraction_procedure",
+                Self::ColumnType::ExtractionProcedure,
+            ),
+            ("filter_substrate", Self::ColumnType::FilterSubstrate),
+            (
+                "suspension_volume_liters",
+                Self::ColumnType::SuspensionVolumeLiters,
+            ),
+            ("air_volume_liters", Self::ColumnType::AirVolumeLiters),
+            ("water_volume_liters", Self::ColumnType::WaterVolumeLiters),
+            (
+                "initial_concentration_gram_l",
+                Self::ColumnType::InitialConcentrationGramL,
+            ),
+            ("well_volume_liters", Self::ColumnType::WellVolumeLiters),
+            (
+                "background_region_key",
+                Self::ColumnType::BackgroundRegionKey,
+            ),
+            ("created_at", Self::ColumnType::CreatedAt),
+        ]
+    }
+}

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "samples")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -20,11 +20,11 @@ pub struct Model {
     pub extraction_procedure: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub filter_substrate: Option<String>,
-    pub suspension_volume_liters: Option<Decimal>,
-    pub air_volume_liters: Option<Decimal>,
-    pub water_volume_liters: Option<Decimal>,
-    pub initial_concentration_gram_l: Option<Decimal>,
-    pub well_volume_liters: Option<Decimal>,
+    pub suspension_volume_liters: Option<f64>,
+    pub air_volume_liters: Option<f64>,
+    pub water_volume_liters: Option<f64>,
+    pub initial_concentration_gram_l: Option<f64>,
+    pub well_volume_liters: Option<f64>,
     #[sea_orm(column_type = "Text", nullable)]
     pub background_region_key: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
