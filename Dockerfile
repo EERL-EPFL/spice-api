@@ -19,7 +19,7 @@ COPY ./src /app/src
 COPY ./migration/ /app/migration/
 COPY Cargo.lock Cargo.toml /app/
 
-RUN cargo build --release --bin soil-api
+RUN cargo build --release --bin spice-api
 
 # We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
@@ -27,5 +27,5 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /app/target/release/soil-api /usr/local/bin
-ENTRYPOINT ["/usr/local/bin/soil-api"]
+COPY --from=builder /app/target/release/spice-api /usr/local/bin
+ENTRYPOINT ["/usr/local/bin/spice-api"]
