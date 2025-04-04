@@ -22,3 +22,20 @@ pub async fn get_client(config: &Config) -> Arc<S3Client> {
 
     Arc::new(S3Client::new(&shared_config))
 }
+
+pub async fn delete_from_s3(s3_key: &str) -> Result<(), String> {
+    let config = Config::from_env();
+    let client = get_client(&config).await;
+    let bucket = &config.s3_bucket_id;
+
+    match client
+        .delete_object()
+        .bucket(bucket)
+        .key(s3_key)
+        .send()
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(err) => Err(format!("Failed to delete object from S3: {err}")),
+    }
+}

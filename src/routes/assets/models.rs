@@ -1,4 +1,5 @@
 use super::db::Model;
+use crate::external::s3::delete_from_s3;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
@@ -113,6 +114,63 @@ impl CRUDResource for Asset {
         let updated_model = update_data.merge_into_activemodel(existing);
         let updated = updated_model.update(db).await?;
         Ok(Self::ApiModel::from(updated))
+    }
+
+    async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> {
+        // Fetch the asset to get its S3 key
+        let asset =
+            Self::EntityType::find_by_id(id)
+                .one(db)
+                .await?
+                .ok_or(DbErr::RecordNotFound(format!(
+                    "{} not found",
+                    Self::RESOURCE_NAME_SINGULAR
+                )))?;
+
+        // Delete the asset from S3 (replace this with actual S3 deletion logic)
+        if let Err(e) = delete_from_s3(&asset.s3_key).await {
+            return Err(DbErr::Custom(format!(
+                "Failed to delete S3 asset with key {}: {}",
+                asset.s3_key, e
+            )));
+        }
+
+        // Proceed with deleting the database record
+        let res = <Self::EntityType as EntityTrait>::delete_by_id(id)
+            .exec(db)
+            .await?;
+        match res.rows_affected {
+            0 => Err(DbErr::RecordNotFound(format!(
+                "{} not found",
+                Self::RESOURCE_NAME_SINGULAR
+            ))),
+            _ => Ok(id),
+        }
+    }
+
+    async fn delete_many(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
+        // Fetch the assets to get their S3 keys
+        let assets = Self::EntityType::find()
+            .filter(Self::ID_COLUMN.is_in(ids.clone()))
+            .all(db)
+            .await?;
+
+        // Delete the assets from S3 (replace this with actual S3 deletion logic)
+        for asset in &assets {
+            if let Err(e) = delete_from_s3(&asset.s3_key).await {
+                return Err(DbErr::Custom(format!(
+                    "Failed to delete S3 asset with key {}: {}",
+                    asset.s3_key, e
+                )));
+            }
+        }
+
+        // Proceed with deleting the database records
+        Self::EntityType::delete_many()
+            .filter(Self::ID_COLUMN.is_in(ids.clone()))
+            .exec(db)
+            .await?;
+        Ok(ids)
     }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
