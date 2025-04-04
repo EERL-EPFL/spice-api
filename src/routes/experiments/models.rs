@@ -29,7 +29,7 @@ pub struct Experiment {
     is_calibration: bool,
     remarks: Option<String>,
     #[crudcrate(non_db_attr = true, default = vec![])]
-    assets: Vec<crate::routes::s3::models::Asset>,
+    assets: Vec<crate::routes::assets::models::Asset>,
 }
 
 impl From<Model> for Experiment {
@@ -98,7 +98,7 @@ impl CRUDResource for Experiment {
                 )))?;
 
         let s3_assets = model
-            .find_related(crate::routes::s3::db::Entity)
+            .find_related(crate::routes::assets::db::Entity)
             .all(db)
             .await?;
 

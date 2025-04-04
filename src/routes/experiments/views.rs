@@ -1,7 +1,7 @@
 use super::models::{Experiment, ExperimentCreate, ExperimentUpdate};
 use crate::common::auth::Role;
 use crate::external::s3::get_client;
-use crate::routes::s3::db as s3_assets;
+use crate::routes::assets::db as s3_assets;
 use aws_sdk_s3::primitives::ByteStream;
 use axum::{extract::Multipart, routing::post};
 use axum_keycloak_auth::{
@@ -100,7 +100,7 @@ pub async fn upload_file(
             original_filename: Set(file_name.clone()),
             experiment_id: Set(Some(experiment_id)),
             s3_key: Set(s3_key.clone()),
-            size_bytes: Set(Some(size as i64)),
+            size_bytes: Set(Some(size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())), // Replace with the actual uploader if available
             r#type: Set("image".to_string()),
             role: Set(Some("raw_image".to_string())),

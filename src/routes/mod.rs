@@ -1,7 +1,7 @@
+mod assets;
 mod campaigns;
 mod experiments;
 mod inp;
-mod s3;
 mod samples;
 mod temperatures;
 mod trays;

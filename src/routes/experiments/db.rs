@@ -27,7 +27,7 @@ pub enum Relation {
     Images,
     #[sea_orm(has_many = "crate::routes::trays::regions::db::Entity")]
     Regions,
-    #[sea_orm(has_many = "crate::routes::s3::db::Entity")]
+    #[sea_orm(has_many = "crate::routes::assets::db::Entity")]
     S3Assets,
     #[sea_orm(
         belongs_to = "crate::routes::samples::db::Entity",
@@ -71,7 +71,7 @@ impl Related<crate::routes::trays::regions::db::Entity> for Entity {
     }
 }
 
-impl Related<crate::routes::s3::db::Entity> for Entity {
+impl Related<crate::routes::assets::db::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::S3Assets.def()
     }
