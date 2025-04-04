@@ -1,6 +1,6 @@
 use super::models::{Experiment, ExperimentCreate, ExperimentUpdate};
 use crate::common::auth::Role;
-use crate::external::s3::get_client;
+use crate::external::s3::{download_assets, get_client};
 use crate::routes::assets::db as s3_assets;
 use aws_sdk_s3::primitives::ByteStream;
 use axum::body::Body;
@@ -13,14 +13,12 @@ use axum_keycloak_auth::{
     PassthroughMode, instance::KeycloakAuthInstance, layer::KeycloakAuthLayer,
 };
 use crudcrate::{CRUDResource, crud_handlers};
-use http_body_util::StreamBody;
 use sea_orm::ActiveValue::Set;
 use sea_orm::DatabaseConnection;
 use sea_orm::entity::prelude::*;
 use serde::Serialize;
 use std::convert::TryInto;
 use std::sync::Arc;
-use tempfile::tempdir;
 use tokio_util::io::ReaderStream;
 use utoipa::ToSchema;
 use utoipa_axum::{router::OpenApiRouter, routes};
@@ -48,7 +46,7 @@ pub struct UploadResponse {
 )]
 pub async fn upload_file(
     State(db): State<DatabaseConnection>,
-    Path(experiment_id): Path<Uuid>,
+    Path(experiment_id): Path<uuid::Uuid>,
     mut infile: Multipart,
 ) -> Result<Json<UploadResponse>, (StatusCode, String)> {
     // Check if the experiment exists
@@ -145,11 +143,11 @@ pub async fn upload_file(
     ),
     operation_id = "download_experiment_assets",
     summary = "Download experiment assets as a zip file",
-    description = "Fetches all assets for the given experiment, writes them to temporary files, creates a zip archive on disk, and streams the zip file. For large files or production workloads, consider using a temporary token with a presigned URL."
+    description = "Fetches all assets for the given experiment, concurrently downloads them from S3, writes them to temporary files, creates a zip archive on disk, and streams the zip file. For large files or production workloads, consider using a temporary token with a presigned URL."
 )]
 pub async fn download_experiment_assets(
     State(db): State<DatabaseConnection>,
-    Path(experiment_id): Path<Uuid>,
+    Path(experiment_id): Path<uuid::Uuid>,
 ) -> Result<Response, (StatusCode, String)> {
     // Query assets for the experiment.
     let assets = s3_assets::Entity::find()
@@ -169,49 +167,22 @@ pub async fn download_experiment_assets(
     let config = crate::config::Config::from_env();
     let s3_client = get_client(&config).await;
 
-    // Create a temporary directory for the downloaded assets.
-    let temp_dir = tempdir().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let mut asset_paths = Vec::new();
-
-    // Download each asset and write to a file in the temp directory.
-    for asset in assets {
-        let tmp_file_path = temp_dir.path().join(&asset.original_filename);
-        let mut tmp_file = tokio::fs::File::create(&tmp_file_path)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        let s3_response = s3_client
-            .get_object()
-            .bucket(&config.s3_bucket_id)
-            .key(&asset.s3_key)
-            .send()
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("S3 download error for {}: {}", asset.s3_key, e),
-                )
-            })?;
-        // Stream S3 response directly into the file.
-        let mut body_stream = s3_response.body.into_async_read();
-        tokio::io::copy(&mut body_stream, &mut tmp_file)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        asset_paths.push((asset.original_filename, tmp_file_path));
-    }
+    // Call the new function to download assets concurrently.
+    let (_temp_dir, asset_paths) = download_assets(assets, &config, s3_client).await?;
 
     // Create a temporary file for the zip archive.
     let zip_temp_file = tempfile::NamedTempFile::new()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let zip_path = zip_temp_file.path().to_owned();
-    let zip_path_clone = zip_path.clone(); // Clone the path for later use
+    let zip_path_for_task = zip_path.clone(); // Clone the path for the blocking task
     drop(zip_temp_file);
 
     // Create the zip archive in a blocking task.
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let zip_file = std::fs::File::create(&zip_path_clone).map_err(|e| e.to_string())?;
+        let zip_file = std::fs::File::create(&zip_path_for_task).map_err(|e| e.to_string())?;
         let mut zip_writer = zip::ZipWriter::new(zip_file);
-        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated)
+        let options = zip::write::FileOptions::<()>::default()
+            .compression_method(zip::CompressionMethod::Stored)
             .unix_permissions(0o644);
         for (file_name, file_path) in asset_paths {
             zip_writer
@@ -232,9 +203,7 @@ pub async fn download_experiment_assets(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     let stream = ReaderStream::new(file);
-    let body_stream = StreamBody::new(stream);
-
-    // Convert StreamBody to hyper::Body.
+    let body_stream = http_body_util::StreamBody::new(stream);
     let hyper_body = Body::from_stream(body_stream);
 
     // Build response headers.
@@ -243,14 +212,13 @@ pub async fn download_experiment_assets(
         axum::http::header::CONTENT_TYPE,
         "application/zip".parse().unwrap(),
     );
-    let filename = format!("experiment_{experiment_id}.zip");
-    let content_disposition = format!("attachment; filename=\"{filename}\"");
+    let filename = format!("experiment_{experiment_id}.zip",);
+    let content_disposition = format!("attachment; filename=\"{filename}\"",);
     headers.insert(
         axum::http::header::CONTENT_DISPOSITION,
         content_disposition.parse().unwrap(),
     );
 
-    // Return the streaming response.
     let mut response_builder = Response::builder().status(StatusCode::OK);
     for (key, value) in &headers {
         response_builder = response_builder.header(key, value);

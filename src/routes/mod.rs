@@ -1,4 +1,4 @@
-mod assets;
+pub mod assets;
 mod campaigns;
 mod experiments;
 mod inp;
