@@ -67,6 +67,10 @@ pub fn build_router(db: &DatabaseConnection) -> Router {
             "/api/samples",
             samples::views::router(db, Some(keycloak_instance.clone())),
         )
+        .nest(
+            "/api/assets",
+            assets::views::router(db, Some(keycloak_instance.clone())),
+        )
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 
