@@ -72,6 +72,17 @@ pub async fn upload_file(
         }
 
         let file_name = field.file_name().unwrap_or("unknown").to_string();
+        let extension = std::path::Path::new(&file_name)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let file_type = match extension.as_str() {
+            "png" | "jpg" | "jpeg" => "image".to_string(),
+            "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
+            "nc" => "netcdf".to_string(),
+            _ => "unknown".to_string(),
+        };
 
         let mut file_bytes = Vec::new();
         while let Some(chunk) = field.chunk().await.unwrap() {
@@ -109,7 +120,7 @@ pub async fn upload_file(
             s3_key: Set(s3_key.clone()),
             size_bytes: Set(Some(size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())),
-            r#type: Set("image".to_string()),
+            r#type: Set(file_type),
             role: Set(Some("raw_image".to_string())),
             ..Default::default()
         };
