@@ -10,9 +10,10 @@ keywords = ["eerl", "lab", "data", "api", "axum", "sea-orm"]
 categories = ["web-programming", "database"]
 
 [workspace]
-members = [".", "migration"]
+members = [".", "migration", "entity"]
 
 [dependencies]
+spice_entity = { path = "entity" }
 anyhow = "1.0.97"
 async-trait = "0.1.85"
 aws-config = "1.6.1"

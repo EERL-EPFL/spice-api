@@ -1,4 +1,3 @@
-use super::db::Model;
 use crate::external::s3::delete_from_s3;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -8,11 +7,12 @@ use sea_orm::{
     entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
+use spice_entity::s3_assets::Model as S3Assets;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "super::db::ActiveModel"]
+#[active_model = "spice_entity::s3_assets::ActiveModel"]
 pub struct Asset {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
@@ -31,8 +31,8 @@ pub struct Asset {
     created_at: DateTime<Utc>,
 }
 
-impl From<Model> for Asset {
-    fn from(model: Model) -> Self {
+impl From<S3Assets> for Asset {
+    fn from(model: S3Assets) -> Self {
         Self {
             id: model.id,
             experiment_id: model.experiment_id,
@@ -52,15 +52,15 @@ impl From<Model> for Asset {
 
 #[async_trait]
 impl CRUDResource for Asset {
-    type EntityType = super::db::Entity;
-    type ColumnType = super::db::Column;
-    type ModelType = super::db::Model;
-    type ActiveModelType = super::db::ActiveModel;
+    type EntityType = spice_entity::s3_assets::Entity;
+    type ColumnType = spice_entity::s3_assets::Column;
+    type ModelType = spice_entity::s3_assets::Model;
+    type ActiveModelType = spice_entity::s3_assets::ActiveModel;
     type ApiModel = Asset;
     type CreateModel = AssetCreate;
     type UpdateModel = AssetUpdate;
 
-    const ID_COLUMN: Self::ColumnType = super::db::Column::Id;
+    const ID_COLUMN: Self::ColumnType = spice_entity::s3_assets::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "assets";
     const RESOURCE_NAME_SINGULAR: &'static str = "asset";
     const RESOURCE_DESCRIPTION: &'static str = "This resource represents assets stored in S3, including metadata such as file size, type, and upload details.";
@@ -84,7 +84,7 @@ impl CRUDResource for Asset {
     }
 
     async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self::ApiModel, DbErr> {
-        let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {
+        let model: S3Assets = match Self::EntityType::find_by_id(id).one(db).await? {
             Some(model) => model,
             None => {
                 return Err(DbErr::RecordNotFound(format!(

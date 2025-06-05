@@ -1,4 +1,3 @@
-use super::db::Model;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
@@ -7,16 +6,18 @@ use sea_orm::{
     entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
+use spice_entity::experiments::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "super::db::ActiveModel"]
+#[active_model = "spice_entity::experiments::ActiveModel"]
 pub struct Experiment {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     name: String,
-    sample_id: Uuid,
+    // sample_id: Uuid,
+    tray_configuration_id: Option<Uuid>,
     username: Option<String>,
     performed_at: Option<DateTime<Utc>>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
@@ -26,7 +27,7 @@ pub struct Experiment {
     temperature_ramp: Option<Decimal>,
     temperature_start: Option<Decimal>,
     temperature_end: Option<Decimal>,
-    is_calibration: bool,
+    is_calibration: Option<bool>,
     remarks: Option<String>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     assets: Vec<crate::routes::assets::models::Asset>,
@@ -37,7 +38,8 @@ impl From<Model> for Experiment {
         Self {
             id: model.id,
             name: model.name,
-            sample_id: model.sample_id,
+            tray_configuration_id: model.tray_configuration_id,
+            // sample_id: model.sample_id,
             username: model.username,
             performed_at: model.performed_at,
             created_at: model.created_at,
@@ -54,15 +56,15 @@ impl From<Model> for Experiment {
 
 #[async_trait]
 impl CRUDResource for Experiment {
-    type EntityType = super::db::Entity;
-    type ColumnType = super::db::Column;
-    type ModelType = super::db::Model;
-    type ActiveModelType = super::db::ActiveModel;
+    type EntityType = spice_entity::experiments::Entity;
+    type ColumnType = spice_entity::experiments::Column;
+    type ModelType = spice_entity::experiments::Model;
+    type ActiveModelType = spice_entity::experiments::ActiveModel;
     type ApiModel = Experiment;
     type CreateModel = ExperimentCreate;
     type UpdateModel = ExperimentUpdate;
 
-    const ID_COLUMN: Self::ColumnType = super::db::Column::Id;
+    const ID_COLUMN: Self::ColumnType = spice_entity::experiments::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "experiments";
     const RESOURCE_NAME_SINGULAR: &'static str = "experiment";
     const RESOURCE_DESCRIPTION: &'static str =
@@ -98,7 +100,7 @@ impl CRUDResource for Experiment {
                 )))?;
 
         let s3_assets = model
-            .find_related(crate::routes::assets::db::Entity)
+            .find_related(spice_entity::s3_assets::Entity)
             .all(db)
             .await?;
 
@@ -131,7 +133,6 @@ impl CRUDResource for Experiment {
         vec![
             ("id", Self::ColumnType::Id),
             ("name", Self::ColumnType::Name),
-            ("sample_id", Self::ColumnType::SampleId),
             ("performed_at", Self::ColumnType::PerformedAt),
             ("username", Self::ColumnType::Username),
             ("created_at", Self::ColumnType::CreatedAt),
@@ -144,7 +145,6 @@ impl CRUDResource for Experiment {
     fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
             ("name", Self::ColumnType::Name),
-            ("sample_id", Self::ColumnType::SampleId),
             ("performed_at", Self::ColumnType::PerformedAt),
             ("username", Self::ColumnType::Username),
             ("created_at", Self::ColumnType::CreatedAt),

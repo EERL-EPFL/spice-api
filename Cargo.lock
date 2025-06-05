@@ -4704,6 +4704,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "spice_entity",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -4715,6 +4716,20 @@ dependencies = [
  "utoipa-scalar",
  "uuid",
  "zip",
+]
+
+[[package]]
+name = "spice_entity"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "utoipa",
+ "utoipa-axum",
+ "utoipa-scalar",
+ "uuid",
 ]
 
 [[package]]

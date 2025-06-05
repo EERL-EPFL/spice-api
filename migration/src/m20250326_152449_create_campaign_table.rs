@@ -10,7 +10,7 @@ impl MigrationTrait for Migration {
 
         let sql = include_str!("init_db.sql");
 
-        db.execute_unprepared(&sql).await?;
+        db.execute_unprepared(sql).await?;
         Ok(())
     }
 

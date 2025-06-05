@@ -3,8 +3,9 @@ WORKDIR /app
 RUN cargo install cargo-chef --locked
 
 FROM chef AS planner
-COPY ./src /app/src
-COPY ./migration /app/migration
+COPY ./src/ /app/src/
+COPY ./migration/ /app/migration/
+COPY ./entity/ /app/entity/
 COPY Cargo.lock Cargo.toml /app/
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -14,7 +15,6 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 # Build application
-#COPY . .
 COPY ./src /app/src
 COPY ./migration/ /app/migration/
 COPY Cargo.lock Cargo.toml /app/

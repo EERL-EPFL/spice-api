@@ -1,10 +1,10 @@
 use crate::config::Config;
-use crate::routes::assets::db::Model as AssetModel;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::{Client as S3Client, config::Region};
 use axum::http::StatusCode;
 use futures::stream::{self, StreamExt};
+use spice_entity::s3_assets::Model as S3Assets;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -48,7 +48,7 @@ pub async fn delete_from_s3(s3_key: &str) -> Result<(), String> {
 // New function: concurrently download assets from S3 with progress logging.
 // Returns the TempDir (to keep files alive) and a vector of (original filename, file path).
 pub async fn download_assets(
-    assets: Vec<AssetModel>,
+    assets: Vec<S3Assets>,
     config: &Config,
     s3_client: Arc<S3Client>,
 ) -> Result<(TempDir, Vec<(String, PathBuf)>), (StatusCode, String)> {

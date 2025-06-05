@@ -1,25 +1,22 @@
-use super::db::Model;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
 use sea_orm::{
-    ActiveValue, Condition, DatabaseConnection, EntityTrait, FromQueryResult, Order, QueryOrder,
-    QuerySelect, entity::prelude::*,
+    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
+    entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
+use spice_entity::samples::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(
-    ToSchema, Serialize, Deserialize, FromQueryResult, ToUpdateModel, ToCreateModel, Clone,
-)]
-#[active_model = "super::db::ActiveModel"]
+#[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
+#[active_model = "spice_entity::samples::ActiveModel"]
 pub struct Sample {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     name: String,
-    r#type: String,
-    treatment: Option<String>,
+    r#type: spice_entity::SampleType,
     material_description: Option<String>,
     extraction_procedure: Option<String>,
     filter_substrate: Option<String>,
@@ -35,6 +32,12 @@ pub struct Sample {
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
     campaign_id: Option<Uuid>,
+    latitude: Option<Decimal>,
+    longitude: Option<Decimal>,
+    start_time: Option<DateTime<Utc>>,
+    stop_time: Option<DateTime<Utc>>,
+    flow_litres_per_minute: Option<f64>,
+    total_volume: Option<f64>,
 }
 
 impl From<Model> for Sample {
@@ -43,7 +46,9 @@ impl From<Model> for Sample {
             id: model.id,
             name: model.name,
             r#type: model.r#type,
-            treatment: model.treatment,
+            // treatment: model.treatment,
+            start_time: model.start_time,
+            stop_time: model.stop_time,
             material_description: model.material_description,
             extraction_procedure: model.extraction_procedure,
             filter_substrate: model.filter_substrate,
@@ -56,22 +61,26 @@ impl From<Model> for Sample {
             remarks: model.remarks,
             created_at: model.created_at,
             last_updated: model.last_updated,
+            flow_litres_per_minute: model.flow_litres_per_minute,
+            total_volume: model.total_volume,
             campaign_id: model.campaign_id,
+            latitude: model.latitude,
+            longitude: model.longitude,
         }
     }
 }
 
 #[async_trait]
 impl CRUDResource for Sample {
-    type EntityType = super::db::Entity;
-    type ColumnType = super::db::Column;
-    type ModelType = super::db::Model;
-    type ActiveModelType = super::db::ActiveModel;
+    type EntityType = spice_entity::samples::Entity;
+    type ColumnType = spice_entity::samples::Column;
+    type ModelType = spice_entity::samples::Model;
+    type ActiveModelType = spice_entity::samples::ActiveModel;
     type ApiModel = Sample;
     type CreateModel = SampleCreate;
     type UpdateModel = SampleUpdate;
 
-    const ID_COLUMN: Self::ColumnType = super::db::Column::Id;
+    const ID_COLUMN: Self::ColumnType = spice_entity::samples::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "samples";
     const RESOURCE_NAME_SINGULAR: &'static str = "sample";
     const RESOURCE_DESCRIPTION: &'static str =
@@ -131,7 +140,6 @@ impl CRUDResource for Sample {
             ("id", Self::ColumnType::Id),
             ("name", Self::ColumnType::Name),
             ("type", Self::ColumnType::Type),
-            ("treatment", Self::ColumnType::Treatment),
             (
                 "material_description",
                 Self::ColumnType::MaterialDescription,
@@ -167,7 +175,6 @@ impl CRUDResource for Sample {
         vec![
             ("name", Self::ColumnType::Name),
             ("type", Self::ColumnType::Type),
-            ("treatment", Self::ColumnType::Treatment),
             (
                 "material_description",
                 Self::ColumnType::MaterialDescription,

@@ -1,7 +1,6 @@
 use super::models::{Experiment, ExperimentCreate, ExperimentUpdate};
 use crate::common::auth::Role;
 use crate::external::s3::{download_assets, get_client};
-use crate::routes::assets::db as s3_assets;
 use aws_sdk_s3::primitives::ByteStream;
 use axum::body::Body;
 use axum::{
@@ -17,6 +16,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::DatabaseConnection;
 use sea_orm::entity::prelude::*;
 use serde::Serialize;
+use spice_entity::s3_assets;
 use std::convert::TryInto;
 use std::sync::Arc;
 use tokio_util::io::ReaderStream;
@@ -50,7 +50,7 @@ pub async fn upload_file(
     mut infile: Multipart,
 ) -> Result<Json<UploadResponse>, (StatusCode, String)> {
     // Check if the experiment exists
-    if super::db::Entity::find_by_id(experiment_id)
+    if spice_entity::experiments::Entity::find_by_id(experiment_id)
         .one(&db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?

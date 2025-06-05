@@ -1,10 +1,7 @@
 pub mod assets;
 mod campaigns;
 mod experiments;
-mod inp;
 mod samples;
-mod temperatures;
-mod trays;
 
 use crate::config::Config;
 use axum::{Router, extract::DefaultBodyLimit};

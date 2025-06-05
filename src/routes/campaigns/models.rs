@@ -1,4 +1,3 @@
-use super::db::Model;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
@@ -7,11 +6,12 @@ use sea_orm::{
     entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
+use spice_entity::campaign::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "super::db::ActiveModel"]
+#[active_model = "spice_entity::campaign::ActiveModel"]
 pub struct Campaign {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
@@ -21,8 +21,6 @@ pub struct Campaign {
     last_updated: DateTime<Utc>,
     comment: Option<String>,
     name: String,
-    latitude: Option<Decimal>,
-    longitude: Option<Decimal>,
     start_date: Option<DateTime<Utc>>,
     end_date: Option<DateTime<Utc>>,
     #[crudcrate(non_db_attr = true, default = vec![])]
@@ -39,8 +37,6 @@ impl From<Model> for Campaign {
             comment: model.comment,
             id: model.id,
             name: model.name,
-            latitude: model.latitude,
-            longitude: model.longitude,
             start_date: model.start_date,
             end_date: model.end_date,
             experiments: vec![],
@@ -51,15 +47,15 @@ impl From<Model> for Campaign {
 
 #[async_trait]
 impl CRUDResource for Campaign {
-    type EntityType = super::db::Entity;
-    type ColumnType = super::db::Column;
-    type ModelType = super::db::Model;
-    type ActiveModelType = super::db::ActiveModel;
+    type EntityType = spice_entity::campaign::Entity;
+    type ColumnType = spice_entity::campaign::Column;
+    type ModelType = spice_entity::campaign::Model;
+    type ActiveModelType = spice_entity::campaign::ActiveModel;
     type ApiModel = Campaign;
     type CreateModel = CampaignCreate;
     type UpdateModel = CampaignUpdate;
 
-    const ID_COLUMN: Self::ColumnType = super::db::Column::Id;
+    const ID_COLUMN: Self::ColumnType = spice_entity::campaign::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "campaigns";
     const RESOURCE_NAME_SINGULAR: &'static str = "campaign";
     const RESOURCE_DESCRIPTION: &'static str = "This resource allows the data hierarchically beneath each area to be allocated to a specific campaign. This is useful for grouping data together for analysis. The colour provides a visual representation of the campaign in the UI.";
@@ -94,21 +90,22 @@ impl CRUDResource for Campaign {
         };
 
         let samples = model
-            .find_related(crate::routes::samples::db::Entity)
+            .find_related(spice_entity::samples::Entity)
             .all(db)
             .await?;
 
-        let mut experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
+        let experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
 
-        for sample in &samples {
-            let sample_experiments = sample
-                .find_related(crate::routes::experiments::db::Entity)
-                .all(db)
-                .await?;
-            for experiment in sample_experiments {
-                experiments.push(experiment.into());
-            }
-        }
+        // Replace this as Sample is now via Treatments
+        // for sample in &samples {
+        //     let sample_experiments = sample
+        //         .find_related(spice_entity::experiments::Entity)
+        //         .all(db)
+        //         .await?;
+        //     for experiment in sample_experiments {
+        //         experiments.push(experiment.into());
+        //     }
+        // }
 
         let mut model: Self::ApiModel = model.into();
         model.experiments = experiments;
@@ -142,8 +139,6 @@ impl CRUDResource for Campaign {
             ("name", Self::ColumnType::Name),
             ("comment", Self::ColumnType::Comment),
             ("last_updated", Self::ColumnType::LastUpdated),
-            ("latitude", Self::ColumnType::Latitude),
-            ("longitude", Self::ColumnType::Longitude),
             ("start_date", Self::ColumnType::StartDate),
             ("end_date", Self::ColumnType::EndDate),
         ]
@@ -153,8 +148,6 @@ impl CRUDResource for Campaign {
         vec![
             ("name", Self::ColumnType::Name),
             ("comment", Self::ColumnType::Comment),
-            ("latitude", Self::ColumnType::Latitude),
-            ("longitude", Self::ColumnType::Longitude),
         ]
     }
 }
