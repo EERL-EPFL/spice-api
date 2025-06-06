@@ -7,6 +7,60 @@ use spice_entity::tray_configurations::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+struct Tray {
+    name: Option<String>,
+    qty_x_axis: Option<i32>,
+    qty_y_axis: Option<i32>,
+    well_relative_diameter: Option<Decimal>,
+}
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+struct TrayAssignment {
+    order_sequence: i16,
+    rotation_degrees: Option<i16>,
+    trays: Vec<Tray>,
+}
+
+impl TrayAssignment {
+    // A function that accepts db and a tray configuration id then populates
+    // the tray assignment with an array of Tray structs that are related to the tray configuration
+    async fn from_tray_configuration(
+        db: &DatabaseConnection,
+        tray_configuration_id: Uuid,
+    ) -> anyhow::Result<Vec<Self>> {
+        let assignments = spice_entity::tray_configuration_assignments::Entity::find()
+            .filter(
+                spice_entity::tray_configuration_assignments::Column::TrayConfigurationId
+                    .eq(tray_configuration_id),
+            )
+            .all(db)
+            .await?;
+
+        let mut tray_assignments = Vec::new();
+        for assignment in assignments {
+            let trays = spice_entity::trays::Entity::find()
+                .filter(spice_entity::trays::Column::Id.eq(assignment.tray_id))
+                .all(db)
+                .await?
+                .into_iter()
+                .map(|tray| Tray {
+                    name: tray.name,
+                    qty_x_axis: tray.qty_x_axis,
+                    qty_y_axis: tray.qty_y_axis,
+                    well_relative_diameter: tray.well_relative_diameter,
+                })
+                .collect();
+
+            tray_assignments.push(Self {
+                order_sequence: assignment.order_sequence,
+                rotation_degrees: assignment.rotation_degrees,
+                trays,
+            });
+        }
+        Ok(tray_assignments)
+    }
+}
+
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::tray_configurations::ActiveModel"]
 pub struct TrayConfiguration {
@@ -18,6 +72,8 @@ pub struct TrayConfiguration {
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
     experiment_default: bool,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    trays: Vec<TrayAssignment>,
 }
 
 impl From<Model> for TrayConfiguration {
@@ -28,6 +84,7 @@ impl From<Model> for TrayConfiguration {
             last_updated: model.last_updated.into(),
             created_at: model.created_at.into(),
             experiment_default: model.experiment_default,
+            trays: vec![],
         }
     }
 }
@@ -45,59 +102,31 @@ impl CRUDResource for TrayConfiguration {
     const RESOURCE_NAME_SINGULAR: &'static str = "tray_configuration";
     const RESOURCE_DESCRIPTION: &'static str = "This endpoint manages tray configurations, which define the setup of trays used in experiments.";
 
-    // async fn get_all(
-    //     db: &DatabaseConnection,
-    //     condition: Condition,
-    //     order_column: Self::ColumnType,
-    //     order_direction: Order,
-    //     offset: u64,
-    //     limit: u64,
-    // ) -> Result<Vec<Self>, DbErr> {
-    //     let models = Self::EntityType::find()
-    //         .filter(condition)
-    //         .order_by(order_column, order_direction)
-    //         .offset(offset)
-    //         .limit(limit)
-    //         .all(db)
-    //         .await?;
-    //     Ok(models.into_iter().map(Self::from).collect())
-    // }
+    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
+        let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {
+            Some(model) => model,
+            None => {
+                return Err(DbErr::RecordNotFound(format!(
+                    "{} not found",
+                    Self::RESOURCE_NAME_SINGULAR
+                )));
+            }
+        };
 
-    // async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
-    //     let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {
-    //         Some(model) => model,
-    //         None => {
-    //             return Err(DbErr::RecordNotFound(format!(
-    //                 "{} not found",
-    //                 Self::RESOURCE_NAME_SINGULAR
-    //             )));
-    //         }
-    //     };
+        let tray_assignments = TrayAssignment::from_tray_configuration(db, model.id).await;
+        let tray_assignments = match tray_assignments {
+            Ok(assignments) => assignments,
+            Err(e) => {
+                return Err(DbErr::Custom(format!(
+                    "Failed to fetch tray assignments: {e}"
+                )));
+            }
+        };
+        let mut model: Self = model.into();
+        model.trays = tray_assignments;
 
-    //     let samples = model
-    //         .find_related(spice_entity::samples::Entity)
-    //         .all(db)
-    //         .await?;
-
-    //     let experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
-
-    //     // Replace this as Sample is now via Treatments
-    //     // for sample in &samples {
-    //     //     let sample_experiments = sample
-    //     //         .find_related(spice_entity::experiments::Entity)
-    //     //         .all(db)
-    //     //         .await?;
-    //     //     for experiment in sample_experiments {
-    //     //         experiments.push(experiment.into());
-    //     //     }
-    //     // }
-
-    //     let mut model: Self = model.into();
-    //     model.experiments = experiments;
-    //     model.samples = samples.into_iter().map(Into::into).collect();
-
-    //     Ok(model)
-    // }
+        Ok(model)
+    }
 
     // async fn update(
     //     db: &DatabaseConnection,
