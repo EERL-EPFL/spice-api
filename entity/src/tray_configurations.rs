@@ -9,7 +9,7 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(column_type = "Text", nullable, unique)]
     pub name: Option<String>,
-    pub experiment_default: Option<bool>,
+    pub experiment_default: bool,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
 }

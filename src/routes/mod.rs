@@ -2,6 +2,7 @@ pub mod assets;
 mod campaigns;
 mod experiments;
 mod samples;
+mod trays;
 
 use crate::config::Config;
 use axum::{Router, extract::DefaultBodyLimit};
@@ -67,6 +68,10 @@ pub fn build_router(db: &DatabaseConnection) -> Router {
         .nest(
             "/api/assets",
             assets::views::router(db, Some(keycloak_instance.clone())),
+        )
+        .nest(
+            "/api/trays",
+            trays::views::router(db, Some(keycloak_instance.clone())),
         )
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();

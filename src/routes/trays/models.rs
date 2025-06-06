@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
-use sea_orm::{
-    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
-    entity::prelude::*,
-};
+use sea_orm::{ActiveValue, entity::prelude::*};
 use serde::{Deserialize, Serialize};
 use spice_entity::tray_configurations::Model;
 use utoipa::ToSchema;
@@ -15,30 +12,22 @@ use uuid::Uuid;
 pub struct TrayConfiguration {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
+    name: Option<String>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
     created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
-    comment: Option<String>,
-    name: String,
-    start_date: Option<DateTime<Utc>>,
-    end_date: Option<DateTime<Utc>>,
-    // #[crudcrate(non_db_attr = true, default = vec![])]
-    // experiments: Vec<crate::routes::experiments::models::Experiment>,
-    // #[crudcrate(non_db_attr = true, default = vec![])]
-    // samples: Vec<crate::routes::samples::models::Sample>,
+    experiment_default: bool,
 }
 
 impl From<Model> for TrayConfiguration {
     fn from(model: Model) -> Self {
         Self {
-            last_updated: model.last_updated,
-            created_at: model.created_at,
-            comment: model.comment,
             id: model.id,
             name: model.name,
-            start_date: model.start_date,
-            end_date: model.end_date,
+            last_updated: model.last_updated.into(),
+            created_at: model.created_at.into(),
+            experiment_default: model.experiment_default,
         }
     }
 }
@@ -47,105 +36,97 @@ impl From<Model> for TrayConfiguration {
 impl CRUDResource for TrayConfiguration {
     type EntityType = spice_entity::tray_configurations::Entity;
     type ColumnType = spice_entity::tray_configurations::Column;
-    type ModelType = spice_entity::tray_configurations::Model;
     type ActiveModelType = spice_entity::tray_configurations::ActiveModel;
-    type ApiModel = TrayConfiguration;
-    type CreateModel = CampaignCreate;
-    type UpdateModel = CampaignUpdate;
+    type CreateModel = TrayConfigurationCreate;
+    type UpdateModel = TrayConfigurationUpdate;
 
     const ID_COLUMN: Self::ColumnType = spice_entity::tray_configurations::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "tray_configurations";
     const RESOURCE_NAME_SINGULAR: &'static str = "tray_configuration";
     const RESOURCE_DESCRIPTION: &'static str = "This endpoint manages tray configurations, which define the setup of trays used in experiments.";
 
-    async fn get_all(
-        db: &DatabaseConnection,
-        condition: Condition,
-        order_column: Self::ColumnType,
-        order_direction: Order,
-        offset: u64,
-        limit: u64,
-    ) -> Result<Vec<Self>, DbErr> {
-        let models = Self::EntityType::find()
-            .filter(condition)
-            .order_by(order_column, order_direction)
-            .offset(offset)
-            .limit(limit)
-            .all(db)
-            .await?;
-        Ok(models.into_iter().map(Self::from).collect())
-    }
+    // async fn get_all(
+    //     db: &DatabaseConnection,
+    //     condition: Condition,
+    //     order_column: Self::ColumnType,
+    //     order_direction: Order,
+    //     offset: u64,
+    //     limit: u64,
+    // ) -> Result<Vec<Self>, DbErr> {
+    //     let models = Self::EntityType::find()
+    //         .filter(condition)
+    //         .order_by(order_column, order_direction)
+    //         .offset(offset)
+    //         .limit(limit)
+    //         .all(db)
+    //         .await?;
+    //     Ok(models.into_iter().map(Self::from).collect())
+    // }
 
-    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
-        let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {
-            Some(model) => model,
-            None => {
-                return Err(DbErr::RecordNotFound(format!(
-                    "{} not found",
-                    Self::RESOURCE_NAME_SINGULAR
-                )));
-            }
-        };
+    // async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
+    //     let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {
+    //         Some(model) => model,
+    //         None => {
+    //             return Err(DbErr::RecordNotFound(format!(
+    //                 "{} not found",
+    //                 Self::RESOURCE_NAME_SINGULAR
+    //             )));
+    //         }
+    //     };
 
-        let samples = model
-            .find_related(spice_entity::samples::Entity)
-            .all(db)
-            .await?;
+    //     let samples = model
+    //         .find_related(spice_entity::samples::Entity)
+    //         .all(db)
+    //         .await?;
 
-        let experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
+    //     let experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
 
-        // Replace this as Sample is now via Treatments
-        // for sample in &samples {
-        //     let sample_experiments = sample
-        //         .find_related(spice_entity::experiments::Entity)
-        //         .all(db)
-        //         .await?;
-        //     for experiment in sample_experiments {
-        //         experiments.push(experiment.into());
-        //     }
-        // }
+    //     // Replace this as Sample is now via Treatments
+    //     // for sample in &samples {
+    //     //     let sample_experiments = sample
+    //     //         .find_related(spice_entity::experiments::Entity)
+    //     //         .all(db)
+    //     //         .await?;
+    //     //     for experiment in sample_experiments {
+    //     //         experiments.push(experiment.into());
+    //     //     }
+    //     // }
 
-        let mut model: Self = model.into();
-        model.experiments = experiments;
-        model.samples = samples.into_iter().map(Into::into).collect();
+    //     let mut model: Self = model.into();
+    //     model.experiments = experiments;
+    //     model.samples = samples.into_iter().map(Into::into).collect();
 
-        Ok(model)
-    }
+    //     Ok(model)
+    // }
 
-    async fn update(
-        db: &DatabaseConnection,
-        id: Uuid,
-        update_data: Self::UpdateModel,
-    ) -> Result<Self, DbErr> {
-        let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
-            .one(db)
-            .await?
-            .ok_or(DbErr::RecordNotFound(format!(
-                "{} not found",
-                Self::RESOURCE_NAME_PLURAL
-            )))?
-            .into();
+    // async fn update(
+    //     db: &DatabaseConnection,
+    //     id: Uuid,
+    //     update_data: Self::UpdateModel,
+    // ) -> Result<Self, DbErr> {
+    //     let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
+    //         .one(db)
+    //         .await?
+    //         .ok_or(DbErr::RecordNotFound(format!(
+    //             "{} not found",
+    //             Self::RESOURCE_NAME_PLURAL
+    //         )))?
+    //         .into();
 
-        let updated_model = update_data.merge_into_activemodel(existing);
-        let updated = updated_model.update(db).await?;
-        Ok(Self::from(updated))
-    }
+    //     let updated_model = update_data.merge_into_activemodel(existing);
+    //     let updated = updated_model.update(db).await?;
+    //     Ok(Self::from(updated))
+    // }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
         vec![
             ("id", Self::ColumnType::Id),
             ("name", Self::ColumnType::Name),
-            ("comment", Self::ColumnType::Comment),
             ("last_updated", Self::ColumnType::LastUpdated),
-            ("start_date", Self::ColumnType::StartDate),
-            ("end_date", Self::ColumnType::EndDate),
         ]
     }
 
     fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
-        vec![
-            ("name", Self::ColumnType::Name),
-            ("comment", Self::ColumnType::Comment),
-        ]
+        vec![("name", Self::ColumnType::Name)]
     }
 }

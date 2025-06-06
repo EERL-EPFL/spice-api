@@ -296,7 +296,7 @@ ALTER TABLE public.samples OWNER TO postgres;
 CREATE TABLE public.tray_configurations (
 	id uuid NOT NULL DEFAULT uuid_generate_v4(),
 	name text,
-	experiment_default boolean,
+	experiment_default boolean NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now(),
 	last_updated timestamptz NOT NULL DEFAULT now(),
 	CONSTRAINT tray_configurations_pkey PRIMARY KEY (id),
