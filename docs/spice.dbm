@@ -3,9 +3,9 @@
 CAUTION: Do not modify this file unless you know what you are doing.
  Unexpected results may occur if the code is changed deliberately.
 -->
-<dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="130"
+<dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="16"
 	 gen-disabled-objs-code="false" show-sys-schemas-rects="true"
-	 last-position="453,348" last-zoom="1" scene-rect="0,-84.9844,3061.38,1608.11"
+	 last-position="0,114" last-zoom="0.85" scene-rect="0,-84.9844,3061.38,1608.11"
 	 default-schema="public" default-owner="postgres"
 	 layers="Default layer,Trays,Samples"
 	 active-layers="0,1,2"
@@ -21,145 +21,9 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <schema name="public" layers="0" rect-visible="true" fill-color="#e1e1e1" name-color="#000000" sql-disabled="true">
 </schema>
 
-<schema name="topology" layers="0" rect-visible="true" fill-color="#543be5" name-color="#000000">
-	<role name="postgres"/>
-	<comment> <![CDATA[PostGIS Topology schema]]> </comment>
-</schema>
-
-<schema name="tiger" layers="0" rect-visible="true" fill-color="#2ee09d" name-color="#000000">
-	<role name="postgres"/>
-</schema>
-
-<schema name="tiger_data" layers="0" rect-visible="true" fill-color="#74957d" name-color="#000000">
-	<role name="postgres"/>
-</schema>
-
-<extension name="postgis" cur-version="3.6.0dev">
-	<schema name="public"/>
-	<comment> <![CDATA[PostGIS geometry and geography spatial types and functions]]> </comment>
-	<object name="spheroid" type="usertype"/>
-	<object name="spheroid[]" type="usertype"/>
-	<object name="geometry" type="usertype"/>
-	<object name="geometry[]" type="usertype"/>
-	<object name="box3d" type="usertype"/>
-	<object name="box3d[]" type="usertype"/>
-	<object name="box2d" type="usertype"/>
-	<object name="box2d[]" type="usertype"/>
-	<object name="box2df" type="usertype"/>
-	<object name="box2df[]" type="usertype"/>
-	<object name="gidx" type="usertype"/>
-	<object name="gidx[]" type="usertype"/>
-	<object name="geometry_dump" type="usertype"/>
-	<object name="geometry_dump[]" type="usertype"/>
-	<object name="spatial_ref_sys" type="usertype"/>
-	<object name="spatial_ref_sys[]" type="usertype"/>
-	<object name="valid_detail" type="usertype"/>
-	<object name="valid_detail[]" type="usertype"/>
-	<object name="geography" type="usertype"/>
-	<object name="geography[]" type="usertype"/>
-	<object name="geography_columns" type="usertype"/>
-	<object name="geography_columns[]" type="usertype"/>
-	<object name="geometry_columns" type="usertype"/>
-	<object name="geometry_columns[]" type="usertype"/>
-</extension>
-
-<extension name="postgis_topology" cur-version="3.6.0dev">
-	<schema name="topology"/>
-	<comment> <![CDATA[PostGIS topology spatial types and functions]]> </comment>
-	<object name="topology" type="usertype"/>
-	<object name="topology[]" type="usertype"/>
-	<object name="layer" type="usertype"/>
-	<object name="layer[]" type="usertype"/>
-	<object name="topogeometry" type="usertype"/>
-	<object name="topogeometry[]" type="usertype"/>
-	<object name="topoelement" type="usertype"/>
-	<object name="topoelement[]" type="usertype"/>
-	<object name="topoelementarray" type="usertype"/>
-	<object name="topoelementarray[]" type="usertype"/>
-	<object name="getfaceedges_returntype" type="usertype"/>
-	<object name="getfaceedges_returntype[]" type="usertype"/>
-	<object name="validatetopology_returntype" type="usertype"/>
-	<object name="validatetopology_returntype[]" type="usertype"/>
-</extension>
-
 <extension name="fuzzystrmatch" cur-version="1.2">
 	<schema name="public"/>
 	<comment> <![CDATA[determine similarities and distance between strings]]> </comment>
-</extension>
-
-<extension name="postgis_tiger_geocoder" cur-version="3.6.0dev">
-	<schema name="tiger"/>
-	<comment> <![CDATA[PostGIS tiger geocoder and reverse geocoder]]> </comment>
-	<object name="norm_addy" type="usertype"/>
-	<object name="norm_addy[]" type="usertype"/>
-	<object name="geocode_settings" type="usertype"/>
-	<object name="geocode_settings[]" type="usertype"/>
-	<object name="geocode_settings_default" type="usertype"/>
-	<object name="geocode_settings_default[]" type="usertype"/>
-	<object name="direction_lookup" type="usertype"/>
-	<object name="direction_lookup[]" type="usertype"/>
-	<object name="secondary_unit_lookup" type="usertype"/>
-	<object name="secondary_unit_lookup[]" type="usertype"/>
-	<object name="state_lookup" type="usertype"/>
-	<object name="state_lookup[]" type="usertype"/>
-	<object name="street_type_lookup" type="usertype"/>
-	<object name="street_type_lookup[]" type="usertype"/>
-	<object name="place_lookup" type="usertype"/>
-	<object name="place_lookup[]" type="usertype"/>
-	<object name="county_lookup" type="usertype"/>
-	<object name="county_lookup[]" type="usertype"/>
-	<object name="countysub_lookup" type="usertype"/>
-	<object name="countysub_lookup[]" type="usertype"/>
-	<object name="zip_lookup_all" type="usertype"/>
-	<object name="zip_lookup_all[]" type="usertype"/>
-	<object name="zip_lookup_base" type="usertype"/>
-	<object name="zip_lookup_base[]" type="usertype"/>
-	<object name="zip_lookup" type="usertype"/>
-	<object name="zip_lookup[]" type="usertype"/>
-	<object name="county" type="usertype"/>
-	<object name="county[]" type="usertype"/>
-	<object name="state" type="usertype"/>
-	<object name="state[]" type="usertype"/>
-	<object name="place" type="usertype"/>
-	<object name="place[]" type="usertype"/>
-	<object name="zip_state" type="usertype"/>
-	<object name="zip_state[]" type="usertype"/>
-	<object name="zip_state_loc" type="usertype"/>
-	<object name="zip_state_loc[]" type="usertype"/>
-	<object name="cousub" type="usertype"/>
-	<object name="cousub[]" type="usertype"/>
-	<object name="edges" type="usertype"/>
-	<object name="edges[]" type="usertype"/>
-	<object name="addrfeat" type="usertype"/>
-	<object name="addrfeat[]" type="usertype"/>
-	<object name="faces" type="usertype"/>
-	<object name="faces[]" type="usertype"/>
-	<object name="featnames" type="usertype"/>
-	<object name="featnames[]" type="usertype"/>
-	<object name="addr" type="usertype"/>
-	<object name="addr[]" type="usertype"/>
-	<object name="zcta5" type="usertype"/>
-	<object name="zcta5[]" type="usertype"/>
-	<object name="tabblock20" type="usertype"/>
-	<object name="tabblock20[]" type="usertype"/>
-	<object name="loader_platform" type="usertype"/>
-	<object name="loader_platform[]" type="usertype"/>
-	<object name="loader_variables" type="usertype"/>
-	<object name="loader_variables[]" type="usertype"/>
-	<object name="loader_lookuptables" type="usertype"/>
-	<object name="loader_lookuptables[]" type="usertype"/>
-	<object name="tract" type="usertype"/>
-	<object name="tract[]" type="usertype"/>
-	<object name="tabblock" type="usertype"/>
-	<object name="tabblock[]" type="usertype"/>
-	<object name="bg" type="usertype"/>
-	<object name="bg[]" type="usertype"/>
-	<object name="pagc_gaz" type="usertype"/>
-	<object name="pagc_gaz[]" type="usertype"/>
-	<object name="pagc_lex" type="usertype"/>
-	<object name="pagc_lex[]" type="usertype"/>
-	<object name="pagc_rules" type="usertype"/>
-	<object name="pagc_rules[]" type="usertype"/>
 </extension>
 
 <extension name="uuid-ossp" cur-version="1.1">
@@ -170,7 +34,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="campaign" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="780" y="20"/>
+	<position x="800" y="20"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -181,16 +45,16 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="text" length="0"/>
 	</column>
 	<column name="start_date">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="end_date">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="campaign_pkey" type="pk-constr" table="public.campaign">
 		<columns names="id" ref-type="src-columns"/>
@@ -211,7 +75,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="experiments" layers="0" collapse-mode="2" max-obj-count="14" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1500" y="540"/>
+	<position x="1520" y="540"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -222,7 +86,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="text" length="0"/>
 	</column>
 	<column name="performed_at">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="temperature_ramp">
 		<type name="numeric" length="0"/>
@@ -259,7 +123,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="trays" layers="1" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2560" y="840"/>
+	<position x="2580" y="840"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -276,10 +140,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="numeric" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="trays_tray_number_check" type="ck-constr" table="public.trays">
 			<expression> <![CDATA[(tray_number = ANY (ARRAY[1, 2]))]]> </expression>
@@ -292,7 +156,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="wells" layers="1" collapse-mode="2" max-obj-count="7" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1940" y="1080"/>
+	<position x="1960" y="1080"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -306,10 +170,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="integer" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="wells_pkey" type="pk-constr" table="public.wells">
 		<columns names="id" ref-type="src-columns"/>
@@ -322,7 +186,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="temperature_probes" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1260" y="40"/>
+	<position x="1280" y="40"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -336,10 +200,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="integer" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="correction_factor">
 		<type name="numeric" length="0"/>
@@ -352,7 +216,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="well_temperatures" layers="1" collapse-mode="2" max-obj-count="7" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2540" y="1160"/>
+	<position x="2560" y="1160"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -360,16 +224,16 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="uuid" length="0"/>
 	</column>
 	<column name="timestamp">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="temperature_celsius">
 		<type name="numeric" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="well_temperatures_pkey" type="pk-constr" table="public.well_temperatures">
 		<columns names="id" ref-type="src-columns"/>
@@ -379,7 +243,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="treatments" layers="2" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="160" y="1100"/>
+	<position x="180" y="1100"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -393,10 +257,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="uuid" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="enzyme_volume_microlitres">
 		<type name="float" length="0"/>
@@ -410,7 +274,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="regions" layers="2" collapse-mode="2" max-obj-count="15" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="840" y="440"/>
+	<position x="860" y="440"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -445,10 +309,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="smallint" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="regions_pkey" type="pk-constr" table="public.regions">
 		<columns names="id" ref-type="src-columns"/>
@@ -458,7 +322,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="freezing_results" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1180" y="1140"/>
+	<position x="1200" y="1140"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -475,10 +339,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="uuid" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="freezing_results_pkey" type="pk-constr" table="public.freezing_results">
 		<columns names="id" ref-type="src-columns"/>
@@ -488,7 +352,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="inp_concentrations" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="640" y="1120"/>
+	<position x="740" y="1120"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -505,10 +369,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="numeric" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="inp_concentrations_pkey" type="pk-constr" table="public.inp_concentrations">
 		<columns names="id" ref-type="src-columns"/>
@@ -518,7 +382,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="s3_assets" layers="0" collapse-mode="2" max-obj-count="14" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1860" y="-20"/>
+	<position x="1880" y="-20"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -538,16 +402,16 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="text" length="0"/>
 	</column>
 	<column name="uploaded_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="is_deleted" not-null="true" default-value="false">
 		<type name="boolean" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="type" not-null="true">
 		<type name="text" length="0"/>
@@ -598,7 +462,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="samples" layers="2" collapse-mode="2" max-obj-count="26" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="120" y="220"/>
+	<position x="140" y="220"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -660,10 +524,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 		<type name="uuid" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="samples_pkey" type="pk-constr" table="public.samples">
 		<columns names="id" ref-type="src-columns"/>
@@ -673,7 +537,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="tray_configurations" layers="1" collapse-mode="2" pagination="true" attribs-page="0" ext-attribs-page="0" max-obj-count="3" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2560" y="100"/>
+	<position x="2580" y="100"/>
 	<column name="id" not-null="true">
 		<type name="uuid" length="0"/>
 	</column>
@@ -682,6 +546,12 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	</column>
 	<column name="experiment_default">
 		<type name="boolean" length="0"/>
+	</column>
+	<column name="created_at" not-null="true" default-value="now()">
+		<type name="timestamptz" length="0"/>
+	</column>
+	<column name="last_updated" not-null="true" default-value="now()">
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="tray_configurations_pkey" type="pk-constr" table="public.tray_configurations">
 		<columns names="id" ref-type="src-columns"/>
@@ -694,7 +564,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="tray_configuration_assignments" layers="1" collapse-mode="2" max-obj-count="4" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2520" y="480"/>
+	<position x="2540" y="480"/>
 	<column name="tray_id" not-null="true">
 		<type name="uuid" length="0"/>
 	</column>
@@ -707,10 +577,17 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<column name="rotation_degrees">
 		<type name="smallint" length="0"/>
 	</column>
+	<column name="created_at" not-null="true" default-value="now()">
+		<type name="timestamptz" length="0"/>
+	</column>
+	<column name="last_updated" not-null="true" default-value="now()">
+		<type name="timestamptz" length="0"/>
+	</column>
 	<constraint name="tray_configuration_assignments_pk" type="pk-constr" table="public.tray_configuration_assignments">
 		<columns names="tray_id,tray_configuration_id,order_sequence" ref-type="src-columns"/>
 	</constraint>
 </table>
+
 
 <constraint name="fk_experiment_tray_configuration" type="fk-constr" comparison-type="MATCH SIMPLE"
 	 upd-action="NO ACTION" del-action="NO ACTION" ref-table="public.tray_configurations" table="public.experiments">
@@ -879,5 +756,109 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	 src-table="public.experiments"
 	 dst-table="public.tray_configurations" reference-fk="fk_experiment_tray_configuration"
 	 src-required="false" dst-required="false"/>
+
+<index name="idx_experiments_tray_configuration_id" table="public.experiments"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="tray_configuration_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_wells_tray_id" table="public.wells"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="tray_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_temperature_probes_experiment_id" table="public.temperature_probes"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="experiment_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_well_temperatures_well_id" table="public.well_temperatures"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="well_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_regions_experiment_id" table="public.regions"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="experiment_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_regions_treatment_id" table="public.regions"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="treatment_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_freezing_results_well_id" table="public.freezing_results"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="well_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_freezing_results_region_id" table="public.freezing_results"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="region_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_inp_concentrations_region_id" table="public.inp_concentrations"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="region_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_s3_assets_experiment_id" table="public.s3_assets"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="experiment_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_samples_campaign_id" table="public.samples"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="campaign_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_tray_configuration_assignments_tray_id" table="public.tray_configuration_assignments"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="tray_id"/>
+    </idxelement>
+</index>
+
+<index name="idx_tray_configuration_assignments_tray_configuration_id" table="public.tray_configuration_assignments"
+       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+       index-type="btree" factor="90">
+    <idxelement use-sorting="false">
+        <column name="tray_configuration_id"/>
+    </idxelement>
+</index>
 
 </dbmodel>
