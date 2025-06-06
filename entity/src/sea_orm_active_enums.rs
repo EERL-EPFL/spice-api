@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, ToSchema, Deserialize, Serialize,
+    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
 )]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "sample_type")]
 pub enum SampleType {
@@ -13,6 +13,8 @@ pub enum SampleType {
     Bulk,
     #[sea_orm(string_value = "filter")]
     Filter,
-    #[sea_orm(string_value = "blank")]
-    Blank,
+    #[sea_orm(string_value = "procedural_blank")]
+    ProceduralBlank,
+    #[sea_orm(string_value = "pure_water")]
+    PureWater,
 }

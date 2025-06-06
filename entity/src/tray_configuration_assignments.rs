@@ -12,6 +12,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub order_sequence: i16,
     pub rotation_degrees: Option<i16>,
+    pub created_at: DateTimeWithTimeZone,
+    pub last_updated: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

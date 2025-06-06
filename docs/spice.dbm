@@ -5,7 +5,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 -->
 <dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="16"
 	 gen-disabled-objs-code="false" show-sys-schemas-rects="true"
-	 last-position="696,114" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
+	 last-position="689,114" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
 	 default-schema="public" default-owner="postgres"
 	 layers="Default layer,Trays,Samples"
 	 active-layers="0,1,2"
@@ -20,11 +20,6 @@ CAUTION: Do not modify this file unless you know what you are doing.
 
 <schema name="public" layers="0" rect-visible="true" fill-color="#e1e1e1" name-color="#000000" sql-disabled="true">
 </schema>
-
-<extension name="fuzzystrmatch" cur-version="1.2">
-	<schema name="public"/>
-	<comment> <![CDATA[determine similarities and distance between strings]]> </comment>
-</extension>
 
 <extension name="uuid-ossp" cur-version="1.1">
 	<schema name="public"/>
@@ -69,7 +64,8 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<role name="postgres"/>
 	<enumeration label="bulk"/>
 	<enumeration label="filter"/>
-	<enumeration label="blank"/>
+	<enumeration label="procedural_blank"/>
+	<enumeration label="pure_water"/>
 </usertype>
 
 <table name="experiments" layers="0" collapse-mode="2" max-obj-count="14" z-value="0">

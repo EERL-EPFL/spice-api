@@ -12,10 +12,6 @@ pub struct Model {
     pub qty_x_axis: Option<i32>,
     pub qty_y_axis: Option<i32>,
     pub well_relative_diameter: Option<Decimal>,
-    pub upper_left_corner_x: Option<i32>,
-    pub upper_left_corner_y: Option<i32>,
-    pub lower_right_corner_x: Option<i32>,
-    pub lower_right_corner_y: Option<i32>,
     pub last_updated: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
 }

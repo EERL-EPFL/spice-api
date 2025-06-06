@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use spice_entity::s3_assets::Model as S3Assets;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::s3_assets::ActiveModel"]
 pub struct Asset {
@@ -39,12 +40,12 @@ impl From<S3Assets> for Asset {
             s3_key: model.s3_key,
             size_bytes: model.size_bytes,
             uploaded_by: model.uploaded_by,
-            uploaded_at: model.uploaded_at,
+            uploaded_at: model.uploaded_at.into(),
             is_deleted: model.is_deleted,
             r#type: model.r#type,
             role: model.role,
-            last_updated: model.last_updated,
-            created_at: model.created_at,
+            last_updated: model.last_updated.into(),
+            created_at: model.created_at.into(),
         }
     }
 }

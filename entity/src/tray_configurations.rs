@@ -10,6 +10,8 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable, unique)]
     pub name: Option<String>,
     pub experiment_default: Option<bool>,
+    pub created_at: DateTimeWithTimeZone,
+    pub last_updated: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -2,19 +2,20 @@
 
 use sea_orm::entity::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "treatments")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     #[sea_orm(column_type = "Text", nullable)]
-    pub treatment_code: Option<String>,
-    pub dilution_factor: Option<Decimal>,
+    pub name: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub notes: Option<String>,
     pub sample_id: Option<Uuid>,
     pub last_updated: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
+    #[sea_orm(column_type = "Double", nullable)]
+    pub enzyme_volume_microlitres: Option<f64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

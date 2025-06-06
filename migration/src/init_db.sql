@@ -7,15 +7,6 @@
 SET search_path TO pg_catalog,public;
 -- ddl-end --
 
--- object: fuzzystrmatch | type: EXTENSION --
--- DROP EXTENSION IF EXISTS fuzzystrmatch CASCADE;
-CREATE EXTENSION fuzzystrmatch
-WITH SCHEMA public
-VERSION '1.2';
--- ddl-end --
-COMMENT ON EXTENSION fuzzystrmatch IS E'determine similarities and distance between strings';
--- ddl-end --
-
 -- object: "uuid-ossp" | type: EXTENSION --
 -- DROP EXTENSION IF EXISTS "uuid-ossp" CASCADE;
 CREATE EXTENSION "uuid-ossp"
@@ -45,7 +36,7 @@ ALTER TABLE public.campaign OWNER TO postgres;
 -- object: public.sample_type | type: TYPE --
 -- DROP TYPE IF EXISTS public.sample_type CASCADE;
 CREATE TYPE public.sample_type AS
-ENUM ('bulk','filter','blank');
+ENUM ('bulk','filter','procedural_blank','pure_water');
 -- ddl-end --
 ALTER TYPE public.sample_type OWNER TO postgres;
 -- ddl-end --
@@ -82,7 +73,6 @@ CREATE TABLE public.trays (
 	well_relative_diameter numeric,
 	last_updated timestamptz NOT NULL DEFAULT now(),
 	created_at timestamptz NOT NULL DEFAULT now(),
-	CONSTRAINT trays_tray_number_check CHECK ((tray_number = ANY (ARRAY[1, 2]))),
 	CONSTRAINT trays_pkey PRIMARY KEY (id)
 );
 -- ddl-end --
@@ -304,9 +294,11 @@ ALTER TABLE public.samples OWNER TO postgres;
 -- object: public.tray_configurations | type: TABLE --
 -- DROP TABLE IF EXISTS public.tray_configurations CASCADE;
 CREATE TABLE public.tray_configurations (
-	id uuid NOT NULL,
+	id uuid NOT NULL DEFAULT uuid_generate_v4(),
 	name text,
 	experiment_default boolean,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	last_updated timestamptz NOT NULL DEFAULT now(),
 	CONSTRAINT tray_configurations_pkey PRIMARY KEY (id),
 	CONSTRAINT name_uniqueness UNIQUE (name)
 );
@@ -321,10 +313,142 @@ CREATE TABLE public.tray_configuration_assignments (
 	tray_configuration_id uuid NOT NULL,
 	order_sequence smallint NOT NULL,
 	rotation_degrees smallint,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	last_updated timestamptz NOT NULL DEFAULT now(),
 	CONSTRAINT tray_configuration_assignments_pk PRIMARY KEY (tray_id,tray_configuration_id,order_sequence)
 );
 -- ddl-end --
 ALTER TABLE public.tray_configuration_assignments OWNER TO postgres;
+-- ddl-end --
+
+-- object: idx_experiments_tray_configuration_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_experiments_tray_configuration_id CASCADE;
+CREATE INDEX idx_experiments_tray_configuration_id ON public.experiments
+USING btree
+(
+	tray_configuration_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_wells_tray_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_wells_tray_id CASCADE;
+CREATE INDEX idx_wells_tray_id ON public.wells
+USING btree
+(
+	tray_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_temperature_probes_experiment_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_temperature_probes_experiment_id CASCADE;
+CREATE INDEX idx_temperature_probes_experiment_id ON public.temperature_probes
+USING btree
+(
+	experiment_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_well_temperatures_well_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_well_temperatures_well_id CASCADE;
+CREATE INDEX idx_well_temperatures_well_id ON public.well_temperatures
+USING btree
+(
+	well_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_regions_experiment_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_regions_experiment_id CASCADE;
+CREATE INDEX idx_regions_experiment_id ON public.regions
+USING btree
+(
+	experiment_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_regions_treatment_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_regions_treatment_id CASCADE;
+CREATE INDEX idx_regions_treatment_id ON public.regions
+USING btree
+(
+	treatment_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_freezing_results_well_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_freezing_results_well_id CASCADE;
+CREATE INDEX idx_freezing_results_well_id ON public.freezing_results
+USING btree
+(
+	well_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_freezing_results_region_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_freezing_results_region_id CASCADE;
+CREATE INDEX idx_freezing_results_region_id ON public.freezing_results
+USING btree
+(
+	region_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_inp_concentrations_region_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_inp_concentrations_region_id CASCADE;
+CREATE INDEX idx_inp_concentrations_region_id ON public.inp_concentrations
+USING btree
+(
+	region_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_s3_assets_experiment_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_s3_assets_experiment_id CASCADE;
+CREATE INDEX idx_s3_assets_experiment_id ON public.s3_assets
+USING btree
+(
+	experiment_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_samples_campaign_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_samples_campaign_id CASCADE;
+CREATE INDEX idx_samples_campaign_id ON public.samples
+USING btree
+(
+	campaign_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_tray_configuration_assignments_tray_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_tray_configuration_assignments_tray_id CASCADE;
+CREATE INDEX idx_tray_configuration_assignments_tray_id ON public.tray_configuration_assignments
+USING btree
+(
+	tray_id
+)
+WITH (FILLFACTOR = 90);
+-- ddl-end --
+
+-- object: idx_tray_configuration_assignments_tray_configuration_id | type: INDEX --
+-- DROP INDEX IF EXISTS public.idx_tray_configuration_assignments_tray_configuration_id CASCADE;
+CREATE INDEX idx_tray_configuration_assignments_tray_configuration_id ON public.tray_configuration_assignments
+USING btree
+(
+	tray_configuration_id
+)
+WITH (FILLFACTOR = 90);
 -- ddl-end --
 
 -- object: fk_experiment_tray_configuration | type: CONSTRAINT --

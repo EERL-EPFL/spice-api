@@ -32,13 +32,13 @@ pub struct Campaign {
 impl From<Model> for Campaign {
     fn from(model: Model) -> Self {
         Self {
-            last_updated: model.last_updated,
-            created_at: model.created_at,
+            last_updated: model.last_updated.into(),
+            created_at: model.created_at.into(),
             comment: model.comment,
             id: model.id,
             name: model.name,
-            start_date: model.start_date,
-            end_date: model.end_date,
+            start_date: model.start_date.map(|dt| dt.with_timezone(&Utc)),
+            end_date: model.end_date.map(|dt| dt.with_timezone(&Utc)),
             experiments: vec![],
             samples: vec![],
         }
