@@ -5,7 +5,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 -->
 <dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="16"
 	 gen-disabled-objs-code="false" show-sys-schemas-rects="true"
-	 last-position="0,114" last-zoom="0.85" scene-rect="0,-84.9844,3061.38,1608.11"
+	 last-position="696,114" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
 	 default-schema="public" default-owner="postgres"
 	 layers="Default layer,Trays,Samples"
 	 active-layers="0,1,2"
@@ -34,7 +34,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="campaign" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="800" y="20"/>
+	<position x="840" y="20"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -75,7 +75,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="experiments" layers="0" collapse-mode="2" max-obj-count="14" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1520" y="540"/>
+	<position x="1560" y="540"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -123,7 +123,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="trays" layers="1" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2580" y="840"/>
+	<position x="2620" y="840"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -145,9 +145,6 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<column name="created_at" not-null="true" default-value="now()">
 		<type name="timestamptz" length="0"/>
 	</column>
-	<constraint name="trays_tray_number_check" type="ck-constr" table="public.trays">
-			<expression> <![CDATA[(tray_number = ANY (ARRAY[1, 2]))]]> </expression>
-	</constraint>
 	<constraint name="trays_pkey" type="pk-constr" table="public.trays">
 		<columns names="id" ref-type="src-columns"/>
 	</constraint>
@@ -156,7 +153,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="wells" layers="1" collapse-mode="2" max-obj-count="7" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1960" y="1080"/>
+	<position x="2000" y="1080"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -186,7 +183,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="temperature_probes" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1280" y="40"/>
+	<position x="1320" y="40"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -216,7 +213,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="well_temperatures" layers="1" collapse-mode="2" max-obj-count="7" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2560" y="1160"/>
+	<position x="2600" y="1160"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -243,7 +240,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="treatments" layers="2" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="180" y="1100"/>
+	<position x="220" y="1100"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -274,7 +271,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="regions" layers="2" collapse-mode="2" max-obj-count="15" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="860" y="440"/>
+	<position x="900" y="440"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -322,7 +319,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="freezing_results" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1200" y="1140"/>
+	<position x="1240" y="1140"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -352,7 +349,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="inp_concentrations" layers="0" collapse-mode="2" max-obj-count="8" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="740" y="1120"/>
+	<position x="780" y="1120"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -382,7 +379,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="s3_assets" layers="0" collapse-mode="2" max-obj-count="14" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="1880" y="-20"/>
+	<position x="1920" y="-20"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -462,7 +459,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 <table name="samples" layers="2" collapse-mode="2" max-obj-count="26" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="140" y="220"/>
+	<position x="180" y="220"/>
 	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
@@ -534,11 +531,11 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	</constraint>
 </table>
 
-<table name="tray_configurations" layers="1" collapse-mode="2" pagination="true" attribs-page="0" ext-attribs-page="0" max-obj-count="3" z-value="0">
+<table name="tray_configurations" layers="1" collapse-mode="2" pagination="true" attribs-page="0" ext-attribs-page="0" max-obj-count="6" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2580" y="100"/>
-	<column name="id" not-null="true">
+	<position x="2620" y="100"/>
+	<column name="id" not-null="true" default-value="uuid_generate_v4()">
 		<type name="uuid" length="0"/>
 	</column>
 	<column name="name">
@@ -561,10 +558,10 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	</constraint>
 </table>
 
-<table name="tray_configuration_assignments" layers="1" collapse-mode="2" max-obj-count="4" z-value="0">
+<table name="tray_configuration_assignments" layers="1" collapse-mode="2" max-obj-count="7" z-value="0">
 	<schema name="public"/>
 	<role name="postgres"/>
-	<position x="2540" y="480"/>
+	<position x="2580" y="480"/>
 	<column name="tray_id" not-null="true">
 		<type name="uuid" length="0"/>
 	</column>
@@ -588,6 +585,109 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	</constraint>
 </table>
 
+<index name="idx_experiments_tray_configuration_id" table="public.experiments"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="tray_configuration_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_wells_tray_id" table="public.wells"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="tray_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_temperature_probes_experiment_id" table="public.temperature_probes"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="experiment_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_well_temperatures_well_id" table="public.well_temperatures"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="well_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_regions_experiment_id" table="public.regions"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="experiment_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_regions_treatment_id" table="public.regions"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="treatment_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_freezing_results_well_id" table="public.freezing_results"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="well_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_freezing_results_region_id" table="public.freezing_results"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="region_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_inp_concentrations_region_id" table="public.inp_concentrations"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="region_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_s3_assets_experiment_id" table="public.s3_assets"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="experiment_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_samples_campaign_id" table="public.samples"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="campaign_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_tray_configuration_assignments_tray_id" table="public.tray_configuration_assignments"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="tray_id"/>
+		</idxelement>
+</index>
+
+<index name="idx_tray_configuration_assignments_tray_configuration_id" table="public.tray_configuration_assignments"
+	 concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
+	 index-type="btree" factor="90">
+		<idxelement use-sorting="false">
+			<column name="tray_configuration_id"/>
+		</idxelement>
+</index>
 
 <constraint name="fk_experiment_tray_configuration" type="fk-constr" comparison-type="MATCH SIMPLE"
 	 upd-action="NO ACTION" del-action="NO ACTION" ref-table="public.tray_configurations" table="public.experiments">
@@ -756,109 +856,5 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	 src-table="public.experiments"
 	 dst-table="public.tray_configurations" reference-fk="fk_experiment_tray_configuration"
 	 src-required="false" dst-required="false"/>
-
-<index name="idx_experiments_tray_configuration_id" table="public.experiments"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="tray_configuration_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_wells_tray_id" table="public.wells"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="tray_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_temperature_probes_experiment_id" table="public.temperature_probes"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="experiment_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_well_temperatures_well_id" table="public.well_temperatures"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="well_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_regions_experiment_id" table="public.regions"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="experiment_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_regions_treatment_id" table="public.regions"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="treatment_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_freezing_results_well_id" table="public.freezing_results"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="well_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_freezing_results_region_id" table="public.freezing_results"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="region_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_inp_concentrations_region_id" table="public.inp_concentrations"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="region_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_s3_assets_experiment_id" table="public.s3_assets"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="experiment_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_samples_campaign_id" table="public.samples"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="campaign_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_tray_configuration_assignments_tray_id" table="public.tray_configuration_assignments"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="tray_id"/>
-    </idxelement>
-</index>
-
-<index name="idx_tray_configuration_assignments_tray_configuration_id" table="public.tray_configuration_assignments"
-       concurrent="false" unique="false" fast-update="false" buffering="false" nulls-not-distinct="false"
-       index-type="btree" factor="90">
-    <idxelement use-sorting="false">
-        <column name="tray_configuration_id"/>
-    </idxelement>
-</index>
 
 </dbmodel>
