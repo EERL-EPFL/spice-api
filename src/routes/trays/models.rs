@@ -1,18 +1,18 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
+use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
 use sea_orm::{
     ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
     entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use spice_entity::campaign::Model;
+use spice_entity::tray_configurations::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "spice_entity::campaign::ActiveModel"]
-pub struct Campaign {
+#[active_model = "spice_entity::tray_configurations::ActiveModel"]
+pub struct TrayConfiguration {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
@@ -23,13 +23,13 @@ pub struct Campaign {
     name: String,
     start_date: Option<DateTime<Utc>>,
     end_date: Option<DateTime<Utc>>,
-    #[crudcrate(non_db_attr = true, default = vec![])]
-    experiments: Vec<crate::routes::experiments::models::Experiment>,
-    #[crudcrate(non_db_attr = true, default = vec![])]
-    samples: Vec<crate::routes::samples::models::Sample>,
+    // #[crudcrate(non_db_attr = true, default = vec![])]
+    // experiments: Vec<crate::routes::experiments::models::Experiment>,
+    // #[crudcrate(non_db_attr = true, default = vec![])]
+    // samples: Vec<crate::routes::samples::models::Sample>,
 }
 
-impl From<Model> for Campaign {
+impl From<Model> for TrayConfiguration {
     fn from(model: Model) -> Self {
         Self {
             last_updated: model.last_updated,
@@ -39,24 +39,24 @@ impl From<Model> for Campaign {
             name: model.name,
             start_date: model.start_date,
             end_date: model.end_date,
-            experiments: vec![],
-            samples: vec![],
         }
     }
 }
 
 #[async_trait]
-impl CRUDResource for Campaign {
-    type EntityType = spice_entity::campaign::Entity;
-    type ColumnType = spice_entity::campaign::Column;
-    type ActiveModelType = spice_entity::campaign::ActiveModel;
+impl CRUDResource for TrayConfiguration {
+    type EntityType = spice_entity::tray_configurations::Entity;
+    type ColumnType = spice_entity::tray_configurations::Column;
+    type ModelType = spice_entity::tray_configurations::Model;
+    type ActiveModelType = spice_entity::tray_configurations::ActiveModel;
+    type ApiModel = TrayConfiguration;
     type CreateModel = CampaignCreate;
     type UpdateModel = CampaignUpdate;
 
-    const ID_COLUMN: Self::ColumnType = spice_entity::campaign::Column::Id;
-    const RESOURCE_NAME_PLURAL: &'static str = "campaigns";
-    const RESOURCE_NAME_SINGULAR: &'static str = "campaign";
-    const RESOURCE_DESCRIPTION: &'static str = "This resource allows the data hierarchically beneath each area to be allocated to a specific campaign. This is useful for grouping data together for analysis. The colour provides a visual representation of the campaign in the UI.";
+    const ID_COLUMN: Self::ColumnType = spice_entity::tray_configurations::Column::Id;
+    const RESOURCE_NAME_PLURAL: &'static str = "tray_configurations";
+    const RESOURCE_NAME_SINGULAR: &'static str = "tray_configuration";
+    const RESOURCE_DESCRIPTION: &'static str = "This endpoint manages tray configurations, which define the setup of trays used in experiments.";
 
     async fn get_all(
         db: &DatabaseConnection,

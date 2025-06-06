@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
+use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
 use sea_orm::{
     ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
     entity::prelude::*,
@@ -58,9 +58,7 @@ impl From<Model> for Experiment {
 impl CRUDResource for Experiment {
     type EntityType = spice_entity::experiments::Entity;
     type ColumnType = spice_entity::experiments::Column;
-    type ModelType = spice_entity::experiments::Model;
     type ActiveModelType = spice_entity::experiments::ActiveModel;
-    type ApiModel = Experiment;
     type CreateModel = ExperimentCreate;
     type UpdateModel = ExperimentUpdate;
 
@@ -77,7 +75,7 @@ impl CRUDResource for Experiment {
         order_direction: Order,
         offset: u64,
         limit: u64,
-    ) -> Result<Vec<Self::ApiModel>, DbErr> {
+    ) -> Result<Vec<Self>, DbErr> {
         let models = Self::EntityType::find()
             .filter(condition)
             .order_by(order_column, order_direction)
@@ -86,10 +84,10 @@ impl CRUDResource for Experiment {
             .all(db)
             .await?;
 
-        Ok(models.into_iter().map(Self::ApiModel::from).collect())
+        Ok(models.into_iter().map(Self::from).collect())
     }
 
-    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self::ApiModel, DbErr> {
+    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
         let model =
             Self::EntityType::find_by_id(id)
                 .one(db)
@@ -104,7 +102,7 @@ impl CRUDResource for Experiment {
             .all(db)
             .await?;
 
-        let mut model: Self::ApiModel = model.into();
+        let mut model: Self = model.into();
         model.assets = s3_assets.into_iter().map(Into::into).collect();
 
         Ok(model)
@@ -114,7 +112,7 @@ impl CRUDResource for Experiment {
         db: &DatabaseConnection,
         id: Uuid,
         update_data: Self::UpdateModel,
-    ) -> Result<Self::ApiModel, DbErr> {
+    ) -> Result<Self, DbErr> {
         let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
             .one(db)
             .await?
@@ -126,7 +124,7 @@ impl CRUDResource for Experiment {
 
         let updated_model = update_data.merge_into_activemodel(existing);
         let updated = updated_model.update(db).await?;
-        Ok(Self::ApiModel::from(updated))
+        Ok(Self::from(updated))
     }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {

@@ -1,7 +1,7 @@
 use crate::external::s3::delete_from_s3;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
+use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
 use sea_orm::{
     ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
     entity::prelude::*,
@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use spice_entity::s3_assets::Model as S3Assets;
 use utoipa::ToSchema;
 use uuid::Uuid;
-
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::s3_assets::ActiveModel"]
 pub struct Asset {
@@ -54,9 +53,7 @@ impl From<S3Assets> for Asset {
 impl CRUDResource for Asset {
     type EntityType = spice_entity::s3_assets::Entity;
     type ColumnType = spice_entity::s3_assets::Column;
-    type ModelType = spice_entity::s3_assets::Model;
     type ActiveModelType = spice_entity::s3_assets::ActiveModel;
-    type ApiModel = Asset;
     type CreateModel = AssetCreate;
     type UpdateModel = AssetUpdate;
 
@@ -72,7 +69,7 @@ impl CRUDResource for Asset {
         order_direction: Order,
         offset: u64,
         limit: u64,
-    ) -> Result<Vec<Self::ApiModel>, DbErr> {
+    ) -> Result<Vec<Self>, DbErr> {
         let models = Self::EntityType::find()
             .filter(condition)
             .order_by(order_column, order_direction)
@@ -80,10 +77,10 @@ impl CRUDResource for Asset {
             .limit(limit)
             .all(db)
             .await?;
-        Ok(models.into_iter().map(Self::ApiModel::from).collect())
+        Ok(models.into_iter().map(Self::from).collect())
     }
 
-    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self::ApiModel, DbErr> {
+    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
         let model: S3Assets = match Self::EntityType::find_by_id(id).one(db).await? {
             Some(model) => model,
             None => {
@@ -101,7 +98,7 @@ impl CRUDResource for Asset {
         db: &DatabaseConnection,
         id: Uuid,
         update_data: Self::UpdateModel,
-    ) -> Result<Self::ApiModel, DbErr> {
+    ) -> Result<Self, DbErr> {
         let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
             .one(db)
             .await?
@@ -113,7 +110,7 @@ impl CRUDResource for Asset {
 
         let updated_model = update_data.merge_into_activemodel(existing);
         let updated = updated_model.update(db).await?;
-        Ok(Self::ApiModel::from(updated))
+        Ok(Self::from(updated))
     }
 
     async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> {

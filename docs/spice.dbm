@@ -5,7 +5,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 -->
 <dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="130"
 	 gen-disabled-objs-code="false" show-sys-schemas-rects="true"
-	 last-position="0,-85" last-zoom="1" scene-rect="0,-84.9844,3061.38,1608.11"
+	 last-position="453,348" last-zoom="1" scene-rect="0,-84.9844,3061.38,1608.11"
 	 default-schema="public" default-owner="postgres"
 	 layers="Default layer,Trays,Samples"
 	 active-layers="0,1,2"
@@ -205,8 +205,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<role name="postgres"/>
 	<enumeration label="bulk"/>
 	<enumeration label="filter"/>
-	<enumeration label="procedural_blank"/>
-	<enumeration label="pure_water"/>
+	<enumeration label="blank"/>
 </usertype>
 
 <table name="experiments" layers="0" collapse-mode="2" max-obj-count="14" z-value="0">
@@ -225,9 +224,6 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<column name="performed_at">
 		<type name="timestamp with time zone" length="0" with-timezone="true"/>
 	</column>
-	<column name="created_at" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
-	</column>
 	<column name="temperature_ramp">
 		<type name="numeric" length="0"/>
 	</column>
@@ -237,17 +233,20 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<column name="temperature_end">
 		<type name="numeric" length="0"/>
 	</column>
-	<column name="is_calibration" default-value="false">
+	<column name="is_calibration" not-null="true" default-value="false">
 		<type name="boolean" length="0"/>
 	</column>
 	<column name="remarks">
 		<type name="text" length="0"/>
 	</column>
-	<column name="last_updated" not-null="true" default-value="now()">
-		<type name="timestamp with time zone" length="0" with-timezone="true"/>
-	</column>
 	<column name="tray_configuration_id">
 		<type name="uuid" length="0"/>
+	</column>
+	<column name="created_at" not-null="true" default-value="now()">
+		<type name="timestamptz" length="0"/>
+	</column>
+	<column name="last_updated" not-null="true" default-value="now()">
+		<type name="timestamptz" length="0"/>
 	</column>
 	<constraint name="experiments_pkey" type="pk-constr" table="public.experiments">
 		<columns names="id" ref-type="src-columns"/>
