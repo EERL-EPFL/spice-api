@@ -5,7 +5,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 -->
 <dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="16"
 	 gen-disabled-objs-code="false" show-sys-schemas-rects="true"
-	 last-position="689,-72" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
+	 last-position="69,-72" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
 	 default-schema="public" default-owner="postgres"
 	 layers="Default layer,Trays,Samples"
 	 active-layers="0,1,2"
@@ -567,7 +567,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	<column name="order_sequence" not-null="true">
 		<type name="smallint" length="0"/>
 	</column>
-	<column name="rotation_degrees">
+	<column name="rotation_degrees" not-null="true">
 		<type name="smallint" length="0"/>
 	</column>
 	<column name="created_at" not-null="true" default-value="now()">

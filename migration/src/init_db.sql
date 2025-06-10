@@ -312,7 +312,7 @@ CREATE TABLE public.tray_configuration_assignments (
 	tray_id uuid NOT NULL,
 	tray_configuration_id uuid NOT NULL,
 	order_sequence smallint NOT NULL,
-	rotation_degrees smallint,
+	rotation_degrees smallint NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now(),
 	last_updated timestamptz NOT NULL DEFAULT now(),
 	CONSTRAINT tray_configuration_assignments_pk PRIMARY KEY (tray_id,tray_configuration_id,order_sequence)
