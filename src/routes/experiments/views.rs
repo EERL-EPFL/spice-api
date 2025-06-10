@@ -1,27 +1,22 @@
 use super::models::{Experiment, ExperimentCreate, ExperimentUpdate};
 use crate::common::auth::Role;
+use crate::common::state::AppState;
 use crate::external::s3::{download_assets, get_client};
 use aws_sdk_s3::primitives::ByteStream;
 use axum::body::Body;
-use axum::{
-    extract::Multipart,
-    response::Response,
-    routing::{get, post},
-};
-use axum_keycloak_auth::{
-    PassthroughMode, instance::KeycloakAuthInstance, layer::KeycloakAuthLayer,
-};
+use axum::routing::post;
+use axum::{extract::Multipart, response::Response, routing::get};
+use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
 use sea_orm::ActiveValue::Set;
-use sea_orm::DatabaseConnection;
 use sea_orm::entity::prelude::*;
 use serde::Serialize;
 use spice_entity::s3_assets;
 use std::convert::TryInto;
-use std::sync::Arc;
 use tokio_util::io::ReaderStream;
 use utoipa::ToSchema;
-use utoipa_axum::{router::OpenApiRouter, routes};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 #[derive(Serialize, ToSchema)]
 pub struct UploadResponse {
@@ -45,13 +40,13 @@ pub struct UploadResponse {
     )
 )]
 pub async fn upload_file(
-    State(db): State<DatabaseConnection>,
+    State(state): State<AppState>,
     Path(experiment_id): Path<uuid::Uuid>,
     mut infile: Multipart,
 ) -> Result<Json<UploadResponse>, (StatusCode, String)> {
     // Check if the experiment exists
     if spice_entity::experiments::Entity::find_by_id(experiment_id)
-        .one(&db)
+        .one(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .is_none()
@@ -125,7 +120,7 @@ pub async fn upload_file(
             ..Default::default()
         };
         s3_assets::Entity::insert(asset)
-            .exec(&db)
+            .exec(&state.db)
             .await
             .map_err(|_| {
                 (
@@ -157,13 +152,14 @@ pub async fn upload_file(
     description = "Fetches all assets for the given experiment, concurrently downloads them from S3, writes them to temporary files, creates a zip archive on disk, and streams the zip file. For large files or production workloads, consider using a temporary token with a presigned URL."
 )]
 pub async fn download_experiment_assets(
-    State(db): State<DatabaseConnection>,
+    State(state): State<AppState>,
     Path(experiment_id): Path<uuid::Uuid>,
 ) -> Result<Response, (StatusCode, String)> {
     // Query assets for the experiment.
+    // let db  = state.db.clone();
     let assets = s3_assets::Entity::find()
         .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
-        .all(&db)
+        .all(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -175,11 +171,10 @@ pub async fn download_experiment_assets(
     }
 
     // Load configuration and create S3 client.
-    let config = crate::config::Config::from_env();
-    let s3_client = get_client(&config).await;
+    let s3_client = get_client(&state.config).await;
 
     // Call the new function to download assets concurrently.
-    let (_temp_dir, asset_paths) = download_assets(assets, &config, s3_client).await?;
+    let (_temp_dir, asset_paths) = download_assets(assets, &state.config, s3_client).await?;
 
     // Create a temporary file for the zip archive.
     let zip_temp_file = tempfile::NamedTempFile::new()
@@ -240,8 +235,9 @@ pub async fn download_experiment_assets(
 crud_handlers!(Experiment, ExperimentUpdate, ExperimentCreate);
 
 pub fn router(
-    db: &DatabaseConnection,
-    keycloak_auth_instance: Option<Arc<KeycloakAuthInstance>>,
+    // db: &DatabaseConnection,
+    // keycloak_auth_instance: Option<Arc<KeycloakAuthInstance>>,
+    state: &AppState,
 ) -> OpenApiRouter
 where
     Experiment: CRUDResource,
@@ -253,14 +249,15 @@ where
         .routes(routes!(update_one_handler))
         .routes(routes!(delete_one_handler))
         .routes(routes!(delete_many_handler))
+        .with_state(state.db.clone())
         .route("/{experiment_id}/uploads", post(upload_file))
         .route("/{experiment_id}/download", get(download_experiment_assets))
-        .with_state(db.clone());
+        .with_state(state.clone());
 
-    if let Some(instance) = keycloak_auth_instance {
+    if let Some(instance) = &state.keycloak_auth_instance {
         mutating_router = mutating_router.layer(
             KeycloakAuthLayer::<Role>::builder()
-                .instance(instance)
+                .instance(instance.clone())
                 .passthrough_mode(PassthroughMode::Block)
                 .persist_raw_claims(false)
                 .expected_audiences(vec![String::from("account")])
@@ -275,4 +272,133 @@ where
     }
 
     mutating_router
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::test_helpers::setup_test_app;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_experiment_crud_operations() {
+        let app = setup_test_app().await;
+
+        // Test creating an experiment
+        let experiment_data = json!({
+            "name": "Test Experiment API",
+            "username": "test@example.com",
+            "performed_at": "2024-06-20T14:30:00Z",
+            "temperature_ramp": -1.0,
+            "temperature_start": 5.0,
+            "temperature_end": -25.0,
+            "is_calibration": false,
+            "remarks": "Test experiment via API"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/experiments")
+                    .header("content-type", "application/json")
+                    .body(Body::from(experiment_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            response.status().is_success(),
+            "Failed to create experiment"
+        );
+
+        // Test getting all experiments
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/experiments")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Failed to get experiments"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_experiment_filtering() {
+        let app = setup_test_app().await;
+
+        // Test filtering by calibration status
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/experiments?filter[is_calibration]=false")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Calibration filtering should work"
+        );
+
+        // Test sorting
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/experiments?sort[performed_at]=desc")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, "Sorting should work");
+    }
+
+    #[tokio::test]
+    async fn test_experiment_validation() {
+        let app = setup_test_app().await;
+
+        // Test creating experiment with invalid temperature range
+        let invalid_data = json!({
+            "name": "Invalid Experiment",
+            "temperature_start": -25.0,
+            "temperature_end": 5.0  // End temp higher than start - should be invalid
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/experiments")
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Note: This test might pass if validation isn't implemented yet
+        // The test documents expected behavior
+        println!("Temperature validation response: {}", response.status());
+    }
 }

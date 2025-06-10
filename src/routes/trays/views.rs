@@ -49,3 +49,88 @@ where
 
     mutating_router
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::config::test_helpers::setup_test_app;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_tray_configuration_crud() {
+        let app = setup_test_app().await;
+
+        // Test creating a tray configuration
+        let tray_config_data = json!({
+            "name": "Test Tray Configuration",
+            "experiment_default": false
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/trays")
+                    .header("content-type", "application/json")
+                    .body(Body::from(tray_config_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            response.status().is_success(),
+            "Failed to create tray configuration"
+        );
+
+        // Test getting all tray configurations
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/trays")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Failed to get tray configurations"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_tray_configuration_validation() {
+        let app = setup_test_app().await;
+
+        // Test creating tray config with empty name
+        let invalid_data = json!({
+            "name": "",
+            "experiment_default": false
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/trays")
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            response.status().is_client_error(),
+            "Should reject invalid tray configuration data"
+        );
+    }
+}

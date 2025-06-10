@@ -49,17 +49,6 @@ where
     mutating_router
 }
 
-// pub fn token_debug_router(instance: KeycloakAuthInstance) -> OpenApiRouter {
-//     OpenApiRouter::new()
-//         .route("/debug-token", routes!(debug_token))
-//         .layer(
-//             KeycloakAuthLayer::<Role>::builder()
-//                 .instance(instance)
-//                 .passthrough_mode(PassthroughMode::Block)
-//                 .build(),
-//         )
-// }
-
 #[utoipa::path(
     get,
     path = "/debug-token",
@@ -75,4 +64,118 @@ where
 pub async fn debug_token(Extension(token): Extension<KeycloakToken<Role>>) -> impl IntoResponse {
     println!("Token payload: {token:#?}");
     (StatusCode::OK, "Token debug information printed to console")
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::test_helpers::setup_test_app;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use serde_json::json;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_campaign_crud_operations() {
+        let app = setup_test_app().await;
+
+        // Test creating a campaign
+        let campaign_data = json!({
+            "name": "Test Campaign API",
+            "comment": "Campaign created via API test",
+            "start_date": "2024-06-01T08:00:00Z",
+            "end_date": "2024-12-31T18:00:00Z"
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/campaigns")
+                    .header("content-type", "application/json")
+                    .body(Body::from(campaign_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(response.status().is_success(), "Failed to create campaign");
+
+        // Test getting all campaigns
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/campaigns")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, "Failed to get campaigns");
+    }
+
+    #[tokio::test]
+    async fn test_campaign_validation() {
+        let app = setup_test_app().await;
+
+        // Test creating campaign with invalid data
+        let invalid_data = json!({
+            "name": "", // Empty name should be invalid
+            "comment": "Invalid campaign"
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/campaigns")
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(
+            response.status().is_client_error(),
+            "Should reject invalid data"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_campaign_filtering_and_pagination() {
+        let app = setup_test_app().await;
+
+        // Test pagination
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/campaigns?limit=5&offset=0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, "Pagination should work");
+
+        // Test sorting
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/campaigns?sort[name]=asc")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, "Sorting should work");
+    }
 }

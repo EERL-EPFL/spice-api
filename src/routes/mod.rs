@@ -4,6 +4,7 @@ mod experiments;
 mod samples;
 mod trays;
 
+use crate::common::state::AppState;
 use crate::config::Config;
 use axum::{Router, extract::DefaultBodyLimit};
 use axum_keycloak_auth::{Url, instance::KeycloakAuthInstance, instance::KeycloakConfig};
@@ -13,7 +14,7 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_scalar::{Scalar, Servable};
 
-pub fn build_router(db: &DatabaseConnection) -> Router {
+pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     #[derive(OpenApi)]
     #[openapi(
         modifiers(&SecurityAddon),
@@ -41,8 +42,6 @@ pub fn build_router(db: &DatabaseConnection) -> Router {
         }
     }
 
-    let config: Config = Config::from_env();
-
     let keycloak_instance: Arc<KeycloakAuthInstance> = Arc::new(KeycloakAuthInstance::new(
         KeycloakConfig::builder()
             .server(Url::parse(&config.keycloak_url).unwrap())
@@ -50,17 +49,20 @@ pub fn build_router(db: &DatabaseConnection) -> Router {
             .build(),
     ));
 
+    let app_state: AppState = AppState {
+        db: db.clone(),
+        config: config.clone(),
+        keycloak_auth_instance: Some(keycloak_instance.clone()),
+    };
+
     // Build the router with routes from the plots module
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(crate::common::views::router(db)) // Root routes
+        .merge(crate::common::views::router(&app_state)) // Root routes
         .nest(
             "/api/campaigns",
             campaigns::views::router(db, Some(keycloak_instance.clone())),
         )
-        .nest(
-            "/api/experiments",
-            experiments::views::router(db, Some(keycloak_instance.clone())),
-        )
+        .nest("/api/experiments", experiments::views::router(&app_state))
         .nest(
             "/api/samples",
             samples::views::router(db, Some(keycloak_instance.clone())),

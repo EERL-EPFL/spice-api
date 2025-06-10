@@ -1,14 +1,16 @@
 use super::models::HealthCheck;
 use super::models::UIConfiguration;
+use crate::common::state::AppState;
 use axum::{Json, extract::State, http::StatusCode};
 use sea_orm::DatabaseConnection;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-pub fn router(db: &DatabaseConnection) -> OpenApiRouter {
+pub fn router(state: &AppState) -> OpenApiRouter {
+    // let db = app_state.db.clone();
     OpenApiRouter::new()
         .routes(routes!(healthz))
         .routes(routes!(get_ui_config))
-        .with_state(db.clone())
+        .with_state(state.db.clone())
 }
 
 #[utoipa::path(

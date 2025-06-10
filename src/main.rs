@@ -3,6 +3,7 @@ mod config;
 mod external;
 mod routes;
 
+use crate::config::Config;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection};
 
@@ -12,8 +13,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
     println!("Starting server...");
 
-    // Load configuration
-    let config: config::Config = config::Config::from_env();
+    // Load configuration and environment variables to pass to the application
+    let config: Config = Config::from_env();
 
     let db: DatabaseConnection = Database::connect(config.db_url.as_ref().unwrap())
         .await
@@ -46,7 +47,7 @@ async fn main() {
     let addr: std::net::SocketAddr = "0.0.0.0:3000".parse().unwrap();
     println!("Listening on {addr}");
 
-    let router = routes::build_router(&db);
+    let router = routes::build_router(&db, &config);
     axum::serve(
         tokio::net::TcpListener::bind(addr).await.unwrap(),
         router.into_make_service(),

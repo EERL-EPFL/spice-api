@@ -1,0 +1,56 @@
+# Simple file-watching test Dockerfile - optimized for docker-compose
+FROM rust:1.85 AS chef
+WORKDIR /app
+RUN cargo install cargo-chef --locked
+
+FROM chef AS planner
+COPY ./src/ /app/src/
+COPY ./migration/ /app/migration/
+COPY ./entity/ /app/entity/
+COPY Cargo.lock Cargo.toml /app/
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+
+# Install database tools and file watcher
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cargo-watch for file watching
+RUN cargo install cargo-watch
+
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json
+
+# Copy actual source code
+COPY ./src ./src
+COPY ./entity ./entity
+COPY ./migration ./migration
+COPY ./tests ./tests
+COPY Cargo.lock Cargo.toml ./
+
+# Build the actual application
+RUN cargo build
+
+# Create the test cycle script - run embedded tests in views.rs files
+RUN echo '#!/bin/bash' > /app/run-test-cycle.sh && \
+    echo 'set -e' >> /app/run-test-cycle.sh && \
+    echo '' >> /app/run-test-cycle.sh && \
+    echo 'echo "🔄 $(date): Running test cycle..."' >> /app/run-test-cycle.sh && \
+    echo '' >> /app/run-test-cycle.sh && \
+    echo '# Reset database' >> /app/run-test-cycle.sh && \
+    echo 'echo "🗄️ Resetting database..."' >> /app/run-test-cycle.sh && \
+    echo 'PGPASSWORD=psql dropdb -h $DB_HOST -U $DB_USER --if-exists $DB_NAME || echo "Database didnt exist, creating..."' >> /app/run-test-cycle.sh && \
+    echo 'PGPASSWORD=psql createdb -h $DB_HOST -U $DB_USER $DB_NAME' >> /app/run-test-cycle.sh && \
+    echo '' >> /app/run-test-cycle.sh && \
+    echo '# Run all embedded unit and integration tests in views.rs files' >> /app/run-test-cycle.sh && \
+    echo 'echo "🧪 Running embedded tests in views.rs files..."' >> /app/run-test-cycle.sh && \
+    echo 'cargo test' >> /app/run-test-cycle.sh && \
+    echo '' >> /app/run-test-cycle.sh && \
+    echo 'echo "✅ Test cycle complete at $(date)"' >> /app/run-test-cycle.sh && \
+    echo 'echo ""' >> /app/run-test-cycle.sh && \
+    chmod +x /app/run-test-cycle.sh
+
+# Initial test run followed by file watching
+CMD ["sh", "-c", "./run-test-cycle.sh && echo '👀 Now watching for changes...' && cargo watch -x test --watch src --watch entity/src --watch migration/src --why"]
