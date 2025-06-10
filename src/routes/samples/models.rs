@@ -1,17 +1,30 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
-use sea_orm::{
-    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
-    entity::prelude::*,
-};
+use sea_orm::{ActiveModelTrait, Set};
+use sea_orm::{ActiveValue, DatabaseConnection, EntityTrait, entity::prelude::*};
 use serde::{Deserialize, Serialize};
 use spice_entity::samples::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct SampleTreatment {}
+pub struct SampleTreatment {
+    id: Uuid,
+    name: Option<String>,
+    notes: Option<String>,
+    enzyme_volume_microlitres: Option<f64>,
+}
+impl From<spice_entity::treatments::Model> for SampleTreatment {
+    fn from(model: spice_entity::treatments::Model) -> Self {
+        Self {
+            id: model.id,
+            name: model.name,
+            notes: model.notes,
+            enzyme_volume_microlitres: model.enzyme_volume_microlitres,
+        }
+    }
+}
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::samples::ActiveModel"]
@@ -41,6 +54,8 @@ pub struct Sample {
     stop_time: Option<DateTime<Utc>>,
     flow_litres_per_minute: Option<f64>,
     total_volume: Option<f64>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    treatments: Vec<SampleTreatment>,
 }
 
 impl From<Model> for Sample {
@@ -49,7 +64,6 @@ impl From<Model> for Sample {
             id: model.id,
             name: model.name,
             r#type: model.r#type,
-            // treatment: model.treatment,
             start_time: model.start_time.map(|dt| dt.with_timezone(&Utc)),
             stop_time: model.stop_time.map(|dt| dt.with_timezone(&Utc)),
             material_description: model.material_description,
@@ -69,6 +83,7 @@ impl From<Model> for Sample {
             campaign_id: model.campaign_id,
             latitude: model.latitude,
             longitude: model.longitude,
+            treatments: vec![],
         }
     }
 }
@@ -87,24 +102,6 @@ impl CRUDResource for Sample {
     const RESOURCE_DESCRIPTION: &'static str =
         "This resource manages samples associated with experiments.";
 
-    async fn get_all(
-        db: &DatabaseConnection,
-        condition: Condition,
-        order_column: Self::ColumnType,
-        order_direction: Order,
-        offset: u64,
-        limit: u64,
-    ) -> Result<Vec<Self>, DbErr> {
-        let models = Self::EntityType::find()
-            .filter(condition)
-            .order_by(order_column, order_direction)
-            .offset(offset)
-            .limit(limit)
-            .all(db)
-            .await?;
-        Ok(models.into_iter().map(Self::from).collect())
-    }
-
     async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
         let model =
             Self::EntityType::find_by_id(id)
@@ -114,14 +111,30 @@ impl CRUDResource for Sample {
                     "{} not found",
                     Self::RESOURCE_NAME_SINGULAR
                 )))?;
-        Ok(Self::from(model))
+
+        let treatments = model
+            .find_related(spice_entity::treatments::Entity)
+            .all(db)
+            .await?;
+
+        let mut model: Self = model.into();
+        model.treatments = treatments.into_iter().map(SampleTreatment::from).collect();
+
+        Ok(model)
     }
 
     async fn update(
         db: &DatabaseConnection,
         id: Uuid,
-        update_data: Self::UpdateModel,
+        mut update_data: Self::UpdateModel,
     ) -> Result<Self, DbErr> {
+        // Extract treatments if present
+        let treatments = if update_data.treatments.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut update_data.treatments))
+        };
+
         let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
             .one(db)
             .await?
@@ -132,8 +145,99 @@ impl CRUDResource for Sample {
             .into();
 
         let updated_model = update_data.merge_into_activemodel(existing);
-        let updated = updated_model.update(db).await?;
-        Ok(Self::from(updated))
+        let _updated = updated_model.update(db).await?;
+
+        // Update treatments if provided
+        if let Some(treatments) = treatments {
+            // Fetch existing treatments for this sample
+            let existing_treatments = spice_entity::treatments::Entity::find()
+                .filter(spice_entity::treatments::Column::SampleId.eq(id))
+                .all(db)
+                .await?;
+
+            let mut existing_map = std::collections::HashMap::new();
+            for t in existing_treatments {
+                existing_map.insert(t.id, t);
+            }
+
+            let mut incoming_ids = std::collections::HashSet::new();
+
+            // Upsert incoming treatments
+            for treatment in &treatments {
+                incoming_ids.insert(treatment.id);
+
+                if let Some(existing) = existing_map.get(&treatment.id) {
+                    // Update existing treatment if any field changed
+                    let mut active_treatment: spice_entity::treatments::ActiveModel =
+                        existing.clone().into();
+                    active_treatment.name = Set(treatment.name.clone());
+                    active_treatment.notes = Set(treatment.notes.clone());
+                    active_treatment.enzyme_volume_microlitres =
+                        Set(treatment.enzyme_volume_microlitres);
+                    // sample_id should always be set
+                    active_treatment.sample_id = Set(Some(id));
+                    let _ = active_treatment.update(db).await?;
+                } else {
+                    // Insert new treatment
+                    let active_treatment = spice_entity::treatments::ActiveModel {
+                        id: Set(treatment.id),
+                        sample_id: Set(Some(id)),
+                        name: Set(treatment.name.clone()),
+                        notes: Set(treatment.notes.clone()),
+                        enzyme_volume_microlitres: Set(treatment.enzyme_volume_microlitres),
+                        ..Default::default()
+                    };
+                    let _ = active_treatment.insert(db).await?;
+                }
+            }
+
+            // Remove treatments that are no longer present
+            for existing_id in existing_map.keys() {
+                if !incoming_ids.contains(existing_id) {
+                    let _ = spice_entity::treatments::Entity::delete_by_id(*existing_id)
+                        .exec(db)
+                        .await?;
+                }
+            }
+        }
+
+        // Reload with treatments
+        Self::get_one(db, id).await
+    }
+
+    async fn create(
+        db: &DatabaseConnection,
+        mut create_data: Self::CreateModel,
+    ) -> Result<Self, DbErr> {
+        // Extract treatments if present
+        let treatments = if create_data.treatments.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut create_data.treatments))
+        };
+
+        let active_model: Self::ActiveModelType = create_data.into();
+        let inserted = active_model.insert(db).await?;
+
+        // Insert treatments if provided
+        if let Some(treatments) = treatments {
+            for treatment in treatments {
+                let active_treatment = spice_entity::treatments::ActiveModel {
+                    id: ActiveValue::Set(treatment.id),
+                    sample_id: ActiveValue::Set(Some(inserted.id)),
+                    name: ActiveValue::Set(treatment.name),
+                    notes: ActiveValue::Set(treatment.notes),
+                    enzyme_volume_microlitres: ActiveValue::Set(
+                        treatment.enzyme_volume_microlitres,
+                    ),
+                    ..Default::default()
+                };
+                let _ = active_treatment.insert(db).await?;
+            }
+        }
+
+        // Reload with treatments
+        Self::get_one(db, inserted.id).await
     }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {

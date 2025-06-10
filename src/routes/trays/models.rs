@@ -18,7 +18,7 @@ struct Tray {
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 struct TrayAssignment {
     order_sequence: i16,
-    rotation_degrees: Option<i16>,
+    rotation_degrees: i16,
     trays: Vec<Tray>,
 }
 
