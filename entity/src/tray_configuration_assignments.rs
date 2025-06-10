@@ -11,7 +11,7 @@ pub struct Model {
     pub tray_configuration_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub order_sequence: i16,
-    pub rotation_degrees: Option<i16>,
+    pub rotation_degrees: i16,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
 }

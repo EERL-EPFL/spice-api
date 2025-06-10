@@ -10,6 +10,9 @@ use spice_entity::samples::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct SampleTreatment {}
+
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::samples::ActiveModel"]
 pub struct Sample {
