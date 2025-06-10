@@ -5,7 +5,7 @@ CAUTION: Do not modify this file unless you know what you are doing.
 -->
 <dbmodel pgmodeler-ver="1.2.0" use-changelog="false" max-obj-count="16"
 	 gen-disabled-objs-code="false" show-sys-schemas-rects="true"
-	 last-position="69,-72" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
+	 last-position="1116,193" last-zoom="0.85" scene-rect="0,-84.9844,3157.41,1608.11"
 	 default-schema="public" default-owner="postgres"
 	 layers="Default layer,Trays,Samples"
 	 active-layers="0,1,2"
@@ -578,6 +578,9 @@ CAUTION: Do not modify this file unless you know what you are doing.
 	</column>
 	<constraint name="tray_configuration_assignments_pk" type="pk-constr" table="public.tray_configuration_assignments">
 		<columns names="tray_id,tray_configuration_id,order_sequence" ref-type="src-columns"/>
+	</constraint>
+	<constraint name="no_duplicate_sequences" type="uq-constr" table="public.tray_configuration_assignments">
+		<columns names="tray_configuration_id,order_sequence" ref-type="src-columns"/>
 	</constraint>
 </table>
 

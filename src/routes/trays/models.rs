@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
-use sea_orm::{ActiveValue, entity::prelude::*};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, Set, entity::prelude::*, prelude::Expr,
+};
 use serde::{Deserialize, Serialize};
 use spice_entity::tray_configurations::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
-
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 struct Tray {
     name: Option<String>,
@@ -123,6 +124,9 @@ impl CRUDResource for TrayConfiguration {
             }
         };
         let mut model: Self = model.into();
+        // Sort tray assignments by order_sequence
+        let mut tray_assignments = tray_assignments;
+        tray_assignments.sort_by_key(|a| a.order_sequence);
         model.trays = tray_assignments;
 
         Ok(model)
@@ -132,8 +136,16 @@ impl CRUDResource for TrayConfiguration {
         db: &DatabaseConnection,
         create_data: Self::CreateModel,
     ) -> Result<Self, DbErr> {
-        use sea_orm::ActiveModelTrait;
-        use sea_orm::Set;
+        // If experiment_default is true, set all others to false
+        if create_data.experiment_default {
+            spice_entity::tray_configurations::Entity::update_many()
+                .col_expr(
+                    spice_entity::tray_configurations::Column::ExperimentDefault,
+                    Expr::value(false),
+                )
+                .exec(db)
+                .await?;
+        }
 
         // Insert the main tray configuration
         let active_model: Self::ActiveModelType = create_data.clone().into();
@@ -176,9 +188,19 @@ impl CRUDResource for TrayConfiguration {
         id: Uuid,
         update_data: Self::UpdateModel,
     ) -> Result<Self, DbErr> {
-        use sea_orm::ActiveModelTrait;
-        use sea_orm::EntityTrait;
-        use sea_orm::Set;
+        // If experiment_default is true, set all others to false
+        if let Some(Some(experiment_default)) = update_data.experiment_default {
+            if experiment_default {
+                spice_entity::tray_configurations::Entity::update_many()
+                    .col_expr(
+                        spice_entity::tray_configurations::Column::ExperimentDefault,
+                        Expr::value(false),
+                    )
+                    .filter(spice_entity::tray_configurations::Column::Id.ne(id))
+                    .exec(db)
+                    .await?;
+            }
+        }
 
         // Update the main tray configuration
         let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
@@ -226,6 +248,44 @@ impl CRUDResource for TrayConfiguration {
             }
         }
         Self::get_one(db, id).await
+    }
+
+    async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> {
+        // Delete all assignments for this configuration
+        spice_entity::tray_configuration_assignments::Entity::delete_many()
+            .filter(
+                spice_entity::tray_configuration_assignments::Column::TrayConfigurationId.eq(id),
+            )
+            .exec(db)
+            .await?;
+        // Delete the configuration itself
+        let res = <Self::EntityType as EntityTrait>::delete_by_id(id)
+            .exec(db)
+            .await?;
+        match res.rows_affected {
+            0 => Err(DbErr::RecordNotFound(format!(
+                "{} not found",
+                Self::RESOURCE_NAME_SINGULAR
+            ))),
+            _ => Ok(id),
+        }
+    }
+
+    async fn delete_many(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
+        // Delete all assignments for these configurations
+        spice_entity::tray_configuration_assignments::Entity::delete_many()
+            .filter(
+                spice_entity::tray_configuration_assignments::Column::TrayConfigurationId
+                    .is_in(ids.clone()),
+            )
+            .exec(db)
+            .await?;
+        // Delete the configurations themselves
+        let _ = <Self::EntityType as EntityTrait>::delete_many()
+            .filter(Self::ID_COLUMN.is_in(ids.clone()))
+            .exec(db)
+            .await?;
+        Ok(ids)
     }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {

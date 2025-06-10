@@ -315,7 +315,8 @@ CREATE TABLE public.tray_configuration_assignments (
 	rotation_degrees smallint NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now(),
 	last_updated timestamptz NOT NULL DEFAULT now(),
-	CONSTRAINT tray_configuration_assignments_pk PRIMARY KEY (tray_id,tray_configuration_id,order_sequence)
+	CONSTRAINT tray_configuration_assignments_pk PRIMARY KEY (tray_id,tray_configuration_id,order_sequence),
+	CONSTRAINT no_duplicate_sequences UNIQUE (tray_configuration_id,order_sequence)
 );
 -- ddl-end --
 ALTER TABLE public.tray_configuration_assignments OWNER TO postgres;
