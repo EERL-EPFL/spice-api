@@ -18,6 +18,44 @@ use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+crud_handlers!(Experiment, ExperimentUpdate, ExperimentCreate);
+
+pub fn router(state: &AppState) -> OpenApiRouter
+where
+    Experiment: CRUDResource,
+{
+    let mut mutating_router = OpenApiRouter::new()
+        .routes(routes!(get_one_handler))
+        .routes(routes!(get_all_handler))
+        .routes(routes!(create_one_handler))
+        .routes(routes!(update_one_handler))
+        .routes(routes!(delete_one_handler))
+        .routes(routes!(delete_many_handler))
+        .with_state(state.db.clone())
+        .route("/{experiment_id}/uploads", post(upload_file))
+        .route("/{experiment_id}/download", get(download_experiment_assets))
+        .with_state(state.clone());
+
+    if let Some(instance) = &state.keycloak_auth_instance {
+        mutating_router = mutating_router.layer(
+            KeycloakAuthLayer::<Role>::builder()
+                .instance(instance.clone())
+                .passthrough_mode(PassthroughMode::Block)
+                .persist_raw_claims(false)
+                .expected_audiences(vec![String::from("account")])
+                .required_roles(vec![Role::Administrator])
+                .build(),
+        );
+    } else {
+        println!(
+            "Warning: Mutating routes of {} router are not protected",
+            Experiment::RESOURCE_NAME_PLURAL
+        );
+    }
+
+    mutating_router
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct UploadResponse {
     success: bool,
@@ -230,48 +268,6 @@ pub async fn download_experiment_assets(
         response_builder = response_builder.header(key, value);
     }
     Ok(response_builder.body(hyper_body).unwrap())
-}
-
-crud_handlers!(Experiment, ExperimentUpdate, ExperimentCreate);
-
-pub fn router(
-    // db: &DatabaseConnection,
-    // keycloak_auth_instance: Option<Arc<KeycloakAuthInstance>>,
-    state: &AppState,
-) -> OpenApiRouter
-where
-    Experiment: CRUDResource,
-{
-    let mut mutating_router = OpenApiRouter::new()
-        .routes(routes!(get_one_handler))
-        .routes(routes!(get_all_handler))
-        .routes(routes!(create_one_handler))
-        .routes(routes!(update_one_handler))
-        .routes(routes!(delete_one_handler))
-        .routes(routes!(delete_many_handler))
-        .with_state(state.db.clone())
-        .route("/{experiment_id}/uploads", post(upload_file))
-        .route("/{experiment_id}/download", get(download_experiment_assets))
-        .with_state(state.clone());
-
-    if let Some(instance) = &state.keycloak_auth_instance {
-        mutating_router = mutating_router.layer(
-            KeycloakAuthLayer::<Role>::builder()
-                .instance(instance.clone())
-                .passthrough_mode(PassthroughMode::Block)
-                .persist_raw_claims(false)
-                .expected_audiences(vec![String::from("account")])
-                .required_roles(vec![Role::Administrator])
-                .build(),
-        );
-    } else {
-        println!(
-            "Warning: Mutating routes of {} router are not protected",
-            Experiment::RESOURCE_NAME_PLURAL
-        );
-    }
-
-    mutating_router
 }
 
 #[cfg(test)]

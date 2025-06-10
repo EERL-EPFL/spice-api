@@ -1,21 +1,14 @@
 use super::models::{Campaign, CampaignCreate, CampaignUpdate};
 use crate::common::auth::Role;
+use crate::common::state::AppState;
 use axum::{extract::Extension, response::IntoResponse};
-use axum_keycloak_auth::{
-    PassthroughMode, decode::KeycloakToken, instance::KeycloakAuthInstance,
-    layer::KeycloakAuthLayer,
-};
+use axum_keycloak_auth::{PassthroughMode, decode::KeycloakToken, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
-use sea_orm::DatabaseConnection;
-use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 crud_handlers!(Campaign, CampaignUpdate, CampaignCreate);
 
-pub fn router(
-    db: &DatabaseConnection,
-    keycloak_auth_instance: Option<Arc<KeycloakAuthInstance>>,
-) -> OpenApiRouter
+pub fn router(state: &AppState) -> OpenApiRouter
 where
     Campaign: CRUDResource,
 {
@@ -27,9 +20,9 @@ where
         .routes(routes!(delete_one_handler))
         .routes(routes!(delete_many_handler))
         .routes(routes!(debug_token))
-        .with_state(db.clone());
+        .with_state(state.db.clone());
 
-    if let Some(instance) = keycloak_auth_instance {
+    if let Some(instance) = state.keycloak_auth_instance.clone() {
         mutating_router = mutating_router.layer(
             KeycloakAuthLayer::<Role>::builder()
                 .instance(instance)

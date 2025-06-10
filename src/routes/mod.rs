@@ -58,23 +58,11 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     // Build the router with routes from the plots module
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(crate::common::views::router(&app_state)) // Root routes
-        .nest(
-            "/api/campaigns",
-            campaigns::views::router(db, Some(keycloak_instance.clone())),
-        )
+        .nest("/api/campaigns", campaigns::views::router(&app_state))
         .nest("/api/experiments", experiments::views::router(&app_state))
-        .nest(
-            "/api/samples",
-            samples::views::router(db, Some(keycloak_instance.clone())),
-        )
-        .nest(
-            "/api/assets",
-            assets::views::router(db, Some(keycloak_instance.clone())),
-        )
-        .nest(
-            "/api/trays",
-            trays::views::router(db, Some(keycloak_instance.clone())),
-        )
+        .nest("/api/samples", samples::views::router(&app_state))
+        .nest("/api/assets", assets::views::router(&app_state))
+        .nest("/api/trays", trays::views::router(&app_state))
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 

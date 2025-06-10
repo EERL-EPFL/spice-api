@@ -1,19 +1,13 @@
 use super::models::{Sample, SampleCreate, SampleUpdate};
 use crate::common::auth::Role;
-use axum_keycloak_auth::{
-    PassthroughMode, instance::KeycloakAuthInstance, layer::KeycloakAuthLayer,
-};
+use crate::common::state::AppState;
+use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
-use sea_orm::DatabaseConnection;
-use std::sync::Arc;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 crud_handlers!(Sample, SampleUpdate, SampleCreate);
 
-pub fn router(
-    db: &DatabaseConnection,
-    keycloak_auth_instance: Option<Arc<KeycloakAuthInstance>>,
-) -> OpenApiRouter
+pub fn router(state: &AppState) -> OpenApiRouter
 where
     Sample: CRUDResource,
 {
@@ -24,9 +18,9 @@ where
         .routes(routes!(update_one_handler))
         .routes(routes!(delete_one_handler))
         .routes(routes!(delete_many_handler))
-        .with_state(db.clone());
+        .with_state(state.db.clone());
 
-    if let Some(instance) = keycloak_auth_instance {
+    if let Some(instance) = state.keycloak_auth_instance.clone() {
         mutating_router = mutating_router.layer(
             KeycloakAuthLayer::<Role>::builder()
                 .instance(instance)
