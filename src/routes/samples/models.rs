@@ -218,13 +218,14 @@ impl CRUDResource for Sample {
 
         let active_model: Self::ActiveModelType = create_data.into();
         let inserted = active_model.insert(db).await?;
-
+        println!("Inserted sample with ID: {}", inserted.id);
+        let sample_id = inserted.id;
         // Insert treatments if provided
         if let Some(treatments) = treatments {
             for treatment in treatments {
                 let active_treatment = spice_entity::treatments::ActiveModel {
-                    id: ActiveValue::Set(treatment.id),
-                    sample_id: ActiveValue::Set(Some(inserted.id)),
+                    id: ActiveValue::Set(uuid::Uuid::new_v4()),
+                    sample_id: ActiveValue::Set(Some(sample_id)),
                     name: ActiveValue::Set(treatment.name),
                     notes: ActiveValue::Set(treatment.notes),
                     enzyme_volume_microlitres: ActiveValue::Set(

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
+use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, ColumnTrait, EntityTrait, Set, entity::prelude::*, prelude::Expr,
 };
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use spice_entity::tray_configurations::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 struct Tray {
     name: Option<String>,
@@ -147,15 +149,23 @@ impl CRUDResource for TrayConfiguration {
                 .await?;
         }
 
-        // Insert the main tray configuration
-        let active_model: Self::ActiveModelType = create_data.clone().into();
-        let inserted = active_model.insert(db).await?;
-        let tray_config_id = inserted.id;
+        // Create a new UUID for this configuration
+        let tray_config_id = Uuid::new_v4();
+
+        // Insert the main tray configuration with explicit ID
+        let active_model = spice_entity::tray_configurations::ActiveModel {
+            id: Set(tray_config_id),
+            name: Set(create_data.name.clone()),
+            experiment_default: Set(create_data.experiment_default),
+            created_at: Set(chrono::Utc::now().into()),
+            last_updated: Set(chrono::Utc::now().into()),
+        };
+        let _inserted = active_model.insert(db).await?;
 
         // Insert tray assignments and trays
         for assignment in create_data.trays {
             for tray in assignment.trays {
-                // Upsert tray (by name, or always insert if no unique constraint)
+                // Create tray first
                 let tray_active = spice_entity::trays::ActiveModel {
                     id: Set(Uuid::new_v4()),
                     name: Set(tray.name.clone()),
@@ -167,7 +177,7 @@ impl CRUDResource for TrayConfiguration {
                 };
                 let tray_model = tray_active.insert(db).await?;
 
-                // Insert assignment
+                // Insert assignment with the explicitly created tray_config_id
                 let assignment_active = spice_entity::tray_configuration_assignments::ActiveModel {
                     tray_id: Set(tray_model.id),
                     tray_configuration_id: Set(tray_config_id),

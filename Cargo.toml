@@ -59,6 +59,7 @@ utoipa-axum = "0.2.0"
 utoipa-scalar = { version = "0.3.0", features = ["axum"] }
 uuid = { version = "1.13.2", features = ["serde", "v4", "fast-rng"] }
 zip = "2.6.0"
+rust_decimal = "1.37.1"
 
 [dev-dependencies]
 async-std = { version = "1.13", features = ["attributes"] }

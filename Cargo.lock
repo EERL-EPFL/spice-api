@@ -4796,6 +4796,7 @@ dependencies = [
  "rand 0.9.1",
  "reqwest",
  "rstest",
+ "rust_decimal",
  "sea-orm",
  "sea-orm-migration",
  "serde",

@@ -3,6 +3,7 @@ mod campaigns;
 mod experiments;
 mod samples;
 mod trays;
+mod treatments;
 
 use crate::common::state::AppState;
 use crate::config::Config;
@@ -68,6 +69,7 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .nest("/api/samples", samples::views::router(&app_state))
         .nest("/api/assets", assets::views::router(&app_state))
         .nest("/api/trays", trays::views::router(&app_state))
+        .nest("/api/treatments", treatments::views::router(&app_state))
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 

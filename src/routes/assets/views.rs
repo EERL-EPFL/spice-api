@@ -184,7 +184,9 @@ mod tests {
                 "original_filename": format!("test_{}.file", asset_type),
                 "s3_key": format!("test/{}/file", asset_type),
                 "type": asset_type,
-                "size_bytes": 100
+                "size_bytes": 100,
+                "uploaded_at": "2024-06-20T15:00:00Z",
+                "is_deleted": false
             });
 
             let response = app

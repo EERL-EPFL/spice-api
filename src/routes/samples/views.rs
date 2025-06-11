@@ -43,7 +43,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
-    use axum::body::Body;
+    use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use serde_json::json;
     use tower::ServiceExt;
@@ -59,7 +59,7 @@ mod tests {
         // Test creating a sample
         let sample_data = json!({
             "name": "Test Sample API",
-            "type": "bulk",
+            "type": "Bulk",
             "material_description": "Test material for API testing",
             "extraction_procedure": "Standard extraction via API",
             "filter_substrate": "Polycarbonate",
@@ -75,7 +75,15 @@ mod tests {
             "start_time": "2024-06-15T10:00:00Z",
             "stop_time": "2024-06-15T12:00:00Z",
             "flow_litres_per_minute": 2.0,
-            "total_volume": 240.0
+            "total_volume": 240.0,
+            "treatments": [
+                {
+                    "id": uuid::Uuid::new_v4(),
+                    "name": "Test Treatment",
+                    "notes": "Test treatment for API sample",
+                    "enzyme_volume_microlitres": 50.0,
+                }
+            ]
         });
 
         let response = app
@@ -90,8 +98,15 @@ mod tests {
             )
             .await
             .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body aggregation failed");
 
-        assert!(response.status().is_success(), "Failed to create sample");
+        // convert to &str for printing
+        let body_str: &str = std::str::from_utf8(&bytes).expect("body was not valid UTF-8");
+        println!("Response status: {status:?}, body: {body_str:?}");
+        assert!(status.is_success(), "Failed to create sample");
 
         // Test getting all samples
         let response = app
@@ -121,11 +136,12 @@ mod tests {
         cleanup_test_data(&db).await;
 
         // Test valid sample types
-        for sample_type in ["bulk", "filter", "procedural_blank", "pure_water"] {
+        for sample_type in ["Bulk", "Filter", "ProceduralBlank", "PureWater"] {
             let sample_data = json!({
                 "name": format!("Test {} Sample", sample_type),
                 "type": sample_type,
-                "material_description": "Test material"
+                "material_description": "Test material",
+                "treatments": [],
             });
 
             let response = app
@@ -141,9 +157,18 @@ mod tests {
                 .await
                 .unwrap();
 
+            // pull out the whole body as bytes
+            let status = response.status();
+            let bytes = to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("body aggregation failed");
+
+            // convert to &str for printing
+            let body_str: &str = std::str::from_utf8(&bytes).expect("body was not valid UTF-8");
+
             assert!(
-                response.status().is_success(),
-                "Valid sample type {sample_type} should be accepted",
+                status.is_success(),
+                "Valid sample type {sample_type} should be accepted. Status: {status:?} body: {body_str:?}"
             );
         }
 
@@ -189,7 +214,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/samples?filter[type]=bulk")
+                    .uri("/api/samples?filter[type]=Bulk")
                     .body(Body::empty())
                     .unwrap(),
             )
