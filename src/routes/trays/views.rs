@@ -48,7 +48,7 @@ where
 mod tests {
     use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
     use axum::body::{Body, to_bytes};
-    use axum::http::{Request, StatusCode};
+    use axum::http::Request;
     use serde_json::json;
     use tower::ServiceExt;
 

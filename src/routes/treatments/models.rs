@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
-use sea_orm::{ActiveModelTrait, Set};
-use sea_orm::{ActiveValue, DatabaseConnection, EntityTrait, entity::prelude::*};
+use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
+
+use sea_orm::{ActiveValue, entity::prelude::*};
 use serde::{Deserialize, Serialize};
 use spice_entity::treatments::Model;
 use utoipa::ToSchema;

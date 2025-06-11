@@ -68,25 +68,6 @@ impl CRUDResource for Experiment {
     const RESOURCE_DESCRIPTION: &'static str =
         "This resource manages experiments associated with sample data collected during campaigns.";
 
-    async fn get_all(
-        db: &DatabaseConnection,
-        condition: Condition,
-        order_column: Self::ColumnType,
-        order_direction: Order,
-        offset: u64,
-        limit: u64,
-    ) -> Result<Vec<Self>, DbErr> {
-        let models = Self::EntityType::find()
-            .filter(condition)
-            .order_by(order_column, order_direction)
-            .offset(offset)
-            .limit(limit)
-            .all(db)
-            .await?;
-
-        Ok(models.into_iter().map(Self::from).collect())
-    }
-
     async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
         let model =
             Self::EntityType::find_by_id(id)

@@ -278,35 +278,6 @@ impl CRUDResource for Sample {
     }
 
     fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
-        vec![
-            ("name", Self::ColumnType::Name),
-            ("type", Self::ColumnType::Type),
-            (
-                "material_description",
-                Self::ColumnType::MaterialDescription,
-            ),
-            (
-                "extraction_procedure",
-                Self::ColumnType::ExtractionProcedure,
-            ),
-            ("filter_substrate", Self::ColumnType::FilterSubstrate),
-            (
-                "suspension_volume_liters",
-                Self::ColumnType::SuspensionVolumeLiters,
-            ),
-            ("air_volume_liters", Self::ColumnType::AirVolumeLiters),
-            ("water_volume_liters", Self::ColumnType::WaterVolumeLiters),
-            (
-                "initial_concentration_gram_l",
-                Self::ColumnType::InitialConcentrationGramL,
-            ),
-            ("well_volume_liters", Self::ColumnType::WellVolumeLiters),
-            (
-                "background_region_key",
-                Self::ColumnType::BackgroundRegionKey,
-            ),
-            ("created_at", Self::ColumnType::CreatedAt),
-            ("remarks", Self::ColumnType::Remarks),
-        ]
+        vec![("name", Self::ColumnType::Name)]
     }
 }
