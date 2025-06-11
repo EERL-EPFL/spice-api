@@ -73,9 +73,11 @@ pub mod test_helpers {
     use crate::routes::build_router;
     use axum::Router;
     use sea_orm::{Database, DatabaseConnection};
-    use std::sync::Once;
+    use std::sync::{Arc, Mutex, Once};
+    use tokio::sync::OnceCell;
 
     static INIT: Once = Once::new();
+    static DB_SETUP: OnceCell<Arc<Mutex<bool>>> = OnceCell::const_new();
 
     pub fn init_test_env() {
         INIT.call_once(|| {
@@ -97,14 +99,63 @@ pub mod test_helpers {
             env::var("DB_NAME").unwrap_or_else(|_| "spice_test".to_string())
         );
 
-        Database::connect(database_url)
+        let db = Database::connect(database_url)
             .await
-            .expect("Failed to connect to test database")
+            .expect("Failed to connect to test database");
+
+        // Ensure migrations run only once across all tests
+        let setup_flag = DB_SETUP
+            .get_or_try_init(|| async {
+                Ok::<Arc<Mutex<bool>>, std::convert::Infallible>(Arc::new(Mutex::new(false)))
+            })
+            .await
+            .unwrap()
+            .clone();
+        let should_run_migrations = {
+            let mut setup_done = setup_flag.lock().unwrap();
+            if *setup_done {
+                false
+            } else {
+                *setup_done = true;
+                true
+            }
+        };
+
+        if should_run_migrations {
+            // Run migrations to ensure all tables exist
+            use migration::{Migrator, MigratorTrait};
+            Migrator::up(&db, None)
+                .await
+                .expect("Failed to run database migrations");
+        }
+
+        // Return a connection wrapped in a transaction for test isolation
+        db
     }
 
     pub async fn setup_test_app() -> Router {
         let db = setup_test_db().await;
-        let config = Config::for_tests();
+        let mut config = Config::for_tests();
+        // Disable Keycloak for tests by setting the URL to empty
+        config.keycloak_url = String::new();
         build_router(&db, &config)
+    }
+
+    // Helper function to clean up test data after each test
+    pub async fn cleanup_test_data(db: &DatabaseConnection) {
+        use sea_orm::EntityTrait;
+
+        // Clean up all test data in reverse dependency order
+        let _ = spice_entity::s3_assets::Entity::delete_many()
+            .exec(db)
+            .await;
+        let _ = spice_entity::samples::Entity::delete_many().exec(db).await;
+        let _ = spice_entity::experiments::Entity::delete_many()
+            .exec(db)
+            .await;
+        let _ = spice_entity::tray_configurations::Entity::delete_many()
+            .exec(db)
+            .await;
+        let _ = spice_entity::campaign::Entity::delete_many().exec(db).await;
     }
 }

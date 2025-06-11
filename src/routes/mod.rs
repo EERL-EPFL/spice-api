@@ -42,17 +42,22 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         }
     }
 
-    let keycloak_instance: Arc<KeycloakAuthInstance> = Arc::new(KeycloakAuthInstance::new(
-        KeycloakConfig::builder()
-            .server(Url::parse(&config.keycloak_url).unwrap())
-            .realm(String::from(&config.keycloak_realm))
-            .build(),
-    ));
+    let keycloak_instance: Option<Arc<KeycloakAuthInstance>> = if config.keycloak_url.is_empty() {
+        // Skip Keycloak initialization for tests
+        None
+    } else {
+        Some(Arc::new(KeycloakAuthInstance::new(
+            KeycloakConfig::builder()
+                .server(Url::parse(&config.keycloak_url).unwrap())
+                .realm(String::from(&config.keycloak_realm))
+                .build(),
+        )))
+    };
 
     let app_state: AppState = AppState {
         db: db.clone(),
         config: config.clone(),
-        keycloak_auth_instance: Some(keycloak_instance.clone()),
+        keycloak_auth_instance: keycloak_instance,
     };
 
     // Build the router with routes from the plots module

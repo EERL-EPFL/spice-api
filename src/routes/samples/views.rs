@@ -42,7 +42,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::setup_test_app;
+    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::json;
@@ -50,7 +50,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_sample_crud_operations() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test creating a sample
         let sample_data = json!({
@@ -103,11 +107,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK, "Failed to get samples");
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_sample_type_validation() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test valid sample types
         for sample_type in ["bulk", "filter", "procedural_blank", "pure_water"] {
@@ -159,11 +170,18 @@ mod tests {
             response.status().is_client_error(),
             "Invalid sample type should be rejected"
         );
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_sample_filtering() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test filtering by type
         let response = app
@@ -197,5 +215,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK, "Sorting should work");
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 }

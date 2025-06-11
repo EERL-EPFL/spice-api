@@ -42,7 +42,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::setup_test_app;
+    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::json;
@@ -50,7 +50,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_asset_crud_operations() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test creating an asset
         let asset_data = json!({
@@ -93,11 +97,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK, "Failed to get assets");
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_asset_filtering() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test filtering by type
         let response = app
@@ -154,11 +165,18 @@ mod tests {
             StatusCode::OK,
             "Deleted status filtering should work"
         );
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_asset_type_validation() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test valid asset types
         for asset_type in ["data", "image", "log", "report", "protocol"] {
@@ -187,5 +205,8 @@ mod tests {
                 "Valid asset type {asset_type} should be accepted"
             );
         }
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 }

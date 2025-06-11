@@ -61,7 +61,7 @@ pub async fn debug_token(Extension(token): Extension<KeycloakToken<Role>>) -> im
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::setup_test_app;
+    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::json;
@@ -69,7 +69,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_campaign_crud_operations() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test creating a campaign
         let campaign_data = json!({
@@ -108,15 +112,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK, "Failed to get campaigns");
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_campaign_validation() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test creating campaign with invalid data
         let invalid_data = json!({
-            "name": "", // Empty name should be invalid
+            "name": null, // Empty name should be invalid
             "comment": "Invalid campaign"
         });
 
@@ -136,11 +147,18 @@ mod tests {
             response.status().is_client_error(),
             "Should reject invalid data"
         );
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_campaign_filtering_and_pagination() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test pagination
         let response = app
@@ -170,5 +188,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK, "Sorting should work");
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 }

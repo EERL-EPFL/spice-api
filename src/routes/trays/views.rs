@@ -46,7 +46,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::setup_test_app;
+    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use serde_json::json;
@@ -54,7 +54,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tray_configuration_crud() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test creating a tray configuration
         let tray_config_data = json!({
@@ -98,11 +102,18 @@ mod tests {
             StatusCode::OK,
             "Failed to get tray configurations"
         );
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_tray_configuration_validation() {
+        let db = setup_test_db().await;
         let app = setup_test_app().await;
+
+        // Clean up any existing test data
+        cleanup_test_data(&db).await;
 
         // Test creating tray config with empty name
         let invalid_data = json!({
@@ -126,5 +137,8 @@ mod tests {
             response.status().is_client_error(),
             "Should reject invalid tray configuration data"
         );
+
+        // Clean up after test
+        cleanup_test_data(&db).await;
     }
 }
