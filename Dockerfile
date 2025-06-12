@@ -17,6 +17,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY ./src /app/src
 COPY ./migration/ /app/migration/
+COPY ./entity/ /app/entity/
 COPY Cargo.lock Cargo.toml /app/
 
 RUN cargo build --release --bin spice-api
