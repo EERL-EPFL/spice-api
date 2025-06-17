@@ -2,13 +2,154 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
 use sea_orm::{
-    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
-    entity::prelude::*,
+    ActiveModelTrait, ActiveValue, ConnectionTrait, DatabaseConnection, EntityTrait,
+    TransactionTrait, entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use spice_entity::experiments::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+// Utility function to convert coordinate string (e.g., "A1") to x,y coordinates
+fn parse_coordinate(coord: &str) -> Option<(i16, i16)> {
+    if coord.is_empty() {
+        return None;
+    }
+
+    let mut chars = coord.chars();
+    let col_char = chars.next()?;
+    let row_str: String = chars.collect();
+
+    // Convert column letter to number (A=1, B=2, etc.)
+    let col = (col_char.to_ascii_uppercase() as u8 - b'A' + 1) as i16;
+    let row = row_str.parse::<i16>().ok()?;
+
+    Some((col, row))
+}
+
+// Convert regions input to active models
+async fn create_region_active_models(
+    experiment_id: Uuid,
+    regions: Vec<RegionInput>,
+    _db: &impl ConnectionTrait,
+) -> Result<Vec<spice_entity::regions::ActiveModel>, DbErr> {
+    let mut active_models = Vec::new();
+
+    for region in regions {
+        let (upper_left_x, upper_left_y) = region
+            .upper_left
+            .as_ref()
+            .and_then(|s| parse_coordinate(s))
+            .map(|(x, y)| (Some(x), Some(y)))
+            .unwrap_or((None, None));
+
+        let (lower_right_x, lower_right_y) = region
+            .lower_right
+            .as_ref()
+            .and_then(|s| parse_coordinate(s))
+            .map(|(x, y)| (Some(x), Some(y)))
+            .unwrap_or((None, None));
+
+        let dilution_factor = region.dilution.as_ref().and_then(|s| s.parse::<i16>().ok());
+
+        let active_model = spice_entity::regions::ActiveModel {
+            id: ActiveValue::Set(Uuid::new_v4()),
+            experiment_id: ActiveValue::Set(experiment_id),
+            treatment_id: ActiveValue::Set(None), // TODO: Link to treatment if needed
+            name: ActiveValue::Set(region.name),
+            display_colour_hex: ActiveValue::Set(region.color),
+            tray_id: ActiveValue::Set(None), // TODO: Look up tray by name if needed
+            upper_left_corner_x: ActiveValue::Set(upper_left_x),
+            upper_left_corner_y: ActiveValue::Set(upper_left_y),
+            lower_right_corner_x: ActiveValue::Set(lower_right_x),
+            lower_right_corner_y: ActiveValue::Set(lower_right_y),
+            dilution_factor: ActiveValue::Set(dilution_factor),
+            created_at: ActiveValue::Set(chrono::Utc::now().into()),
+            last_updated: ActiveValue::Set(chrono::Utc::now().into()),
+        };
+
+        active_models.push(active_model);
+    }
+
+    Ok(active_models)
+}
+
+// Convert region model back to RegionInput for response
+fn region_model_to_input(region: spice_entity::regions::Model) -> RegionInput {
+    let upper_left = match (region.upper_left_corner_x, region.upper_left_corner_y) {
+        (Some(x), Some(y)) => {
+            let col_char = (b'A' + (x - 1) as u8) as char;
+            Some(format!("{}{}", col_char, y))
+        }
+        _ => None,
+    };
+
+    let lower_right = match (region.lower_right_corner_x, region.lower_right_corner_y) {
+        (Some(x), Some(y)) => {
+            let col_char = (b'A' + (x - 1) as u8) as char;
+            Some(format!("{}{}", col_char, y))
+        }
+        _ => None,
+    };
+
+    RegionInput {
+        name: region.name,
+        tray_name: None, // TODO: Look up tray name by tray_id if needed
+        upper_left,
+        lower_right,
+        color: region.display_colour_hex,
+        sample: None, // TODO: Link to sample if needed
+        dilution: region.dilution_factor.map(|d| d.to_string()),
+    }
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct RegionInput {
+    pub name: Option<String>,
+    pub tray_name: Option<String>,
+    pub upper_left: Option<String>,  // e.g., "A1"
+    pub lower_right: Option<String>, // e.g., "C5"
+    pub color: Option<String>,       // hex color
+    pub sample: Option<String>,
+    pub dilution: Option<String>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+struct TrayRegions {
+    pub id: Uuid,
+    pub experiment_id: Uuid,
+    pub treatment_id: Option<Uuid>,
+    pub name: Option<String>,
+    pub display_colour_hex: Option<String>,
+    pub tray_id: Option<i16>,
+    pub upper_left_corner_x: Option<i16>,
+    pub upper_left_corner_y: Option<i16>,
+    pub lower_right_corner_x: Option<i16>,
+    pub lower_right_corner_y: Option<i16>,
+    pub dilution_factor: Option<i16>,
+    pub created_at: DateTime<Utc>,
+    pub last_updated: DateTime<Utc>,
+}
+
+impl From<spice_entity::regions::Model> for TrayRegions {
+    fn from(region: spice_entity::regions::Model) -> Self {
+        Self {
+            id: region.id,
+            experiment_id: region.experiment_id,
+            treatment_id: region.treatment_id,
+            name: region.name,
+            display_colour_hex: region.display_colour_hex,
+            tray_id: region.tray_id,
+            upper_left_corner_x: region.upper_left_corner_x,
+            upper_left_corner_y: region.upper_left_corner_y,
+            lower_right_corner_x: region.lower_right_corner_x,
+            lower_right_corner_y: region.lower_right_corner_y,
+            dilution_factor: region.dilution_factor,
+            created_at: region.created_at.into(),
+            last_updated: region.last_updated.into(),
+        }
+    }
+}
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::experiments::ActiveModel"]
@@ -31,6 +172,8 @@ pub struct Experiment {
     remarks: Option<String>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     assets: Vec<crate::routes::assets::models::Asset>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    regions: Vec<RegionInput>,
 }
 
 impl From<Model> for Experiment {
@@ -50,6 +193,7 @@ impl From<Model> for Experiment {
             is_calibration: model.is_calibration,
             remarks: model.remarks,
             assets: vec![],
+            regions: vec![],
         }
     }
 }
@@ -83,10 +227,45 @@ impl CRUDResource for Experiment {
             .all(db)
             .await?;
 
+        let regions = model
+            .find_related(spice_entity::regions::Entity)
+            .all(db)
+            .await?
+            .into_iter()
+            .map(region_model_to_input)
+            .collect();
+
         let mut model: Self = model.into();
         model.assets = s3_assets.into_iter().map(Into::into).collect();
+        model.regions = regions;
 
         Ok(model)
+    }
+
+    async fn create(db: &DatabaseConnection, data: Self::CreateModel) -> Result<Self, DbErr> {
+        let txn = db.begin().await?;
+
+        // Store regions before conversion since they're not part of the DB model
+        let regions_to_create = data.regions.clone();
+
+        // Create the experiment first
+        let experiment_model: Self::ActiveModelType = data.into();
+        let experiment = experiment_model.insert(&txn).await?;
+
+        // Handle regions if provided
+        if !regions_to_create.is_empty() {
+            let region_models =
+                create_region_active_models(experiment.id, regions_to_create, &txn).await?;
+
+            for region_model in region_models {
+                region_model.insert(&txn).await?;
+            }
+        }
+
+        txn.commit().await?;
+
+        // Return the complete experiment with regions
+        Self::get_one(db, experiment.id).await
     }
 
     async fn update(
@@ -94,8 +273,10 @@ impl CRUDResource for Experiment {
         id: Uuid,
         update_data: Self::UpdateModel,
     ) -> Result<Self, DbErr> {
+        let txn = db.begin().await?;
+
         let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
-            .one(db)
+            .one(&txn)
             .await?
             .ok_or(DbErr::RecordNotFound(format!(
                 "{} not found",
@@ -103,9 +284,30 @@ impl CRUDResource for Experiment {
             )))?
             .into();
 
-        let updated_model = update_data.merge_into_activemodel(existing);
-        let updated = updated_model.update(db).await?;
-        Ok(Self::from(updated))
+        let updated_model = update_data.clone().merge_into_activemodel(existing);
+        let updated = updated_model.update(&txn).await?;
+
+        // Handle regions update - delete existing regions and create new ones
+        if !update_data.regions.is_empty() {
+            // Delete existing regions for this experiment
+            spice_entity::regions::Entity::delete_many()
+                .filter(spice_entity::regions::Column::ExperimentId.eq(id))
+                .exec(&txn)
+                .await?;
+
+            // Create new regions
+            let region_models =
+                create_region_active_models(id, update_data.regions.clone(), &txn).await?;
+
+            for region_model in region_models {
+                region_model.insert(&txn).await?;
+            }
+        }
+
+        txn.commit().await?;
+
+        // Return the complete experiment with regions
+        Self::get_one(db, id).await
     }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {

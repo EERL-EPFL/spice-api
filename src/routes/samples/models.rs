@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
-use sea_orm::{ActiveModelTrait, Set};
-use sea_orm::{ActiveValue, DatabaseConnection, EntityTrait, entity::prelude::*};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue, Condition, DatabaseConnection, DbErr, EntityTrait, Order,
+    QueryOrder, QuerySelect, Related, Set, entity::prelude::*,
+};
 use serde::{Deserialize, Serialize};
 use spice_entity::samples::Model;
 use utoipa::ToSchema;
@@ -101,6 +103,44 @@ impl CRUDResource for Sample {
     const RESOURCE_NAME_SINGULAR: &'static str = "sample";
     const RESOURCE_DESCRIPTION: &'static str =
         "This resource manages samples associated with experiments.";
+
+    async fn get_all(
+        db: &DatabaseConnection,
+        condition: Condition,
+        order_column: Self::ColumnType,
+        order_direction: Order,
+        offset: u64,
+        limit: u64,
+    ) -> Result<Vec<Self>, DbErr> {
+        let models = Self::EntityType::find()
+            .filter(condition)
+            .order_by(order_column, order_direction)
+            .offset(offset)
+            .limit(limit)
+            .all(db)
+            .await?;
+
+        let treatments_vec = models
+            .load_many(spice_entity::treatments::Entity, db)
+            .await?;
+
+        let mut models: Vec<Self> = models.into_iter().map(Self::from).collect();
+        for (i, model) in models.iter_mut().enumerate() {
+            // treatments_vec[i] is Vec<spice_entity::treatments::Model>
+            model.treatments = treatments_vec[i]
+                .iter()
+                .cloned()
+                .map(SampleTreatment::from)
+                .collect();
+        }
+        if models.is_empty() {
+            return Err(DbErr::RecordNotFound(format!(
+                "{} not found",
+                Self::RESOURCE_NAME_PLURAL
+            )));
+        }
+        Ok(models)
+    }
 
     async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
         let model =
