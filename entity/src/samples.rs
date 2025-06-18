@@ -13,10 +13,8 @@ pub struct Model {
     pub r#type: SampleType,
     pub start_time: Option<DateTimeWithTimeZone>,
     pub stop_time: Option<DateTimeWithTimeZone>,
-    #[sea_orm(column_type = "Double", nullable)]
-    pub flow_litres_per_minute: Option<f64>,
-    #[sea_orm(column_type = "Double", nullable)]
-    pub total_volume: Option<f64>,
+    pub flow_litres_per_minute: Option<Decimal>,
+    pub total_volume: Option<Decimal>,
     #[sea_orm(column_type = "Text", nullable)]
     pub material_description: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]

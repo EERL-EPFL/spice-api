@@ -20,7 +20,7 @@ pub struct Treatment {
     created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
-    enzyme_volume_litres: Option<f64>,
+    enzyme_volume_litres: Option<Decimal>,
 }
 
 impl From<Model> for Treatment {

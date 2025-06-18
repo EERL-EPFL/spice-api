@@ -173,7 +173,7 @@ pub struct TreatmentInfo {
     pub id: Uuid,
     pub name: Option<String>,
     pub notes: Option<String>,
-    pub enzyme_volume_litres: Option<f64>,
+    pub enzyme_volume_litres: Option<Decimal>,
     pub sample: Option<SampleInfo>,
 }
 

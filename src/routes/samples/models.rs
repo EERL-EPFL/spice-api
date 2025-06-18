@@ -15,7 +15,7 @@ pub struct SampleTreatment {
     pub id: Uuid,
     pub name: Option<String>,
     pub notes: Option<String>,
-    pub enzyme_volume_litres: Option<f64>,
+    pub enzyme_volume_litres: Option<Decimal>,
 }
 impl From<spice_entity::treatments::Model> for SampleTreatment {
     fn from(model: spice_entity::treatments::Model) -> Self {
@@ -53,8 +53,8 @@ pub struct Sample {
     longitude: Option<Decimal>,
     start_time: Option<DateTime<Utc>>,
     stop_time: Option<DateTime<Utc>>,
-    flow_litres_per_minute: Option<f64>,
-    total_volume: Option<f64>,
+    flow_litres_per_minute: Option<Decimal>,
+    total_volume: Option<Decimal>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     pub treatments: Vec<SampleTreatment>,
 }

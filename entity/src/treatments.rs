@@ -14,8 +14,7 @@ pub struct Model {
     pub sample_id: Option<Uuid>,
     pub last_updated: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
-    #[sea_orm(column_type = "Double", nullable)]
-    pub enzyme_volume_litres: Option<f64>,
+    pub enzyme_volume_litres: Option<Decimal>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
