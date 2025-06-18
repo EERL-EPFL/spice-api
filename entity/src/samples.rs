@@ -21,11 +21,11 @@ pub struct Model {
     pub extraction_procedure: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub filter_substrate: Option<String>,
-    pub suspension_volume_liters: Option<Decimal>,
-    pub air_volume_liters: Option<Decimal>,
-    pub water_volume_liters: Option<Decimal>,
+    pub suspension_volume_litres: Option<Decimal>,
+    pub air_volume_litres: Option<Decimal>,
+    pub water_volume_litres: Option<Decimal>,
     pub initial_concentration_gram_l: Option<Decimal>,
-    pub well_volume_liters: Option<Decimal>,
+    pub well_volume_litres: Option<Decimal>,
     #[sea_orm(column_type = "Text", nullable)]
     pub remarks: Option<String>,
     #[sea_orm(column_type = "Decimal(Some((9, 6)))", nullable)]
