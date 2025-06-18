@@ -32,7 +32,7 @@ pub struct Model {
     pub longitude: Option<Decimal>,
     #[sea_orm(column_type = "Decimal(Some((9, 6)))", nullable)]
     pub latitude: Option<Decimal>,
-    pub campaign_id: Option<Uuid>,
+    pub location_id: Option<Uuid>,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
 }
@@ -40,20 +40,20 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::campaign::Entity",
-        from = "Column::CampaignId",
-        to = "super::campaign::Column::Id",
+        belongs_to = "super::locations::Entity",
+        from = "Column::LocationId",
+        to = "super::locations::Column::Id",
         on_update = "NoAction",
         on_delete = "NoAction"
     )]
-    Campaign,
+    Locations,
     #[sea_orm(has_many = "super::treatments::Entity")]
     Treatments,
 }
 
-impl Related<super::campaign::Entity> for Entity {
+impl Related<super::locations::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Campaign.def()
+        Relation::Locations.def()
     }
 }
 

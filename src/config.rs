@@ -156,6 +156,8 @@ pub mod test_helpers {
         let _ = spice_entity::tray_configurations::Entity::delete_many()
             .exec(db)
             .await;
-        let _ = spice_entity::campaign::Entity::delete_many().exec(db).await;
+        let _ = spice_entity::locations::Entity::delete_many()
+            .exec(db)
+            .await;
     }
 }

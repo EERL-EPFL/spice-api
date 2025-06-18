@@ -2,10 +2,11 @@
 
 pub mod prelude;
 
-pub mod campaign;
 pub mod experiments;
 pub mod freezing_results;
 pub mod inp_concentrations;
+pub mod locations;
+pub mod projects;
 pub mod regions;
 pub mod s3_assets;
 pub mod samples;

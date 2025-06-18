@@ -1,4 +1,4 @@
-use super::models::{Location, LocationCreate, LocationUpdate};
+use super::models::{Project, ProjectCreate, ProjectUpdate};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum::{extract::Extension, response::IntoResponse};
@@ -6,11 +6,11 @@ use axum_keycloak_auth::{PassthroughMode, decode::KeycloakToken, layer::Keycloak
 use crudcrate::{CRUDResource, crud_handlers};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-crud_handlers!(Location, LocationUpdate, LocationCreate);
+crud_handlers!(Project, ProjectUpdate, ProjectCreate);
 
 pub fn router(state: &AppState) -> OpenApiRouter
 where
-    Location: CRUDResource,
+    Project: CRUDResource,
 {
     let mut mutating_router = OpenApiRouter::new()
         .routes(routes!(get_one_handler))
@@ -35,7 +35,7 @@ where
     } else {
         println!(
             "Warning: Mutating routes of {} router are not protected",
-            Location::RESOURCE_NAME_PLURAL
+            Project::RESOURCE_NAME_PLURAL
         );
     }
 
@@ -50,7 +50,7 @@ where
         (status = axum::http::StatusCode::UNAUTHORIZED, description = "Unauthorized access"),
         (status = axum::http::StatusCode::INTERNAL_SERVER_ERROR, description = "Internal Server Error")
     ),
-    operation_id = "debug_token",
+    operation_id = "debug_token_projects",
     summary = "Debug Keycloak token",
     description = "Prints the Keycloak token payload to the console for debugging purposes."
 )]
@@ -68,19 +68,18 @@ mod tests {
     use tower::ServiceExt;
 
     #[tokio::test]
-    async fn test_location_crud_operations() {
+    async fn test_project_crud_operations() {
         let db = setup_test_db().await;
         let app = setup_test_app().await;
 
         // Clean up any existing test data
         cleanup_test_data(&db).await;
 
-        // Test creating a location
-        let location_data = json!({
-            "name": "Test Location API",
-            "comment": "Location created via API test",
-            "start_date": "2024-06-01T08:00:00Z",
-            "end_date": "2024-12-31T18:00:00Z"
+        // Test creating a project
+        let project_data = json!({
+            "name": "Test Project API",
+            "note": "Project created via API test",
+            "colour": "#FF5733"
         });
 
         let response = app
@@ -88,54 +87,54 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/locations")
+                    .uri("/api/projects")
                     .header("content-type", "application/json")
-                    .body(Body::from(location_data.to_string()))
+                    .body(Body::from(project_data.to_string()))
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert!(response.status().is_success(), "Failed to create location");
+        assert!(response.status().is_success(), "Failed to create project");
 
-        // Test getting all locations
+        // Test getting all projects
         let response = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/locations")
+                    .uri("/api/projects")
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK, "Failed to get locations");
+        assert_eq!(response.status(), StatusCode::OK, "Failed to get projects");
 
         // Clean up after test
         cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
-    async fn test_location_validation() {
+    async fn test_project_validation() {
         let db = setup_test_db().await;
         let app = setup_test_app().await;
 
         // Clean up any existing test data
         cleanup_test_data(&db).await;
 
-        // Test creating location with invalid data
+        // Test creating project with invalid data
         let invalid_data = json!({
             "name": null, // Empty name should be invalid
-            "comment": "Invalid location"
+            "note": "Invalid project"
         });
 
         let response = app
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/locations")
+                    .uri("/api/projects")
                     .header("content-type", "application/json")
                     .body(Body::from(invalid_data.to_string()))
                     .unwrap(),
@@ -153,7 +152,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_location_filtering_and_pagination() {
+    async fn test_project_filtering_and_pagination() {
         let db = setup_test_db().await;
         let app = setup_test_app().await;
 
@@ -166,7 +165,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/locations?limit=5&offset=0")
+                    .uri("/api/projects?limit=5&offset=0")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -180,7 +179,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/locations?sort[name]=asc")
+                    .uri("/api/projects?sort[name]=asc")
                     .body(Body::empty())
                     .unwrap(),
             )

@@ -6,13 +6,13 @@ use sea_orm::{
     entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use spice_entity::campaign::Model;
+use spice_entity::locations::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "spice_entity::campaign::ActiveModel"]
-pub struct Campaign {
+#[active_model = "spice_entity::locations::ActiveModel"]
+pub struct Location {
     #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
@@ -23,13 +23,14 @@ pub struct Campaign {
     name: String,
     start_date: Option<DateTime<Utc>>,
     end_date: Option<DateTime<Utc>>,
+    project_id: Option<Uuid>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     experiments: Vec<crate::routes::experiments::models::Experiment>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     samples: Vec<crate::routes::samples::models::Sample>,
 }
 
-impl From<Model> for Campaign {
+impl From<Model> for Location {
     fn from(model: Model) -> Self {
         Self {
             last_updated: model.last_updated.into(),
@@ -39,6 +40,7 @@ impl From<Model> for Campaign {
             name: model.name,
             start_date: model.start_date.map(|dt| dt.with_timezone(&Utc)),
             end_date: model.end_date.map(|dt| dt.with_timezone(&Utc)),
+            project_id: model.project_id,
             experiments: vec![],
             samples: vec![],
         }
@@ -46,17 +48,17 @@ impl From<Model> for Campaign {
 }
 
 #[async_trait]
-impl CRUDResource for Campaign {
-    type EntityType = spice_entity::campaign::Entity;
-    type ColumnType = spice_entity::campaign::Column;
-    type ActiveModelType = spice_entity::campaign::ActiveModel;
-    type CreateModel = CampaignCreate;
-    type UpdateModel = CampaignUpdate;
+impl CRUDResource for Location {
+    type EntityType = spice_entity::locations::Entity;
+    type ColumnType = spice_entity::locations::Column;
+    type ActiveModelType = spice_entity::locations::ActiveModel;
+    type CreateModel = LocationCreate;
+    type UpdateModel = LocationUpdate;
 
-    const ID_COLUMN: Self::ColumnType = spice_entity::campaign::Column::Id;
-    const RESOURCE_NAME_PLURAL: &'static str = "campaigns";
-    const RESOURCE_NAME_SINGULAR: &'static str = "campaign";
-    const RESOURCE_DESCRIPTION: &'static str = "This resource allows the data hierarchically beneath each area to be allocated to a specific campaign. This is useful for grouping data together for analysis. The colour provides a visual representation of the campaign in the UI.";
+    const ID_COLUMN: Self::ColumnType = spice_entity::locations::Column::Id;
+    const RESOURCE_NAME_PLURAL: &'static str = "locations";
+    const RESOURCE_NAME_SINGULAR: &'static str = "location";
+    const RESOURCE_DESCRIPTION: &'static str = "This resource allows the data hierarchically beneath each area to be allocated to a specific location. This is useful for grouping data together for analysis. Locations can be assigned to projects for better organization.";
 
     async fn get_all(
         db: &DatabaseConnection,
@@ -107,7 +109,7 @@ impl CRUDResource for Campaign {
             sample_objs.push(sample_obj);
         }
 
-        // Get the experiments related to each campaign, by finding all of the
+        // Get the experiments related to each location, by finding all of the
         // regions that the sample treatments
         // have been used in, and then the experiment via the region
         // Therefore samples -> treatments -> regions -> experiments
@@ -174,6 +176,7 @@ impl CRUDResource for Campaign {
             ("last_updated", Self::ColumnType::LastUpdated),
             ("start_date", Self::ColumnType::StartDate),
             ("end_date", Self::ColumnType::EndDate),
+            ("project_id", Self::ColumnType::ProjectId),
         ]
     }
 
@@ -181,6 +184,7 @@ impl CRUDResource for Campaign {
         vec![
             ("name", Self::ColumnType::Name),
             ("comment", Self::ColumnType::Comment),
+            ("project_id", Self::ColumnType::ProjectId),
         ]
     }
 }

@@ -1,6 +1,7 @@
 pub mod assets;
 mod campaigns;
 mod experiments;
+mod projects;
 mod samples;
 mod trays;
 mod treatments;
@@ -64,7 +65,8 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     // Build the router with routes from the plots module
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(crate::common::views::router(&app_state)) // Root routes
-        .nest("/api/campaigns", campaigns::views::router(&app_state))
+        .nest("/api/locations", campaigns::views::router(&app_state))
+        .nest("/api/projects", projects::views::router(&app_state))
         .nest("/api/experiments", experiments::views::router(&app_state))
         .nest("/api/samples", samples::views::router(&app_state))
         .nest("/api/assets", assets::views::router(&app_state))

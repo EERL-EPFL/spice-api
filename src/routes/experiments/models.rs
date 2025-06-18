@@ -73,7 +73,7 @@ fn create_region_active_models(
     active_models
 }
 
-// Fetch treatment information with sample and campaign data
+// Fetch treatment information with sample and location data
 async fn fetch_treatment_info(
     treatment_id: Uuid,
     db: &impl ConnectionTrait,
@@ -89,14 +89,14 @@ async fn fetch_treatment_info(
                 .await?;
 
             if let Some(sample) = sample {
-                let campaign_info = if let Some(campaign_id) = sample.campaign_id {
-                    let campaign = spice_entity::campaign::Entity::find_by_id(campaign_id)
+                let location_info = if let Some(location_id) = sample.location_id {
+                    let location = spice_entity::locations::Entity::find_by_id(location_id)
                         .one(db)
                         .await?;
 
-                    campaign.map(|c| CampaignInfo {
-                        id: c.id,
-                        name: c.name,
+                    location.map(|l| LocationInfo {
+                        id: l.id,
+                        name: l.name,
                     })
                 } else {
                     None
@@ -105,7 +105,7 @@ async fn fetch_treatment_info(
                 Some(SampleInfo {
                     id: sample.id,
                     name: sample.name,
-                    campaign: campaign_info,
+                    location: location_info,
                 })
             } else {
                 None
@@ -181,11 +181,11 @@ pub struct TreatmentInfo {
 pub struct SampleInfo {
     pub id: Uuid,
     pub name: String,
-    pub campaign: Option<CampaignInfo>,
+    pub location: Option<LocationInfo>,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct CampaignInfo {
+pub struct LocationInfo {
     pub id: Uuid,
     pub name: String,
 }

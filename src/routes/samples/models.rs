@@ -48,7 +48,7 @@ pub struct Sample {
     created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
     last_updated: DateTime<Utc>,
-    campaign_id: Option<Uuid>,
+    location_id: Option<Uuid>,
     latitude: Option<Decimal>,
     longitude: Option<Decimal>,
     start_time: Option<DateTime<Utc>>,
@@ -80,7 +80,7 @@ impl From<Model> for Sample {
             last_updated: model.last_updated.into(),
             flow_litres_per_minute: model.flow_litres_per_minute,
             total_volume: model.total_volume,
-            campaign_id: model.campaign_id,
+            location_id: model.location_id,
             latitude: model.latitude,
             longitude: model.longitude,
             treatments: vec![],
@@ -303,7 +303,7 @@ impl CRUDResource for Sample {
             ("well_volume_liters", Self::ColumnType::WellVolumeLiters),
             ("created_at", Self::ColumnType::CreatedAt),
             ("last_updated", Self::ColumnType::LastUpdated),
-            ("campaign_id", Self::ColumnType::CampaignId),
+            ("location_id", Self::ColumnType::LocationId),
             ("remarks", Self::ColumnType::Remarks),
         ]
     }
