@@ -12,10 +12,10 @@ use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct SampleTreatment {
-    id: Uuid,
-    name: Option<String>,
-    notes: Option<String>,
-    enzyme_volume_microlitres: Option<f64>,
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub notes: Option<String>,
+    pub enzyme_volume_microlitres: Option<f64>,
 }
 impl From<spice_entity::treatments::Model> for SampleTreatment {
     fn from(model: spice_entity::treatments::Model) -> Self {
@@ -57,7 +57,7 @@ pub struct Sample {
     flow_litres_per_minute: Option<f64>,
     total_volume: Option<f64>,
     #[crudcrate(non_db_attr = true, default = vec![])]
-    treatments: Vec<SampleTreatment>,
+    pub treatments: Vec<SampleTreatment>,
 }
 
 impl From<Model> for Sample {

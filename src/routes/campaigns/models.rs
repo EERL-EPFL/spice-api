@@ -92,22 +92,57 @@ impl CRUDResource for Campaign {
             .all(db)
             .await?;
 
-        let experiments: Vec<crate::routes::experiments::models::Experiment> = vec![];
+        let mut sample_objs: Vec<crate::routes::samples::models::Sample> = vec![];
+        for sample in samples {
+            let treatments = sample
+                .find_related(spice_entity::treatments::Entity)
+                .all(db)
+                .await?;
 
-        // Replace this as Sample is now via Treatments
-        // for sample in &samples {
-        //     let sample_experiments = sample
-        //         .find_related(spice_entity::experiments::Entity)
-        //         .all(db)
-        //         .await?;
-        //     for experiment in sample_experiments {
-        //         experiments.push(experiment.into());
-        //     }
-        // }
+            let mut sample_obj: crate::routes::samples::models::Sample = sample.into();
+            sample_obj.treatments = treatments
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect();
+            sample_objs.push(sample_obj);
+        }
+
+        // Get the experiments related to each campaign, by finding all of the
+        // regions that the sample treatments
+        // have been used in, and then the experiment via the region
+        // Therefore samples -> treatments -> regions -> experiments
+
+        // So first, get a list of all treatment IDs from the samples above
+        let treatment_ids: Vec<Uuid> = sample_objs
+            .iter()
+            .flat_map(|s| s.treatments.iter().map(|t| t.id))
+            .collect();
+        println!("Treatment IDs: {:?}", treatment_ids);
+        // Then find all regions that have these treatments
+        let regions = spice_entity::regions::Entity::find()
+            .filter(spice_entity::regions::Column::TreatmentId.is_in(treatment_ids))
+            .all(db)
+            .await?;
+        println!("Regions found: {:?}", regions.len());
+
+        // Now find all experiments related to these regions (experiment id is in region)
+        let experiments = spice_entity::experiments::Entity::find()
+            .filter(
+                spice_entity::experiments::Column::Id
+                    .is_in(regions.iter().map(|r| r.experiment_id).collect::<Vec<_>>()),
+            )
+            .all(db)
+            .await?;
+
+        // Convert experiments to the appropriate model
+        let experiments: Vec<crate::routes::experiments::models::Experiment> = experiments
+            .into_iter()
+            .map(std::convert::Into::into)
+            .collect();
 
         let mut model: Self = model.into();
-        model.experiments = experiments;
-        model.samples = samples.into_iter().map(Into::into).collect();
+        model.experiments = experiments; // Assign experiments to the model
+        model.samples = sample_objs;
 
         Ok(model)
     }

@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, ConnectionTrait, DatabaseConnection, EntityTrait,
-    TransactionTrait, entity::prelude::*,
+    ActiveModelTrait, ActiveValue, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    Order, QueryOrder, QuerySelect, TransactionTrait, entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use spice_entity::experiments::Model;
@@ -21,14 +21,14 @@ fn parse_coordinate(coord: &str) -> Option<(i16, i16)> {
     let row_str: String = chars.collect();
 
     // Convert column letter to number (A=1, B=2, etc.)
-    let col = (col_char.to_ascii_uppercase() as u8 - b'A' + 1) as i16;
+    let col = i16::from(col_char.to_ascii_uppercase() as u8 - b'A' + 1);
     let row = row_str.parse::<i16>().ok()?;
 
     Some((col, row))
 }
 
 // Convert regions input to active models
-async fn create_region_active_models(
+fn create_region_active_models(
     experiment_id: Uuid,
     regions: Vec<RegionInput>,
     _db: &impl ConnectionTrait,
@@ -55,7 +55,7 @@ async fn create_region_active_models(
         let active_model = spice_entity::regions::ActiveModel {
             id: ActiveValue::Set(Uuid::new_v4()),
             experiment_id: ActiveValue::Set(experiment_id),
-            treatment_id: ActiveValue::Set(None), // TODO: Link to treatment if needed
+            treatment_id: ActiveValue::Set(region.treatment_id),
             name: ActiveValue::Set(region.name),
             display_colour_hex: ActiveValue::Set(region.color),
             tray_id: ActiveValue::Set(None), // TODO: Look up tray by name if needed
@@ -74,33 +74,120 @@ async fn create_region_active_models(
     Ok(active_models)
 }
 
+// Fetch treatment information with sample and campaign data
+async fn fetch_treatment_info(
+    treatment_id: Uuid,
+    db: &impl ConnectionTrait,
+) -> Result<Option<TreatmentInfo>, DbErr> {
+    let treatment = spice_entity::treatments::Entity::find_by_id(treatment_id)
+        .one(db)
+        .await?;
+
+    if let Some(treatment) = treatment {
+        let sample_info = if let Some(sample_id) = treatment.sample_id {
+            let sample = spice_entity::samples::Entity::find_by_id(sample_id)
+                .one(db)
+                .await?;
+
+            if let Some(sample) = sample {
+                let campaign_info = if let Some(campaign_id) = sample.campaign_id {
+                    let campaign = spice_entity::campaign::Entity::find_by_id(campaign_id)
+                        .one(db)
+                        .await?;
+
+                    campaign.map(|c| CampaignInfo {
+                        id: c.id,
+                        name: c.name,
+                    })
+                } else {
+                    None
+                };
+
+                Some(SampleInfo {
+                    id: sample.id,
+                    name: sample.name,
+                    campaign: campaign_info,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(Some(TreatmentInfo {
+            id: treatment.id,
+            name: treatment.name,
+            notes: treatment.notes,
+            enzyme_volume_microlitres: treatment.enzyme_volume_microlitres,
+            sample: sample_info,
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
 // Convert region model back to RegionInput for response
-fn region_model_to_input(region: spice_entity::regions::Model) -> RegionInput {
+async fn region_model_to_input_with_treatment(
+    region: spice_entity::regions::Model,
+    db: &impl ConnectionTrait,
+) -> Result<RegionInput, DbErr> {
     let upper_left = match (region.upper_left_corner_x, region.upper_left_corner_y) {
-        (Some(x), Some(y)) => {
+        (Some(x), Some(y)) if x > 0 && x <= 26 => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let col_char = (b'A' + (x - 1) as u8) as char;
-            Some(format!("{}{}", col_char, y))
+            Some(format!("{col_char}{y}"))
         }
         _ => None,
     };
 
     let lower_right = match (region.lower_right_corner_x, region.lower_right_corner_y) {
-        (Some(x), Some(y)) => {
+        (Some(x), Some(y)) if x > 0 && x <= 26 => {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let col_char = (b'A' + (x - 1) as u8) as char;
-            Some(format!("{}{}", col_char, y))
+            Some(format!("{col_char}{y}"))
         }
         _ => None,
     };
 
-    RegionInput {
+    let treatment_info = if let Some(treatment_id) = region.treatment_id {
+        fetch_treatment_info(treatment_id, db).await?
+    } else {
+        None
+    };
+
+    Ok(RegionInput {
         name: region.name,
         tray_name: None, // TODO: Look up tray name by tray_id if needed
         upper_left,
         lower_right,
         color: region.display_colour_hex,
-        sample: None, // TODO: Link to sample if needed
         dilution: region.dilution_factor.map(|d| d.to_string()),
-    }
+        treatment_id: region.treatment_id,
+        treatment: treatment_info,
+    })
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct TreatmentInfo {
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub notes: Option<String>,
+    pub enzyme_volume_microlitres: Option<f64>,
+    pub sample: Option<SampleInfo>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct SampleInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub campaign: Option<CampaignInfo>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct CampaignInfo {
+    pub id: Uuid,
+    pub name: String,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
@@ -110,8 +197,10 @@ pub struct RegionInput {
     pub upper_left: Option<String>,  // e.g., "A1"
     pub lower_right: Option<String>, // e.g., "C5"
     pub color: Option<String>,       // hex color
-    pub sample: Option<String>,
     pub dilution: Option<String>,
+    pub treatment_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub treatment: Option<TreatmentInfo>,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
@@ -230,14 +319,17 @@ impl CRUDResource for Experiment {
         let regions = model
             .find_related(spice_entity::regions::Entity)
             .all(db)
-            .await?
-            .into_iter()
-            .map(region_model_to_input)
-            .collect();
+            .await?;
+
+        let mut regions_with_treatment = Vec::new();
+        for region in regions {
+            let region_input = region_model_to_input_with_treatment(region, db).await?;
+            regions_with_treatment.push(region_input);
+        }
 
         let mut model: Self = model.into();
         model.assets = s3_assets.into_iter().map(Into::into).collect();
-        model.regions = regions;
+        model.regions = regions_with_treatment;
 
         Ok(model)
     }
@@ -255,7 +347,7 @@ impl CRUDResource for Experiment {
         // Handle regions if provided
         if !regions_to_create.is_empty() {
             let region_models =
-                create_region_active_models(experiment.id, regions_to_create, &txn).await?;
+                create_region_active_models(experiment.id, regions_to_create, &txn)?;
 
             for region_model in region_models {
                 region_model.insert(&txn).await?;
@@ -285,7 +377,7 @@ impl CRUDResource for Experiment {
             .into();
 
         let updated_model = update_data.clone().merge_into_activemodel(existing);
-        let updated = updated_model.update(&txn).await?;
+        let _updated = updated_model.update(&txn).await?;
 
         // Handle regions update - delete existing regions and create new ones
         if !update_data.regions.is_empty() {
@@ -296,8 +388,7 @@ impl CRUDResource for Experiment {
                 .await?;
 
             // Create new regions
-            let region_models =
-                create_region_active_models(id, update_data.regions.clone(), &txn).await?;
+            let region_models = create_region_active_models(id, update_data.regions.clone(), &txn)?;
 
             for region_model in region_models {
                 region_model.insert(&txn).await?;
@@ -308,6 +399,51 @@ impl CRUDResource for Experiment {
 
         // Return the complete experiment with regions
         Self::get_one(db, id).await
+    }
+
+    async fn get_all(
+        db: &DatabaseConnection,
+        condition: Condition,
+        order_column: Self::ColumnType,
+        order_direction: Order,
+        offset: u64,
+        limit: u64,
+    ) -> Result<Vec<Self>, DbErr> {
+        let models = Self::EntityType::find()
+            .filter(condition)
+            .order_by(order_column, order_direction)
+            .offset(offset)
+            .limit(limit)
+            .all(db)
+            .await?;
+
+        let mut experiments = Vec::new();
+
+        for model in models {
+            let s3_assets = model
+                .find_related(spice_entity::s3_assets::Entity)
+                .all(db)
+                .await?;
+
+            let regions = model
+                .find_related(spice_entity::regions::Entity)
+                .all(db)
+                .await?;
+
+            let mut regions_with_treatment = Vec::new();
+            for region in regions {
+                let region_input = region_model_to_input_with_treatment(region, db).await?;
+                regions_with_treatment.push(region_input);
+            }
+
+            let mut experiment: Self = model.into();
+            experiment.assets = s3_assets.into_iter().map(Into::into).collect();
+            experiment.regions = regions_with_treatment;
+
+            experiments.push(experiment);
+        }
+
+        Ok(experiments)
     }
 
     fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
