@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
 use sea_orm::{
     ActiveModelTrait, ActiveValue, Condition, DatabaseConnection, DbErr, EntityTrait, Order,
-    QueryOrder, QuerySelect, Related, Set, entity::prelude::*,
+    QueryOrder, QuerySelect, Set, entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use spice_entity::samples::Model;
@@ -15,7 +15,7 @@ pub struct SampleTreatment {
     pub id: Uuid,
     pub name: Option<String>,
     pub notes: Option<String>,
-    pub enzyme_volume_microlitres: Option<f64>,
+    pub enzyme_volume_litres: Option<f64>,
 }
 impl From<spice_entity::treatments::Model> for SampleTreatment {
     fn from(model: spice_entity::treatments::Model) -> Self {
@@ -23,7 +23,7 @@ impl From<spice_entity::treatments::Model> for SampleTreatment {
             id: model.id,
             name: model.name,
             notes: model.notes,
-            enzyme_volume_microlitres: model.enzyme_volume_microlitres,
+            enzyme_volume_litres: model.enzyme_volume_litres,
         }
     }
 }
@@ -43,7 +43,6 @@ pub struct Sample {
     water_volume_liters: Option<Decimal>,
     initial_concentration_gram_l: Option<Decimal>,
     well_volume_liters: Option<Decimal>,
-    background_region_key: Option<String>,
     remarks: Option<String>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
     created_at: DateTime<Utc>,
@@ -76,7 +75,6 @@ impl From<Model> for Sample {
             water_volume_liters: model.water_volume_liters,
             initial_concentration_gram_l: model.initial_concentration_gram_l,
             well_volume_liters: model.well_volume_liters,
-            background_region_key: model.background_region_key,
             remarks: model.remarks,
             created_at: model.created_at.into(),
             last_updated: model.last_updated.into(),
@@ -212,8 +210,7 @@ impl CRUDResource for Sample {
                         existing.clone().into();
                     active_treatment.name = Set(treatment.name.clone());
                     active_treatment.notes = Set(treatment.notes.clone());
-                    active_treatment.enzyme_volume_microlitres =
-                        Set(treatment.enzyme_volume_microlitres);
+                    active_treatment.enzyme_volume_litres = Set(treatment.enzyme_volume_litres);
                     // sample_id should always be set
                     active_treatment.sample_id = Set(Some(id));
                     let _ = active_treatment.update(db).await?;
@@ -224,7 +221,7 @@ impl CRUDResource for Sample {
                         sample_id: Set(Some(id)),
                         name: Set(treatment.name.clone()),
                         notes: Set(treatment.notes.clone()),
-                        enzyme_volume_microlitres: Set(treatment.enzyme_volume_microlitres),
+                        enzyme_volume_litres: Set(treatment.enzyme_volume_litres),
                         ..Default::default()
                     };
                     let _ = active_treatment.insert(db).await?;
@@ -268,9 +265,7 @@ impl CRUDResource for Sample {
                     sample_id: ActiveValue::Set(Some(sample_id)),
                     name: ActiveValue::Set(treatment.name),
                     notes: ActiveValue::Set(treatment.notes),
-                    enzyme_volume_microlitres: ActiveValue::Set(
-                        treatment.enzyme_volume_microlitres,
-                    ),
+                    enzyme_volume_litres: ActiveValue::Set(treatment.enzyme_volume_litres),
                     ..Default::default()
                 };
                 let _ = active_treatment.insert(db).await?;
@@ -306,10 +301,6 @@ impl CRUDResource for Sample {
                 Self::ColumnType::InitialConcentrationGramL,
             ),
             ("well_volume_liters", Self::ColumnType::WellVolumeLiters),
-            (
-                "background_region_key",
-                Self::ColumnType::BackgroundRegionKey,
-            ),
             ("created_at", Self::ColumnType::CreatedAt),
             ("last_updated", Self::ColumnType::LastUpdated),
             ("campaign_id", Self::ColumnType::CampaignId),

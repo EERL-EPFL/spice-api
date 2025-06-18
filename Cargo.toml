@@ -1,6 +1,6 @@
 [package]
 name = "spice-api"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
 description = "API for managing SPICE lab data in the EERL lab"
 license = "MIT"

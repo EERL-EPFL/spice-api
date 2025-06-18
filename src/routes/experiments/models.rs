@@ -32,7 +32,7 @@ fn create_region_active_models(
     experiment_id: Uuid,
     regions: Vec<RegionInput>,
     _db: &impl ConnectionTrait,
-) -> Result<Vec<spice_entity::regions::ActiveModel>, DbErr> {
+) -> Vec<spice_entity::regions::ActiveModel> {
     let mut active_models = Vec::new();
 
     for region in regions {
@@ -40,15 +40,13 @@ fn create_region_active_models(
             .upper_left
             .as_ref()
             .and_then(|s| parse_coordinate(s))
-            .map(|(x, y)| (Some(x), Some(y)))
-            .unwrap_or((None, None));
+            .map_or((None, None), |(x, y)| (Some(x), Some(y)));
 
         let (lower_right_x, lower_right_y) = region
             .lower_right
             .as_ref()
             .and_then(|s| parse_coordinate(s))
-            .map(|(x, y)| (Some(x), Some(y)))
-            .unwrap_or((None, None));
+            .map_or((None, None), |(x, y)| (Some(x), Some(y)));
 
         let dilution_factor = region.dilution.as_ref().and_then(|s| s.parse::<i16>().ok());
 
@@ -64,6 +62,7 @@ fn create_region_active_models(
             lower_right_corner_x: ActiveValue::Set(lower_right_x),
             lower_right_corner_y: ActiveValue::Set(lower_right_y),
             dilution_factor: ActiveValue::Set(dilution_factor),
+            is_background_key: ActiveValue::Set(region.is_background_key.unwrap_or(false)),
             created_at: ActiveValue::Set(chrono::Utc::now().into()),
             last_updated: ActiveValue::Set(chrono::Utc::now().into()),
         };
@@ -71,7 +70,7 @@ fn create_region_active_models(
         active_models.push(active_model);
     }
 
-    Ok(active_models)
+    active_models
 }
 
 // Fetch treatment information with sample and campaign data
@@ -119,7 +118,7 @@ async fn fetch_treatment_info(
             id: treatment.id,
             name: treatment.name,
             notes: treatment.notes,
-            enzyme_volume_microlitres: treatment.enzyme_volume_microlitres,
+            enzyme_volume_litres: treatment.enzyme_volume_litres,
             sample: sample_info,
         }))
     } else {
@@ -164,6 +163,7 @@ async fn region_model_to_input_with_treatment(
         color: region.display_colour_hex,
         dilution: region.dilution_factor.map(|d| d.to_string()),
         treatment_id: region.treatment_id,
+        is_background_key: Some(region.is_background_key),
         treatment: treatment_info,
     })
 }
@@ -173,7 +173,7 @@ pub struct TreatmentInfo {
     pub id: Uuid,
     pub name: Option<String>,
     pub notes: Option<String>,
-    pub enzyme_volume_microlitres: Option<f64>,
+    pub enzyme_volume_litres: Option<f64>,
     pub sample: Option<SampleInfo>,
 }
 
@@ -199,6 +199,7 @@ pub struct RegionInput {
     pub color: Option<String>,       // hex color
     pub dilution: Option<String>,
     pub treatment_id: Option<Uuid>,
+    pub is_background_key: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub treatment: Option<TreatmentInfo>,
 }
@@ -243,7 +244,7 @@ impl From<spice_entity::regions::Model> for TrayRegions {
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
 #[active_model = "spice_entity::experiments::ActiveModel"]
 pub struct Experiment {
-    #[crudcrate(update_model = false, update_model = false, on_create = Uuid::new_v4())]
+    #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
     name: String,
     // sample_id: Uuid,
@@ -346,8 +347,7 @@ impl CRUDResource for Experiment {
 
         // Handle regions if provided
         if !regions_to_create.is_empty() {
-            let region_models =
-                create_region_active_models(experiment.id, regions_to_create, &txn)?;
+            let region_models = create_region_active_models(experiment.id, regions_to_create, &txn);
 
             for region_model in region_models {
                 region_model.insert(&txn).await?;
@@ -388,7 +388,7 @@ impl CRUDResource for Experiment {
                 .await?;
 
             // Create new regions
-            let region_models = create_region_active_models(id, update_data.regions.clone(), &txn)?;
+            let region_models = create_region_active_models(id, update_data.regions.clone(), &txn);
 
             for region_model in region_models {
                 region_model.insert(&txn).await?;

@@ -19,6 +19,7 @@ pub struct Model {
     pub lower_right_corner_x: Option<i16>,
     pub lower_right_corner_y: Option<i16>,
     pub dilution_factor: Option<i16>,
+    pub is_background_key: bool,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
 }

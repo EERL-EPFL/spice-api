@@ -29,8 +29,6 @@ pub struct Model {
     pub initial_concentration_gram_l: Option<Decimal>,
     pub well_volume_liters: Option<Decimal>,
     #[sea_orm(column_type = "Text", nullable)]
-    pub background_region_key: Option<String>,
-    #[sea_orm(column_type = "Text", nullable)]
     pub remarks: Option<String>,
     #[sea_orm(column_type = "Decimal(Some((9, 6)))", nullable)]
     pub longitude: Option<Decimal>,

@@ -81,7 +81,7 @@ mod tests {
                     "id": uuid::Uuid::new_v4(),
                     "name": "Test Treatment",
                     "notes": "Test treatment for API sample",
-                    "enzyme_volume_microlitres": 50.0,
+                    "enzyme_volume_litres": 50.0,
                 }
             ]
         });
