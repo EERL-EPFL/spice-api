@@ -4,7 +4,7 @@
 -- ** Project Site: pgmodeler.io
 -- ** Model Author: ---
 
-SET search_path TO pg_catalog,public;
+SET search_path TO public,pg_catalog;
 -- ddl-end --
 
 -- object: "uuid-ossp" | type: EXTENSION --
@@ -549,5 +549,3 @@ ALTER TABLE public.tray_configuration_assignments ADD CONSTRAINT fk_tray_assignm
 REFERENCES public.tray_configurations (id) MATCH SIMPLE
 ON DELETE NO ACTION ON UPDATE NO ACTION;
 -- ddl-end --
-
-
