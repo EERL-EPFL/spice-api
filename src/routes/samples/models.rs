@@ -7,16 +7,18 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use spice_entity::samples::Model;
+use spice_entity::sea_orm_active_enums::TreatmentName;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct SampleTreatment {
     pub id: Uuid,
-    pub name: Option<String>,
+    pub name: TreatmentName,
     pub notes: Option<String>,
     pub enzyme_volume_litres: Option<Decimal>,
 }
+
 impl From<spice_entity::treatments::Model> for SampleTreatment {
     fn from(model: spice_entity::treatments::Model) -> Self {
         Self {

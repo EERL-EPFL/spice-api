@@ -7,8 +7,7 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    #[sea_orm(column_type = "Text", nullable)]
-    pub name: Option<String>,
+    pub name: super::sea_orm_active_enums::TreatmentName,
     #[sea_orm(column_type = "Text", nullable)]
     pub notes: Option<String>,
     pub sample_id: Option<Uuid>,

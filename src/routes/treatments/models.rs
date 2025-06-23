@@ -4,6 +4,7 @@ use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
 
 use sea_orm::{ActiveValue, entity::prelude::*};
 use serde::{Deserialize, Serialize};
+use spice_entity::sea_orm_active_enums::TreatmentName;
 use spice_entity::treatments::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -13,7 +14,7 @@ use uuid::Uuid;
 pub struct Treatment {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
-    name: Option<String>,
+    name: TreatmentName,
     notes: Option<String>,
     sample_id: Option<Uuid>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]

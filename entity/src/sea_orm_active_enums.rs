@@ -18,3 +18,19 @@ pub enum SampleType {
     #[sea_orm(string_value = "pure_water")]
     PureWater,
 }
+
+#[derive(
+    Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
+)]
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "treatment_name")]
+pub enum TreatmentName {
+    #[sea_orm(string_value = "none")]
+    #[serde(rename = "none")]
+    None,
+    #[sea_orm(string_value = "heat")]
+    #[serde(rename = "heat")]
+    Heat,
+    #[sea_orm(string_value = "h2o2")]
+    #[serde(rename = "h2o2")]
+    H2o2,
+}

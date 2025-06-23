@@ -7,6 +7,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use spice_entity::experiments::Model;
+use spice_entity::sea_orm_active_enums::TreatmentName;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -126,7 +127,7 @@ async fn region_model_to_input_with_treatment(
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct TreatmentInfo {
     pub id: Uuid,
-    pub name: Option<String>,
+    pub name: TreatmentName,
     pub notes: Option<String>,
     pub enzyme_volume_litres: Option<Decimal>,
     pub sample: Option<SampleInfo>,
