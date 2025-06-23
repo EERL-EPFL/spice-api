@@ -8,7 +8,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub tray_id: Uuid,
-    pub row_label: String,
+    pub row_number: i32,
     pub column_number: i32,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,

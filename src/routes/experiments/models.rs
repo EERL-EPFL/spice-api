@@ -10,23 +10,6 @@ use spice_entity::experiments::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-// Utility function to convert coordinate string (e.g., "A1") to x,y coordinates
-fn parse_coordinate(coord: &str) -> Option<(i16, i16)> {
-    if coord.is_empty() {
-        return None;
-    }
-
-    let mut chars = coord.chars();
-    let col_char = chars.next()?;
-    let row_str: String = chars.collect();
-
-    // Convert column letter to number (A=1, B=2, etc.)
-    let col = i16::from(col_char.to_ascii_uppercase() as u8 - b'A' + 1);
-    let row = row_str.parse::<i16>().ok()?;
-
-    Some((col, row))
-}
-
 // Convert regions input to active models
 fn create_region_active_models(
     experiment_id: Uuid,
@@ -36,18 +19,6 @@ fn create_region_active_models(
     let mut active_models = Vec::new();
 
     for region in regions {
-        let (upper_left_x, upper_left_y) = region
-            .upper_left
-            .as_ref()
-            .and_then(|s| parse_coordinate(s))
-            .map_or((None, None), |(x, y)| (Some(x), Some(y)));
-
-        let (lower_right_x, lower_right_y) = region
-            .lower_right
-            .as_ref()
-            .and_then(|s| parse_coordinate(s))
-            .map_or((None, None), |(x, y)| (Some(x), Some(y)));
-
         let dilution_factor = region.dilution.as_ref().and_then(|s| s.parse::<i16>().ok());
 
         let active_model = spice_entity::regions::ActiveModel {
@@ -56,11 +27,11 @@ fn create_region_active_models(
             treatment_id: ActiveValue::Set(region.treatment_id),
             name: ActiveValue::Set(region.name),
             display_colour_hex: ActiveValue::Set(region.color),
-            tray_id: ActiveValue::Set(None), // TODO: Look up tray by name if needed
-            upper_left_corner_x: ActiveValue::Set(upper_left_x),
-            upper_left_corner_y: ActiveValue::Set(upper_left_y),
-            lower_right_corner_x: ActiveValue::Set(lower_right_x),
-            lower_right_corner_y: ActiveValue::Set(lower_right_y),
+            tray_id: ActiveValue::Set(region.tray_sequence_id), // Use tray_sequence_id from input
+            col_min: ActiveValue::Set(region.col_min),
+            row_min: ActiveValue::Set(region.row_min),
+            col_max: ActiveValue::Set(region.col_max),
+            row_max: ActiveValue::Set(region.row_max),
             dilution_factor: ActiveValue::Set(dilution_factor),
             is_background_key: ActiveValue::Set(region.is_background_key.unwrap_or(false)),
             created_at: ActiveValue::Set(chrono::Utc::now().into()),
@@ -131,24 +102,6 @@ async fn region_model_to_input_with_treatment(
     region: spice_entity::regions::Model,
     db: &impl ConnectionTrait,
 ) -> Result<RegionInput, DbErr> {
-    let upper_left = match (region.upper_left_corner_x, region.upper_left_corner_y) {
-        (Some(x), Some(y)) if x > 0 && x <= 26 => {
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let col_char = (b'A' + (x - 1) as u8) as char;
-            Some(format!("{col_char}{y}"))
-        }
-        _ => None,
-    };
-
-    let lower_right = match (region.lower_right_corner_x, region.lower_right_corner_y) {
-        (Some(x), Some(y)) if x > 0 && x <= 26 => {
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let col_char = (b'A' + (x - 1) as u8) as char;
-            Some(format!("{col_char}{y}"))
-        }
-        _ => None,
-    };
-
     let treatment_info = if let Some(treatment_id) = region.treatment_id {
         fetch_treatment_info(treatment_id, db).await?
     } else {
@@ -157,9 +110,11 @@ async fn region_model_to_input_with_treatment(
 
     Ok(RegionInput {
         name: region.name,
-        tray_name: None, // TODO: Look up tray name by tray_id if needed
-        upper_left,
-        lower_right,
+        tray_sequence_id: region.tray_id, // Map tray_id from DB to tray_sequence_id in response
+        col_min: region.col_min,
+        col_max: region.col_max,
+        row_min: region.row_min,
+        row_max: region.row_max,
         color: region.display_colour_hex,
         dilution: region.dilution_factor.map(|d| d.to_string()),
         treatment_id: region.treatment_id,
@@ -193,10 +148,12 @@ pub struct LocationInfo {
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct RegionInput {
     pub name: Option<String>,
-    pub tray_name: Option<String>,
-    pub upper_left: Option<String>,  // e.g., "A1"
-    pub lower_right: Option<String>, // e.g., "C5"
-    pub color: Option<String>,       // hex color
+    pub tray_sequence_id: Option<i16>, // Renamed from tray_id for clarity
+    pub col_min: Option<i16>,
+    pub col_max: Option<i16>,
+    pub row_min: Option<i16>,
+    pub row_max: Option<i16>,
+    pub color: Option<String>, // hex color
     pub dilution: Option<String>,
     pub treatment_id: Option<Uuid>,
     pub is_background_key: Option<bool>,
@@ -212,10 +169,10 @@ struct TrayRegions {
     pub name: Option<String>,
     pub display_colour_hex: Option<String>,
     pub tray_id: Option<i16>,
-    pub upper_left_corner_x: Option<i16>,
-    pub upper_left_corner_y: Option<i16>,
-    pub lower_right_corner_x: Option<i16>,
-    pub lower_right_corner_y: Option<i16>,
+    pub col_min: Option<i16>,
+    pub row_min: Option<i16>,
+    pub col_max: Option<i16>,
+    pub row_max: Option<i16>,
     pub dilution_factor: Option<i16>,
     pub created_at: DateTime<Utc>,
     pub last_updated: DateTime<Utc>,
@@ -230,10 +187,10 @@ impl From<spice_entity::regions::Model> for TrayRegions {
             name: region.name,
             display_colour_hex: region.display_colour_hex,
             tray_id: region.tray_id,
-            upper_left_corner_x: region.upper_left_corner_x,
-            upper_left_corner_y: region.upper_left_corner_y,
-            lower_right_corner_x: region.lower_right_corner_x,
-            lower_right_corner_y: region.lower_right_corner_y,
+            col_min: region.col_min,
+            row_min: region.row_min,
+            col_max: region.col_max,
+            row_max: region.row_max,
             dilution_factor: region.dilution_factor,
             created_at: region.created_at.into(),
             last_updated: region.last_updated.into(),
