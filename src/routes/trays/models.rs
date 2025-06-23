@@ -1,3 +1,4 @@
+use crate::routes::experiments::models::Experiment;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
@@ -77,6 +78,8 @@ pub struct TrayConfiguration {
     experiment_default: bool,
     #[crudcrate(non_db_attr = true, default = vec![])]
     trays: Vec<TrayAssignment>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    associated_experiments: Vec<Experiment>,
 }
 
 impl From<Model> for TrayConfiguration {
@@ -88,6 +91,7 @@ impl From<Model> for TrayConfiguration {
             created_at: model.created_at.into(),
             experiment_default: model.experiment_default,
             trays: vec![],
+            associated_experiments: vec![],
         }
     }
 }
@@ -125,11 +129,26 @@ impl CRUDResource for TrayConfiguration {
                 )));
             }
         };
+
+        let experiments: Vec<Experiment> = match spice_entity::experiments::Entity::find()
+            .filter(spice_entity::experiments::Column::TrayConfigurationId.eq(id))
+            .all(db)
+            .await
+        {
+            Ok(experiments) => experiments.into_iter().map(Into::into).collect(),
+            Err(e) => {
+                return Err(DbErr::Custom(format!(
+                    "Failed to fetch associated experiments: {e}"
+                )));
+            }
+        };
+
         let mut model: Self = model.into();
         // Sort tray assignments by order_sequence
         let mut tray_assignments = tray_assignments;
         tray_assignments.sort_by_key(|a| a.order_sequence);
         model.trays = tray_assignments;
+        model.associated_experiments = experiments;
 
         Ok(model)
     }
