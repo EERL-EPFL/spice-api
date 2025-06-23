@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
                     .add_column(
                         ColumnDef::new(Treatments::NameEnum)
                             .custom(Alias::new("treatment_name"))
-                            .not_null(),
+                            .null(),
                     )
                     .to_owned(),
             )
@@ -61,6 +61,19 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Set the "name" column to NOT NULL
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Treatments::Table)
+                    .modify_column(
+                        ColumnDef::new(Treatments::Name)
+                            .custom(Alias::new("treatment_name"))
+                            .not_null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 
