@@ -217,6 +217,11 @@ impl CRUDResource for TrayConfiguration {
         id: Uuid,
         update_data: Self::UpdateModel,
     ) -> Result<Self, DbErr> {
+        use sea_orm::TransactionTrait;
+
+        // Use a transaction to ensure atomicity
+        let txn = db.begin().await?;
+
         // If experiment_default is true, set all others to false
         if let Some(Some(experiment_default)) = update_data.experiment_default {
             if experiment_default {
@@ -226,14 +231,14 @@ impl CRUDResource for TrayConfiguration {
                         Expr::value(false),
                     )
                     .filter(spice_entity::tray_configurations::Column::Id.ne(id))
-                    .exec(db)
+                    .exec(&txn)
                     .await?;
             }
         }
 
         // Update the main tray configuration
         let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
-            .one(db)
+            .one(&txn)
             .await?
             .ok_or(DbErr::RecordNotFound(format!(
                 "{} not found",
@@ -241,15 +246,33 @@ impl CRUDResource for TrayConfiguration {
             )))?
             .into();
         let updated_model = update_data.clone().merge_into_activemodel(existing);
-        let _ = updated_model.update(db).await?;
+        let _ = updated_model.update(&txn).await?;
+
+        // First, get all existing tray IDs for this configuration to clean them up later
+        let existing_assignments = spice_entity::tray_configuration_assignments::Entity::find()
+            .filter(
+                spice_entity::tray_configuration_assignments::Column::TrayConfigurationId.eq(id),
+            )
+            .all(&txn)
+            .await?;
+
+        let existing_tray_ids: Vec<Uuid> = existing_assignments.iter().map(|a| a.tray_id).collect();
 
         // Remove old assignments for this configuration
         let _ = spice_entity::tray_configuration_assignments::Entity::delete_many()
             .filter(
                 spice_entity::tray_configuration_assignments::Column::TrayConfigurationId.eq(id),
             )
-            .exec(db)
+            .exec(&txn)
             .await?;
+
+        // Now remove the orphaned trays
+        if !existing_tray_ids.is_empty() {
+            let _ = spice_entity::trays::Entity::delete_many()
+                .filter(spice_entity::trays::Column::Id.is_in(existing_tray_ids))
+                .exec(&txn)
+                .await?;
+        }
 
         // Insert new assignments and trays
         for assignment in update_data.trays {
@@ -263,7 +286,7 @@ impl CRUDResource for TrayConfiguration {
                     created_at: Set(chrono::Utc::now().into()),
                     last_updated: Set(chrono::Utc::now().into()),
                 };
-                let tray_model = tray_active.insert(db).await?;
+                let tray_model = tray_active.insert(&txn).await?;
 
                 let assignment_active = spice_entity::tray_configuration_assignments::ActiveModel {
                     tray_id: Set(tray_model.id),
@@ -273,47 +296,106 @@ impl CRUDResource for TrayConfiguration {
                     created_at: Set(chrono::Utc::now().into()),
                     last_updated: Set(chrono::Utc::now().into()),
                 };
-                let _ = assignment_active.insert(db).await?;
+                let _ = assignment_active.insert(&txn).await?;
             }
         }
+
+        // Commit the transaction
+        txn.commit().await?;
+
         Self::get_one(db, id).await
     }
 
     async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> {
+        use sea_orm::TransactionTrait;
+
+        // Use a transaction for proper cleanup
+        let txn = db.begin().await?;
+
+        // First, get all tray IDs for this configuration
+        let assignments = spice_entity::tray_configuration_assignments::Entity::find()
+            .filter(
+                spice_entity::tray_configuration_assignments::Column::TrayConfigurationId.eq(id),
+            )
+            .all(&txn)
+            .await?;
+
+        let tray_ids: Vec<Uuid> = assignments.iter().map(|a| a.tray_id).collect();
+
         // Delete all assignments for this configuration
         spice_entity::tray_configuration_assignments::Entity::delete_many()
             .filter(
                 spice_entity::tray_configuration_assignments::Column::TrayConfigurationId.eq(id),
             )
-            .exec(db)
+            .exec(&txn)
             .await?;
+
+        // Delete the associated trays
+        if !tray_ids.is_empty() {
+            spice_entity::trays::Entity::delete_many()
+                .filter(spice_entity::trays::Column::Id.is_in(tray_ids))
+                .exec(&txn)
+                .await?;
+        }
+
         // Delete the configuration itself
         let res = <Self::EntityType as EntityTrait>::delete_by_id(id)
-            .exec(db)
+            .exec(&txn)
             .await?;
+
         match res.rows_affected {
             0 => Err(DbErr::RecordNotFound(format!(
                 "{} not found",
                 Self::RESOURCE_NAME_SINGULAR
             ))),
-            _ => Ok(id),
+            _ => {
+                txn.commit().await?;
+                Ok(id)
+            }
         }
     }
 
     async fn delete_many(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
+        use sea_orm::TransactionTrait;
+
+        // Use a transaction for proper cleanup
+        let txn = db.begin().await?;
+
+        // First, get all tray IDs for these configurations
+        let assignments = spice_entity::tray_configuration_assignments::Entity::find()
+            .filter(
+                spice_entity::tray_configuration_assignments::Column::TrayConfigurationId
+                    .is_in(ids.clone()),
+            )
+            .all(&txn)
+            .await?;
+
+        let tray_ids: Vec<Uuid> = assignments.iter().map(|a| a.tray_id).collect();
+
         // Delete all assignments for these configurations
         spice_entity::tray_configuration_assignments::Entity::delete_many()
             .filter(
                 spice_entity::tray_configuration_assignments::Column::TrayConfigurationId
                     .is_in(ids.clone()),
             )
-            .exec(db)
+            .exec(&txn)
             .await?;
+
+        // Delete the associated trays
+        if !tray_ids.is_empty() {
+            spice_entity::trays::Entity::delete_many()
+                .filter(spice_entity::trays::Column::Id.is_in(tray_ids))
+                .exec(&txn)
+                .await?;
+        }
+
         // Delete the configurations themselves
         let _ = <Self::EntityType as EntityTrait>::delete_many()
             .filter(Self::ID_COLUMN.is_in(ids.clone()))
-            .exec(db)
+            .exec(&txn)
             .await?;
+
+        txn.commit().await?;
         Ok(ids)
     }
 

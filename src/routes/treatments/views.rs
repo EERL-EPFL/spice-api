@@ -30,7 +30,7 @@ where
                 .required_roles(vec![Role::Administrator])
                 .build(),
         );
-    } else {
+    } else if !state.config.tests_running {
         println!(
             "Warning: Mutating routes of {} router are not protected",
             Treatment::RESOURCE_NAME_PLURAL

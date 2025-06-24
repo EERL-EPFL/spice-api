@@ -46,7 +46,7 @@ RUN echo '#!/bin/bash' > /app/run-test-cycle.sh && \
     echo '' >> /app/run-test-cycle.sh && \
     echo '# Run all embedded unit and integration tests in views.rs files' >> /app/run-test-cycle.sh && \
     echo 'echo "🧪 Running embedded tests in views.rs files..."' >> /app/run-test-cycle.sh && \
-    echo 'cargo test || echo "❌ Tests failed but continuing to watch for changes..."' >> /app/run-test-cycle.sh && \
+    echo 'cargo test -- --test-threads=1 || echo "❌ Tests failed but continuing to watch for changes..."' >> /app/run-test-cycle.sh && \
     echo '' >> /app/run-test-cycle.sh && \
     echo 'echo "✅ Test cycle complete at $(date)"' >> /app/run-test-cycle.sh && \
     echo 'echo ""' >> /app/run-test-cycle.sh && \
