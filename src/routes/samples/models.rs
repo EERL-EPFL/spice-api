@@ -134,10 +134,7 @@ impl CRUDResource for Sample {
                 .collect();
         }
         if models.is_empty() {
-            return Err(DbErr::RecordNotFound(format!(
-                "{} not found",
-                Self::RESOURCE_NAME_PLURAL
-            )));
+            return Ok(vec![]);
         }
         Ok(models)
     }
