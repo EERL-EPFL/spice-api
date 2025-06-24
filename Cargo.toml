@@ -1,6 +1,6 @@
 [package]
 name = "spice-api"
-version = "0.1.5"
+version = "0.2.0"
 edition = "2024"
 description = "API for managing SPICE lab data in the EERL lab"
 license = "MIT"
@@ -35,7 +35,6 @@ multipart = "0.18.0"
 rand = "0.9.1"
 sea-orm = { version = "1.1.8", features = [
     "sqlx-postgres",
-    "sqlx-sqlite",
     "runtime-tokio-rustls",
     "macros",
     "with-uuid",
