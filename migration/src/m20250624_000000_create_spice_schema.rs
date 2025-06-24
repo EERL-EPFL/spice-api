@@ -7,6 +7,14 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Enable UUID extension for PostgreSQL
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+                .await?;
+        }
+
         // Create custom types for PostgreSQL (will be ignored by SQLite)
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             // Create sample_type enum
@@ -1099,6 +1107,12 @@ impl MigrationTrait for Migration {
                 .await?;
             manager
                 .drop_type(Type::drop().name(SampleType::Table).if_exists().to_owned())
+                .await?;
+
+            // Drop UUID extension
+            manager
+                .get_connection()
+                .execute_unprepared("DROP EXTENSION IF EXISTS \"uuid-ossp\";")
                 .await?;
         }
 
