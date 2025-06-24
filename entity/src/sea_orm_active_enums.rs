@@ -10,12 +10,16 @@ use utoipa::ToSchema;
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "sample_type")]
 pub enum SampleType {
     #[sea_orm(string_value = "bulk")]
+    #[serde(rename = "bulk")]
     Bulk,
     #[sea_orm(string_value = "filter")]
+    #[serde(rename = "filter")]
     Filter,
     #[sea_orm(string_value = "procedural_blank")]
+    #[serde(rename = "procedural_blank")]
     ProceduralBlank,
     #[sea_orm(string_value = "pure_water")]
+    #[serde(rename = "pure_water")]
     PureWater,
 }
 

@@ -135,7 +135,7 @@ mod tests {
         // Test creating a sample with valid enum values
         let sample_data = json!({
             "name": "Test Sample API",
-            "type": "Bulk",
+            "type": "bulk",
             "material_description": "Test material for API testing",
             "extraction_procedure": "Standard extraction via API",
             "filter_substrate": "Polycarbonate",
@@ -185,7 +185,7 @@ mod tests {
         // Validate response structure
         assert!(body["id"].is_string(), "Response should include ID");
         assert_eq!(body["name"], "Test Sample API");
-        assert_eq!(body["type"], "Bulk");
+        assert_eq!(body["type"], "bulk");
         assert!(body["created_at"].is_string());
         assert!(body["treatments"].is_array());
 
@@ -243,10 +243,10 @@ mod tests {
 
         // Test valid sample types (using correct enum values)
         for (sample_type, expected_type) in [
-            ("Bulk", "bulk"),
-            ("Filter", "filter"),
-            ("ProceduralBlank", "procedural_blank"),
-            ("PureWater", "pure_water"),
+            ("bulk", "bulk"),
+            ("filter", "filter"),
+            ("procedural_blank", "procedural_blank"),
+            ("pure_water", "pure_water"),
         ] {
             let sample_data = json!({
                 "name": format!("Test {} Sample", expected_type),
@@ -314,7 +314,7 @@ mod tests {
         let (_project_id, location_id) = create_test_project_and_location(&app, "FILTERING").await;
 
         // Create test samples for filtering
-        let sample_types = [("Bulk", "bulk"), ("Filter", "filter")];
+        let sample_types = [("bulk", "bulk"), ("filter", "filter")];
         for (input_type, display_type) in sample_types {
             let sample_data = json!({
                 "name": format!("Filter Test {} Sample", display_type),
@@ -396,7 +396,7 @@ mod tests {
 
             let sample_data = json!({
                 "name": format!("Treatment Test {} Sample", treatment_name),
-                "type": "Bulk",
+                "type": "bulk",
                 "material_description": "Test material for treatment validation",
                 "location_id": location_id,
                 "treatments": [
