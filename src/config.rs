@@ -87,9 +87,6 @@ pub mod test_helpers {
     use axum::Router;
     use migration::{Migrator, MigratorTrait};
     use sea_orm::{Database, DatabaseConnection};
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static TEST_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     pub fn init_test_env() {
         // No need for Once since each test gets its own database
@@ -99,13 +96,13 @@ pub mod test_helpers {
     pub async fn setup_test_db() -> DatabaseConnection {
         init_test_env();
 
-        // Generate a unique in-memory SQLite database for each test
-        let db_id = TEST_DB_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let database_url = format!("sqlite::memory:");
+        // Use proper SQLite in-memory database connection string
+        // Each connection to :memory: creates a separate database instance
+        let database_url = "sqlite::memory:";
 
-        println!("Creating new in-memory SQLite database: {}", database_url);
+        println!("Creating new in-memory SQLite database: {database_url}");
 
-        let db = Database::connect(&database_url)
+        let db = Database::connect(database_url)
             .await
             .expect("Failed to connect to SQLite test database");
 

@@ -131,7 +131,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             locations_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("fk_locations_project_id")
                     .from(Locations::Table, Locations::ProjectId)
                     .to(Projects::Table, Projects::Id)
@@ -251,7 +251,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             experiments_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("fk_experiment_tray_configuration")
                     .from(Experiments::Table, Experiments::TrayConfigurationId)
                     .to(TrayConfigurations::Table, TrayConfigurations::Id)
@@ -348,7 +348,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             wells_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("wells_tray_id_fkey")
                     .from(Wells::Table, Wells::TrayId)
                     .to(Trays::Table, Trays::Id)
@@ -412,7 +412,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             temperature_probes_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("temperature_probes_experiment_id_fkey")
                     .from(TemperatureProbes::Table, TemperatureProbes::ExperimentId)
                     .to(Experiments::Table, Experiments::Id)
@@ -471,7 +471,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             well_temperatures_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("well_temperatures_well_id_fkey")
                     .from(WellTemperatures::Table, WellTemperatures::WellId)
                     .to(Wells::Table, Wells::Id)
@@ -632,7 +632,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             treatments_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("sample_treatments")
                     .from(Treatments::Table, Treatments::SampleId)
                     .to(Samples::Table, Samples::Id)
@@ -699,7 +699,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraints for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             regions_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("regions_experiment_id_fkey")
                     .from(Regions::Table, Regions::ExperimentId)
                     .to(Experiments::Table, Experiments::Id)
@@ -707,7 +707,7 @@ impl MigrationTrait for Migration {
                     .on_update(ForeignKeyAction::NoAction),
             );
             regions_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("regions_treatment_id_fkey")
                     .from(Regions::Table, Regions::TreatmentId)
                     .to(Treatments::Table, Treatments::Id)
@@ -767,7 +767,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraints for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             freezing_results_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("freezing_results_well_id_fkey")
                     .from(FreezingResults::Table, FreezingResults::WellId)
                     .to(Wells::Table, Wells::Id)
@@ -775,7 +775,7 @@ impl MigrationTrait for Migration {
                     .on_update(ForeignKeyAction::NoAction),
             );
             freezing_results_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("freezing_results_region_id_fkey")
                     .from(FreezingResults::Table, FreezingResults::RegionId)
                     .to(Regions::Table, Regions::Id)
@@ -839,7 +839,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             inp_concentrations_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("inp_concentrations_region_id_fkey")
                     .from(InpConcentrations::Table, InpConcentrations::RegionId)
                     .to(Regions::Table, Regions::Id)
@@ -909,7 +909,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraint for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             s3_assets_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("s3_assets_experiment_id_fkey")
                     .from(S3Assets::Table, S3Assets::ExperimentId)
                     .to(Experiments::Table, Experiments::Id)
@@ -967,7 +967,7 @@ impl MigrationTrait for Migration {
         // Add foreign key constraints for SQLite
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Sqlite {
             tray_config_assignments_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("fk_tray_assignments_to_tray")
                     .from(
                         TrayConfigurationAssignments::Table,
@@ -978,7 +978,7 @@ impl MigrationTrait for Migration {
                     .on_update(ForeignKeyAction::NoAction),
             );
             tray_config_assignments_table.foreign_key(
-                &mut ForeignKey::create()
+                ForeignKey::create()
                     .name("fk_tray_assignment_to_configuration")
                     .from(
                         TrayConfigurationAssignments::Table,
@@ -1107,10 +1107,7 @@ impl MigrationTrait for Migration {
 }
 
 impl Migration {
-    async fn create_unique_constraints<'a>(
-        &self,
-        manager: &SchemaManager<'a>,
-    ) -> Result<(), DbErr> {
+    async fn create_unique_constraints(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         // Projects name uniqueness
         manager
             .create_index(
@@ -1187,7 +1184,7 @@ impl Migration {
         Ok(())
     }
 
-    async fn create_indexes<'a>(&self, manager: &SchemaManager<'a>) -> Result<(), DbErr> {
+    async fn create_indexes(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         // Create indexes for each table individually to avoid type issues
 
         // Projects indexes
@@ -1397,7 +1394,7 @@ impl Migration {
         Ok(())
     }
 
-    async fn create_foreign_keys<'a>(&self, manager: &SchemaManager<'a>) -> Result<(), DbErr> {
+    async fn create_foreign_keys(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         // Locations -> Projects
         manager
             .create_foreign_key(
@@ -1602,7 +1599,7 @@ impl Migration {
         Ok(())
     }
 
-    async fn drop_foreign_keys<'a>(&self, manager: &SchemaManager<'a>) -> Result<(), DbErr> {
+    async fn drop_foreign_keys(&self, manager: &SchemaManager<'_>) -> Result<(), DbErr> {
         // Drop foreign keys individually to avoid compilation issues
         let _ = manager
             .drop_foreign_key(

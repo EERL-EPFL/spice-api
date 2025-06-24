@@ -64,7 +64,9 @@ mod tests {
     use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
+    use sea_orm::{ActiveModelTrait, Set};
     use serde_json::{Value, json};
+    use spice_entity::projects;
     use tower::ServiceExt;
 
     async fn extract_response_body(response: axum::response::Response) -> (StatusCode, Value) {
@@ -77,122 +79,117 @@ mod tests {
 
         // Log error details for debugging
         if status.is_server_error() || status.is_client_error() {
-            eprintln!("HTTP Error - Status: {}, Body: {:?}", status, body);
+            eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
         }
 
         (status, body)
     }
 
-    // #[tokio::test]
-    // async fn test_project_crud_operations() {
-    //     let db = setup_test_db().await;
-    //     let app = setup_test_app().await;
-    //     cleanup_test_data(&db).await;
+    #[tokio::test]
+    async fn test_project_crud_operations() {
+        let db = setup_test_db().await;
+        let app = setup_test_app().await;
+        cleanup_test_data(&db).await;
 
-    //     // Test creating a project with unique name
-    //     let project_data = json!({
-    //         "name": format!("Test Project API {}", uuid::Uuid::new_v4()),
-    //         "note": "Project created via API test",
-    //         "colour": "#FF5733"
-    //     });
+        // Test creating a project with unique name
+        let project_data = json!({
+            "name": format!("Test Project API {}", uuid::Uuid::new_v4()),
+            "note": "Project created via API test",
+            "colour": "#FF5733"
+        });
 
-    //     println!("Attempting to create project with data: {}", project_data);
+        println!("Attempting to create project with data: {project_data}");
 
-    //     let response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("POST")
-    //                 .uri("/api/projects")
-    //                 .header("content-type", "application/json")
-    //                 .body(Body::from(project_data.to_string()))
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/projects")
+                    .header("content-type", "application/json")
+                    .body(Body::from(project_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (status, body) = extract_response_body(response).await;
+        let (status, body) = extract_response_body(response).await;
 
-    //     // If this fails, let's try to understand why by testing the database connection directly
-    //     if status != StatusCode::CREATED {
-    //         // Test direct database operations
-    //         println!("Direct database test starting...");
+        // If this fails, let's try to understand why by testing the database connection directly
+        if status != StatusCode::CREATED {
+            // Test direct database operations
+            println!("Direct database test starting...");
 
-    //         use sea_orm::{ActiveModelTrait, Set};
-    //         use spice_entity::projects;
+            let test_project = projects::ActiveModel {
+                id: Set(uuid::Uuid::new_v4()),
+                name: Set("Direct DB Test Project".to_string()),
+                note: Set(Some("Direct database insertion test".to_string())),
+                colour: Set(Some("#000000".to_string())),
+                created_at: Set(chrono::Utc::now().into()),
+                last_updated: Set(chrono::Utc::now().into()),
+            };
 
-    //         let test_project = projects::ActiveModel {
-    //             id: Set(uuid::Uuid::new_v4()),
-    //             name: Set("Direct DB Test Project".to_string()),
-    //             note: Set(Some("Direct database insertion test".to_string())),
-    //             colour: Set(Some("#000000".to_string())),
-    //             created_at: Set(chrono::Utc::now().into()),
-    //             last_updated: Set(chrono::Utc::now().into()),
-    //         };
+            match test_project.insert(&db).await {
+                Ok(inserted) => println!("Direct database insert succeeded: {:?}", inserted.id),
+                Err(e) => println!("Direct database insert failed: {e:?}"),
+            }
+        }
 
-    //         match test_project.insert(&db).await {
-    //             Ok(inserted) => println!("Direct database insert succeeded: {:?}", inserted.id),
-    //             Err(e) => println!("Direct database insert failed: {:?}", e),
-    //         }
-    //     }
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Failed to create project: {body:?}"
+        );
 
-    //     assert_eq!(
-    //         status,
-    //         StatusCode::CREATED,
-    //         "Failed to create project: {:?}",
-    //         body
-    //     );
+        // Validate response structure
+        assert!(body["id"].is_string(), "Response should include ID");
+        assert!(body["name"].is_string());
+        assert_eq!(body["note"], "Project created via API test");
+        assert_eq!(body["colour"], "#FF5733");
+        assert!(body["created_at"].is_string());
 
-    //     // Validate response structure
-    //     assert!(body["id"].is_string(), "Response should include ID");
-    //     assert!(body["name"].is_string());
-    //     assert_eq!(body["note"], "Project created via API test");
-    //     assert_eq!(body["colour"], "#FF5733");
-    //     assert!(body["created_at"].is_string());
+        let project_id = body["id"].as_str().unwrap();
 
-    //     let project_id = body["id"].as_str().unwrap();
+        // Test getting the project by ID
+        let get_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/projects/{project_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     // Test getting the project by ID
-    //     let get_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri(&format!("/api/projects/{}", project_id))
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (get_status, get_body) = extract_response_body(get_response).await;
+        assert_eq!(
+            get_status,
+            StatusCode::OK,
+            "Failed to get project: {get_body:?}"
+        );
+        assert_eq!(get_body["id"], project_id);
 
-    //     let (get_status, get_body) = extract_response_body(get_response).await;
-    //     assert_eq!(
-    //         get_status,
-    //         StatusCode::OK,
-    //         "Failed to get project: {:?}",
-    //         get_body
-    //     );
-    //     assert_eq!(get_body["id"], project_id);
+        // Test getting all projects
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/projects")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     // Test getting all projects
-    //     let list_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/projects")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (list_status, list_body) = extract_response_body(list_response).await;
+        assert_eq!(list_status, StatusCode::OK, "Failed to get projects");
+        assert!(list_body["items"].is_array());
 
-    //     let (list_status, list_body) = extract_response_body(list_response).await;
-    //     assert_eq!(list_status, StatusCode::OK, "Failed to get projects");
-    //     assert!(list_body["items"].is_array());
-
-    //     cleanup_test_data(&db).await;
-    // }
+        cleanup_test_data(&db).await;
+    }
 
     #[tokio::test]
     async fn test_project_validation() {

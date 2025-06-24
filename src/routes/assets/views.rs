@@ -87,267 +87,267 @@ mod tests {
         assert_eq!(
             status,
             StatusCode::CREATED,
-            "Failed to create test experiment: {:?}",
-            body
+            "Failed to create test experiment: {body:?}"
         );
         uuid::Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
     }
 
-    // #[tokio::test]
-    // async fn test_asset_crud_operations() {
-    //     let db = setup_test_db().await;
-    //     let app = setup_test_app().await;
-    //     cleanup_test_data(&db).await;
+    #[tokio::test]
+    async fn test_s3_asset_crud_operations() {
+        let db = setup_test_db().await;
+        let app = setup_test_app().await;
+        cleanup_test_data(&db).await;
 
-    //     // Create a test experiment for the asset
-    //     let experiment_id = create_test_experiment(&app, "ASSET_CRUD").await;
+        // Create a test experiment for the asset
+        let experiment_id = create_test_experiment(&app, "ASSET_CRUD").await;
 
-    //     // Test creating an asset with unique S3 key
-    //     let unique_id = uuid::Uuid::new_v4();
-    //     let asset_data = json!({
-    //         "experiment_id": experiment_id,
-    //         "original_filename": format!("test_data_{}.csv", unique_id),
-    //         "s3_key": format!("test/data/test_data_{}.csv", unique_id),
-    //         "size_bytes": 1024,
-    //         "uploaded_by": "test@example.com",
-    //         "uploaded_at": "2024-06-20T15:00:00Z",
-    //         "is_deleted": false,
-    //         "type": "data",
-    //         "role": "results"
-    //     });
+        // Test creating an asset
+        let asset_data = json!({
+            "experiment_id": experiment_id,
+            "original_filename": "test_file.csv",
+            "s3_key": format!("test-files/{}", uuid::Uuid::new_v4()),
+            "type": "data",
+            "role": "input",
+            "size_bytes": 1024,
+            "uploaded_by": "test_user"
+        });
 
-    //     let response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("POST")
-    //                 .uri("/api/assets")
-    //                 .header("content-type", "application/json")
-    //                 .body(Body::from(asset_data.to_string()))
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/assets")
+                    .header("content-type", "application/json")
+                    .body(Body::from(asset_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (status, body) = extract_response_body(response).await;
-    //     assert_eq!(
-    //         status,
-    //         StatusCode::CREATED,
-    //         "Failed to create asset: {:?}",
-    //         body
-    //     );
+        let (status, body) = extract_response_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Failed to create asset: {body:?}"
+        );
 
-    //     // Validate response structure
-    //     assert!(body["id"].is_string(), "Response should include ID");
-    //     assert!(body["original_filename"].is_string());
-    //     assert_eq!(body["type"], "data");
-    //     assert_eq!(body["role"], "results");
-    //     assert!(body["created_at"].is_string());
+        let asset_id = body["id"].as_str().unwrap();
 
-    //     let asset_id = body["id"].as_str().unwrap();
+        // Test reading the created asset
+        let get_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/assets/{asset_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     // Test getting the asset by ID
-    //     let get_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri(&format!("/api/assets/{}", asset_id))
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (get_status, get_body) = extract_response_body(get_response).await;
+        assert_eq!(get_status, StatusCode::OK, "Failed to get asset");
+        assert_eq!(get_body["id"], asset_id);
+        assert_eq!(get_body["original_filename"], "test_file.csv");
 
-    //     let (get_status, get_body) = extract_response_body(get_response).await;
-    //     assert_eq!(
-    //         get_status,
-    //         StatusCode::OK,
-    //         "Failed to get asset: {:?}",
-    //         get_body
-    //     );
-    //     assert_eq!(get_body["id"], asset_id);
+        // Test updating the asset
+        let update_data = json!({
+            "experiment_id": experiment_id,
+            "original_filename": "updated_file.csv",
+            "s3_key": get_body["s3_key"], // Keep same S3 key
+            "type": "data",
+            "role": "output",
+            "size_bytes": 2048,
+            "uploaded_by": "test_user"
+        });
 
-    //     // Test getting all assets
-    //     let list_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/assets")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let update_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/assets/{asset_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(update_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (list_status, list_body) = extract_response_body(list_response).await;
-    //     assert_eq!(list_status, StatusCode::OK, "Failed to get assets");
-    //     assert!(list_body["items"].is_array());
+        let (update_status, update_body) = extract_response_body(update_response).await;
+        assert_eq!(
+            update_status,
+            StatusCode::OK,
+            "Failed to update asset: {update_body:?}"
+        );
+        assert_eq!(update_body["original_filename"], "updated_file.csv");
+        assert_eq!(update_body["role"], "output");
 
-    //     cleanup_test_data(&db).await;
-    // }
+        // Test deleting the asset
+        let delete_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/assets/{asset_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    // #[tokio::test]
-    // async fn test_asset_filtering() {
-    //     let db = setup_test_db().await;
-    //     let app = setup_test_app().await;
-    //     cleanup_test_data(&db).await;
+        let (delete_status, _) = extract_response_body(delete_response).await;
+        assert_eq!(delete_status, StatusCode::NO_CONTENT);
 
-    //     // Create a test experiment for the assets
-    //     let experiment_id = create_test_experiment(&app, "ASSET_FILTERING").await;
+        cleanup_test_data(&db).await;
+    }
 
-    //     // Create test assets for filtering
-    //     let asset_types = ["data", "image"];
-    //     for asset_type in asset_types {
-    //         let unique_id = uuid::Uuid::new_v4();
-    //         let asset_data = json!({
-    //             "experiment_id": experiment_id,
-    //             "original_filename": format!("filter_test_{}_{}.file", asset_type, unique_id),
-    //             "s3_key": format!("test/{}/filter_test_{}.file", asset_type, unique_id),
-    //             "type": asset_type,
-    //             "size_bytes": 100,
-    //             "uploaded_at": "2024-06-20T15:00:00Z",
-    //             "is_deleted": false,
-    //             "role": "results"
-    //         });
+    #[tokio::test]
+    async fn test_s3_asset_validation() {
+        let db = setup_test_db().await;
+        let app = setup_test_app().await;
+        cleanup_test_data(&db).await;
 
-    //         let response = app
-    //             .clone()
-    //             .oneshot(
-    //                 Request::builder()
-    //                     .method("POST")
-    //                     .uri("/api/assets")
-    //                     .header("content-type", "application/json")
-    //                     .body(Body::from(asset_data.to_string()))
-    //                     .unwrap(),
-    //             )
-    //             .await
-    //             .unwrap();
+        // Test creating asset with invalid data (null filename)
+        let invalid_data = json!({
+            "original_filename": null,
+            "s3_key": "test/key",
+            "type": "data"
+        });
 
-    //         let (status, body) = extract_response_body(response).await;
-    //         assert_eq!(
-    //             status,
-    //             StatusCode::CREATED,
-    //             "Failed to create asset for filtering test: {:?}",
-    //             body
-    //         );
-    //     }
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/assets")
+                    .header("content-type", "application/json")
+                    .body(Body::from(invalid_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     // Test filtering by type
-    //     let filter_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/assets?filter[type]=data")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (status, _body) = extract_response_body(response).await;
+        assert!(
+            status.is_client_error(),
+            "Should reject asset with null filename"
+        );
 
-    //     let (filter_status, filter_body) = extract_response_body(filter_response).await;
-    //     assert_eq!(
-    //         filter_status,
-    //         StatusCode::OK,
-    //         "Type filtering should work: {:?}",
-    //         filter_body
-    //     );
+        // Test creating asset with missing required fields
+        let incomplete_data = json!({
+            "s3_key": "test/key"
+            // Missing original_filename and type
+        });
 
-    //     // Test filtering by role
-    //     let role_filter_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/assets?filter[role]=results")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/assets")
+                    .header("content-type", "application/json")
+                    .body(Body::from(incomplete_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (role_filter_status, _) = extract_response_body(role_filter_response).await;
-    //     assert_eq!(
-    //         role_filter_status,
-    //         StatusCode::OK,
-    //         "Role filtering should work"
-    //     );
+        let (status, _body) = extract_response_body(response).await;
+        assert!(
+            status.is_client_error(),
+            "Should reject incomplete asset data"
+        );
 
-    //     cleanup_test_data(&db).await;
-    // }
+        cleanup_test_data(&db).await;
+    }
 
-    // #[tokio::test]
-    // async fn test_asset_type_validation() {
-    //     let db = setup_test_db().await;
-    //     let app = setup_test_app().await;
-    //     cleanup_test_data(&db).await;
+    #[tokio::test]
+    async fn test_s3_asset_filtering() {
+        let db = setup_test_db().await;
+        let app = setup_test_app().await;
+        cleanup_test_data(&db).await;
 
-    //     // Create a test experiment for the assets
-    //     let experiment_id = create_test_experiment(&app, "ASSET_TYPE_VALIDATION").await;
+        // Create a test experiment for the assets
+        let experiment_id = create_test_experiment(&app, "ASSET_FILTERING").await;
 
-    //     // Test valid asset types (these are just strings, not enums)
-    //     for asset_type in ["data", "image", "log", "report", "protocol"] {
-    //         let unique_id = uuid::Uuid::new_v4();
-    //         let asset_data = json!({
-    //             "experiment_id": experiment_id,
-    //             "original_filename": format!("test_{}_{}.file", asset_type, unique_id),
-    //             "s3_key": format!("test/{}/test_{}.file", asset_type, unique_id),
-    //             "type": asset_type,
-    //             "size_bytes": 100,
-    //             "uploaded_at": "2024-06-20T15:00:00Z",
-    //             "is_deleted": false
-    //         });
+        // Create some test assets with different types
+        let asset_types = ["data", "image", "document"];
+        for (i, asset_type) in asset_types.iter().enumerate() {
+            let asset_data = json!({
+                "experiment_id": experiment_id,
+                "original_filename": format!("test_file_{}.txt", i),
+                "s3_key": format!("test-files/{}-{}", asset_type, uuid::Uuid::new_v4()),
+                "type": asset_type,
+                "size_bytes": 1024 * (i + 1),
+                "uploaded_by": "test_user"
+            });
 
-    //         let response = app
-    //             .clone()
-    //             .oneshot(
-    //                 Request::builder()
-    //                     .method("POST")
-    //                     .uri("/api/assets")
-    //                     .header("content-type", "application/json")
-    //                     .body(Body::from(asset_data.to_string()))
-    //                     .unwrap(),
-    //             )
-    //             .await
-    //             .unwrap();
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/assets")
+                        .header("content-type", "application/json")
+                        .body(Body::from(asset_data.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
 
-    //         let (status, body) = extract_response_body(response).await;
-    //         assert_eq!(
-    //             status,
-    //             StatusCode::CREATED,
-    //             "Valid asset type {} should be accepted. Body: {:?}",
-    //             asset_type,
-    //             body
-    //         );
-    //     }
+            let (status, _) = extract_response_body(response).await;
+            assert_eq!(status, StatusCode::CREATED);
+        }
 
-    //     // Test with missing required fields
-    //     let incomplete_data = json!({
-    //         "original_filename": "incomplete.file",
-    //         // Missing s3_key, type, etc.
-    //     });
+        // Test filtering by experiment_id
+        let filter_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/assets?filter[experiment_id]={experiment_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("POST")
-    //                 .uri("/api/assets")
-    //                 .header("content-type", "application/json")
-    //                 .body(Body::from(incomplete_data.to_string()))
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (filter_status, filter_body) = extract_response_body(filter_response).await;
+        assert_eq!(
+            filter_status,
+            StatusCode::OK,
+            "Failed to filter assets by experiment_id"
+        );
+        let items = filter_body["items"].as_array().unwrap();
+        assert!(items.len() >= 3, "Should find at least 3 assets");
 
-    //     let (status, _body) = extract_response_body(response).await;
-    //     assert!(
-    //         status.is_client_error(),
-    //         "Should reject incomplete asset data"
-    //     );
+        // Test filtering by type
+        let type_filter_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/assets?filter[type]=data")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     cleanup_test_data(&db).await;
-    // }
+        let (type_status, type_body) = extract_response_body(type_filter_response).await;
+        assert_eq!(
+            type_status,
+            StatusCode::OK,
+            "Failed to filter assets by type"
+        );
+        let filtered_items = type_body["items"].as_array().unwrap();
+        for item in filtered_items {
+            assert_eq!(item["type"], "data");
+        }
+
+        cleanup_test_data(&db).await;
+    }
 }

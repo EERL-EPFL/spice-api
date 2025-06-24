@@ -11,18 +11,136 @@ use spice_entity::tray_configurations::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+// Individual Tray model for the /api/trays endpoint
+#[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
+#[active_model = "spice_entity::trays::ActiveModel"]
+pub struct Tray {
+    #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub qty_x_axis: Option<i32>,
+    pub qty_y_axis: Option<i32>,
+    pub well_relative_diameter: Option<Decimal>,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
+    pub created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
+    pub last_updated: DateTime<Utc>,
+}
+
+impl From<spice_entity::trays::Model> for Tray {
+    fn from(model: spice_entity::trays::Model) -> Self {
+        Self {
+            id: model.id,
+            name: model.name,
+            qty_x_axis: model.qty_x_axis,
+            qty_y_axis: model.qty_y_axis,
+            well_relative_diameter: model.well_relative_diameter,
+            created_at: model.created_at.into(),
+            last_updated: model.last_updated.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl CRUDResource for Tray {
+    type EntityType = spice_entity::trays::Entity;
+    type ColumnType = spice_entity::trays::Column;
+    type ActiveModelType = spice_entity::trays::ActiveModel;
+    type CreateModel = TrayCreate;
+    type UpdateModel = TrayUpdate;
+
+    const ID_COLUMN: Self::ColumnType = spice_entity::trays::Column::Id;
+    const RESOURCE_NAME_PLURAL: &'static str = "trays";
+    const RESOURCE_NAME_SINGULAR: &'static str = "tray";
+    const RESOURCE_DESCRIPTION: &'static str =
+        "This endpoint manages individual trays used in experiments.";
+
+    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
+        let model =
+            Self::EntityType::find_by_id(id)
+                .one(db)
+                .await?
+                .ok_or(DbErr::RecordNotFound(format!(
+                    "{} not found",
+                    Self::RESOURCE_NAME_SINGULAR
+                )))?;
+        Ok(model.into())
+    }
+
+    // async fn create(
+    //     db: &DatabaseConnection,
+    //     create_data: Self::CreateModel,
+    // ) -> Result<Self, DbErr> {
+    //     let active_model = create_data.into_active_model();
+    //     let model = active_model.insert(db).await?;
+    //     Ok(model.into())
+    // }
+
+    async fn update(
+        db: &DatabaseConnection,
+        id: Uuid,
+        update_data: Self::UpdateModel,
+    ) -> Result<Self, DbErr> {
+        let existing = Self::EntityType::find_by_id(id)
+            .one(db)
+            .await?
+            .ok_or(DbErr::RecordNotFound(format!(
+                "{} not found",
+                Self::RESOURCE_NAME_SINGULAR
+            )))?
+            .into();
+        let updated_model = update_data.merge_into_activemodel(existing);
+        let model = updated_model.update(db).await?;
+        Ok(model.into())
+    }
+
+    async fn delete(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> {
+        let res = Self::EntityType::delete_by_id(id).exec(db).await?;
+        if res.rows_affected == 0 {
+            Err(DbErr::RecordNotFound(format!(
+                "{} not found",
+                Self::RESOURCE_NAME_SINGULAR
+            )))
+        } else {
+            Ok(id)
+        }
+    }
+
+    async fn delete_many(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
+        let _ = Self::EntityType::delete_many()
+            .filter(Self::ID_COLUMN.is_in(ids.clone()))
+            .exec(db)
+            .await?;
+        Ok(ids)
+    }
+
+    fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
+        vec![
+            ("id", Self::ColumnType::Id),
+            ("name", Self::ColumnType::Name),
+            ("last_updated", Self::ColumnType::LastUpdated),
+        ]
+    }
+
+    fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
+        vec![("name", Self::ColumnType::Name)]
+    }
+}
+
+// Inner tray struct used within TrayConfiguration
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
-struct Tray {
+struct TrayInfo {
     name: Option<String>,
     qty_x_axis: Option<i32>,
     qty_y_axis: Option<i32>,
     well_relative_diameter: Option<Decimal>,
 }
+
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 struct TrayAssignment {
     order_sequence: i16,
     rotation_degrees: i16,
-    trays: Vec<Tray>,
+    trays: Vec<TrayInfo>,
 }
 
 impl TrayAssignment {
@@ -47,7 +165,7 @@ impl TrayAssignment {
                 .all(db)
                 .await?
                 .into_iter()
-                .map(|tray| Tray {
+                .map(|tray| TrayInfo {
                     name: tray.name,
                     qty_x_axis: tray.qty_x_axis,
                     qty_y_axis: tray.qty_y_axis,
@@ -343,15 +461,14 @@ impl CRUDResource for TrayConfiguration {
             .exec(&txn)
             .await?;
 
-        match res.rows_affected {
-            0 => Err(DbErr::RecordNotFound(format!(
+        if res.rows_affected == 0 {
+            Err(DbErr::RecordNotFound(format!(
                 "{} not found",
                 Self::RESOURCE_NAME_SINGULAR
-            ))),
-            _ => {
-                txn.commit().await?;
-                Ok(id)
-            }
+            )))
+        } else {
+            txn.commit().await?;
+            Ok(id)
         }
     }
 

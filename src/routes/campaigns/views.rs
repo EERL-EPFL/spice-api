@@ -104,100 +104,128 @@ mod tests {
         assert_eq!(
             status,
             StatusCode::CREATED,
-            "Failed to create test project: {:?}",
-            body
+            "Failed to create test project: {body:?}"
         );
         uuid::Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
     }
 
-    // #[tokio::test]
-    // async fn test_location_crud_operations() {
-    //     let db = setup_test_db().await;
-    //     let app = setup_test_app().await;
-    //     cleanup_test_data(&db).await;
+    #[tokio::test]
+    async fn test_location_crud_operations() {
+        let db = setup_test_db().await;
+        let app = setup_test_app().await;
+        cleanup_test_data(&db).await;
 
-    //     // Create a test project for the location
-    //     let project_id = create_test_project(&app, "LOCATION_CRUD").await;
+        // Create a test project for the location
+        let project_id = create_test_project(&app, "LOCATION_CRUD").await;
 
-    //     // Test creating a location with unique name
-    //     let location_data = json!({
-    //         "name": format!("Test Location API {}", uuid::Uuid::new_v4()),
-    //         "comment": "Location created via API test",
-    //         "start_date": "2024-06-01T00:00:00Z",
-    //         "end_date": "2024-12-31T23:59:59Z",
-    //         "project_id": project_id
-    //     });
+        // Test creating a location with unique name
+        let location_data = json!({
+            "name": format!("Test Location API {}", uuid::Uuid::new_v4()),
+            "comment": "Location created via API test",
+            "project_id": project_id
+        });
 
-    //     let response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("POST")
-    //                 .uri("/api/locations")
-    //                 .header("content-type", "application/json")
-    //                 .body(Body::from(location_data.to_string()))
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/locations")
+                    .header("content-type", "application/json")
+                    .body(Body::from(location_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (status, body) = extract_response_body(response).await;
-    //     assert_eq!(
-    //         status,
-    //         StatusCode::CREATED,
-    //         "Failed to create location: {:?}",
-    //         body
-    //     );
+        let (status, body) = extract_response_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Failed to create location: {body:?}"
+        );
 
-    //     // Validate response structure
-    //     assert!(body["id"].is_string(), "Response should include ID");
-    //     assert!(body["name"].is_string());
-    //     assert_eq!(body["comment"], "Location created via API test");
-    //     assert!(body["created_at"].is_string());
+        let location_id = body["id"].as_str().unwrap();
 
-    //     let location_id = body["id"].as_str().unwrap();
+        // Test reading the created location
+        let get_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/locations/{location_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     // Test getting the location by ID
-    //     let get_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri(&format!("/api/locations/{}", location_id))
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (get_status, get_body) = extract_response_body(get_response).await;
+        assert_eq!(get_status, StatusCode::OK, "Failed to get location");
+        assert_eq!(get_body["id"], location_id);
 
-    //     let (get_status, get_body) = extract_response_body(get_response).await;
-    //     assert_eq!(
-    //         get_status,
-    //         StatusCode::OK,
-    //         "Failed to get location: {:?}",
-    //         get_body
-    //     );
-    //     assert_eq!(get_body["id"], location_id);
+        // Test updating the location
+        let update_data = json!({
+            "name": format!("Updated Location {}", uuid::Uuid::new_v4()),
+            "comment": "Updated via API test",
+            "project_id": project_id
+        });
 
-    //     // Test getting all locations
-    //     let list_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/locations")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let update_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!("/api/locations/{location_id}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(update_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (list_status, list_body) = extract_response_body(list_response).await;
-    //     assert_eq!(list_status, StatusCode::OK, "Failed to get locations");
-    //     assert!(list_body["items"].is_array());
+        let (update_status, update_body) = extract_response_body(update_response).await;
+        assert_eq!(
+            update_status,
+            StatusCode::OK,
+            "Failed to update location: {update_body:?}"
+        );
 
-    //     cleanup_test_data(&db).await;
-    // }
+        // Test deleting the location
+        let delete_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri(format!("/api/locations/{location_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (delete_status, _) = extract_response_body(delete_response).await;
+        assert_eq!(delete_status, StatusCode::NO_CONTENT);
+
+        // Test listing locations
+        let list_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/locations")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (list_status, list_body) = extract_response_body(list_response).await;
+        assert_eq!(list_status, StatusCode::OK, "Failed to get locations");
+        assert!(list_body["items"].is_array());
+
+        cleanup_test_data(&db).await;
+    }
 
     #[tokio::test]
     async fn test_location_validation() {
@@ -258,80 +286,83 @@ mod tests {
         cleanup_test_data(&db).await;
     }
 
-    // #[tokio::test]
-    // async fn test_location_filtering_and_pagination() {
-    //     let db = setup_test_db().await;
-    //     let app = setup_test_app().await;
-    //     cleanup_test_data(&db).await;
+    #[tokio::test]
+    async fn test_location_filtering_and_pagination() {
+        let db = setup_test_db().await;
+        let app = setup_test_app().await;
+        cleanup_test_data(&db).await;
 
-    //     // Create a test project for the locations
-    //     let project_id = create_test_project(&app, "LOCATION_FILTERING").await;
+        // Create a test project for the locations
+        let project_id = create_test_project(&app, "LOCATION_FILTERING").await;
 
-    //     // Create some test locations for filtering
-    //     for i in 1..=3 {
-    //         let location_data = json!({
-    //             "name": format!("Filter Test Location {}", i),
-    //             "comment": format!("Test location {} for filtering", i),
-    //             "project_id": project_id
-    //         });
+        // Create some test locations for filtering
+        for i in 1..=3 {
+            let location_data = json!({
+                "name": format!("Filter Test Location {}", i),
+                "comment": format!("Test location {} for filtering", i),
+                "project_id": project_id
+            });
 
-    //         let response = app
-    //             .clone()
-    //             .oneshot(
-    //                 Request::builder()
-    //                     .method("POST")
-    //                     .uri("/api/locations")
-    //                     .header("content-type", "application/json")
-    //                     .body(Body::from(location_data.to_string()))
-    //                     .unwrap(),
-    //             )
-    //             .await
-    //             .unwrap();
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/locations")
+                        .header("content-type", "application/json")
+                        .body(Body::from(location_data.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
 
-    //         let (status, body) = extract_response_body(response).await;
-    //         assert_eq!(
-    //             status,
-    //             StatusCode::CREATED,
-    //             "Failed to create test location: {:?}",
-    //             body
-    //         );
-    //     }
+            let (status, _) = extract_response_body(response).await;
+            assert_eq!(status, StatusCode::CREATED);
+        }
 
-    //     // Test pagination
-    //     let pagination_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/locations?limit=2&offset=0")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        // Test filtering by project_id
+        let filter_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/locations?filter[project_id]={project_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     let (pagination_status, pagination_body) = extract_response_body(pagination_response).await;
-    //     assert_eq!(pagination_status, StatusCode::OK, "Pagination should work");
+        let (filter_status, filter_body) = extract_response_body(filter_response).await;
+        assert_eq!(
+            filter_status,
+            StatusCode::OK,
+            "Failed to filter locations by project_id"
+        );
+        let items = filter_body["items"].as_array().unwrap();
+        assert!(items.len() >= 3, "Should find at least 3 locations");
 
-    //     let items = pagination_body["items"].as_array().unwrap();
-    //     assert!(items.len() <= 2, "Should respect limit parameter");
+        // Test pagination
+        let page_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/locations?page_size=2&page=1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    //     // Test sorting
-    //     let sort_response = app
-    //         .clone()
-    //         .oneshot(
-    //             Request::builder()
-    //                 .method("GET")
-    //                 .uri("/api/locations?sort[name]=asc")
-    //                 .body(Body::empty())
-    //                 .unwrap(),
-    //         )
-    //         .await
-    //         .unwrap();
+        let (page_status, page_body) = extract_response_body(page_response).await;
+        assert_eq!(page_status, StatusCode::OK, "Failed to paginate locations");
+        let paginated_items = page_body["items"].as_array().unwrap();
+        assert!(
+            paginated_items.len() <= 2,
+            "Pagination should limit results"
+        );
 
-    //     let (sort_status, _) = extract_response_body(sort_response).await;
-    //     assert_eq!(sort_status, StatusCode::OK, "Sorting should work");
-
-    //     cleanup_test_data(&db).await;
-    // }
+        cleanup_test_data(&db).await;
+    }
 }
