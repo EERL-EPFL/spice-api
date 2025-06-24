@@ -42,7 +42,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
+    use crate::config::test_helpers::setup_test_app;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use serde_json::{Value, json};
@@ -124,9 +124,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sample_crud_operations() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create dependencies
         let (_project_id, location_id) = create_test_project_and_location(&app, "CRUD").await;
@@ -226,15 +224,11 @@ mod tests {
         let (list_status, list_body) = extract_response_body(list_response).await;
         assert_eq!(list_status, StatusCode::OK, "Failed to get samples");
         assert!(list_body["items"].is_array());
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_sample_type_validation() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create dependencies
         let (_project_id, location_id) =
@@ -298,15 +292,11 @@ mod tests {
             status.is_client_error(),
             "Invalid sample type should be rejected"
         );
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_sample_filtering() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create dependencies
         let (_project_id, location_id) = create_test_project_and_location(&app, "FILTERING").await;
@@ -374,15 +364,11 @@ mod tests {
 
         let (sort_status, _) = extract_response_body(sort_response).await;
         assert_eq!(sort_status, StatusCode::OK, "Sorting should work");
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_treatment_enum_validation() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create dependencies
         let (_project_id, location_id) =
@@ -430,7 +416,5 @@ mod tests {
                 "Valid treatment {treatment_name} should be accepted. Body: {body:?}"
             );
         }
-
-        cleanup_test_data(&db).await;
     }
 }

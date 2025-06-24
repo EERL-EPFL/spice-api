@@ -47,7 +47,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
+    use crate::config::test_helpers::setup_test_app;
     use axum::{
         body::{Body, to_bytes},
         http::{Request, StatusCode},
@@ -125,8 +125,6 @@ mod tests {
     #[tokio::test]
     async fn test_create_tray() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         let tray_data = json!({
             "name": "TestTray",
@@ -199,15 +197,11 @@ mod tests {
         assert_eq!(second_tray["order_sequence"], 2);
         assert_eq!(second_tray["rotation_degrees"], 180);
         assert_eq!(second_tray["trays"][0]["name"], "P2");
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_get_tray_by_id() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         // Create a tray first
         let tray = create_test_tray_via_api(&app)
@@ -233,15 +227,11 @@ mod tests {
         assert_eq!(body["id"], tray_id);
         assert_eq!(body["name"], "TestTray");
         assert_eq!(body["experiment_default"], true);
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_list_trays() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         // Create a few trays
         for i in 1..=3 {
@@ -286,15 +276,11 @@ mod tests {
         assert!(body.is_array(), "Response should be an array");
         let items = body.as_array().unwrap();
         assert!(items.len() >= 3, "Should have at least 3 trays");
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_update_tray() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         // Create a tray first
         let tray = create_test_tray_via_api(&app)
@@ -362,15 +348,11 @@ mod tests {
             assert_eq!(body["experiment_default"], false);
             assert_eq!(body["trays"].as_array().unwrap().len(), 1);
         }
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_delete_tray() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         // Create a tray first
         let tray = create_test_tray_via_api(&app)
@@ -409,15 +391,11 @@ mod tests {
 
         let (get_status, _) = extract_response_body(get_response).await;
         assert_eq!(get_status, StatusCode::NOT_FOUND, "Tray should be deleted");
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_experiment_default_exclusivity() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         // Create first tray as experiment_default
         let first_tray_data = json!({
@@ -485,15 +463,11 @@ mod tests {
             get_body["experiment_default"], false,
             "First tray should no longer be experiment_default"
         );
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_validation_errors() {
         let app = setup_test_app().await;
-        let db = setup_test_db().await;
-        cleanup_test_data(&db).await;
 
         // Test with missing required fields
         let invalid_data = json!({
@@ -519,7 +493,5 @@ mod tests {
             status.is_client_error(),
             "Should reject tray with missing required fields"
         );
-
-        cleanup_test_data(&db).await;
     }
 }

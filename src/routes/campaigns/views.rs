@@ -64,7 +64,7 @@ pub async fn debug_token(Extension(token): Extension<KeycloakToken<Role>>) -> im
 
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
+    use crate::config::test_helpers::setup_test_app;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use serde_json::{Value, json};
@@ -80,9 +80,9 @@ mod tests {
         (status, body)
     }
 
-    async fn create_test_project(app: &axum::Router, test_suffix: &str) -> uuid::Uuid {
+    async fn create_test_project(app: &axum::Router) -> uuid::Uuid {
         let project_data = json!({
-            "name": format!("Test Project {}", test_suffix),
+            "name": "Test Project",
             "note": "Test project for location tests",
             "colour": "#FF0000"
         });
@@ -101,22 +101,24 @@ mod tests {
             .unwrap();
 
         let (status, body) = extract_response_body(response).await;
+
+        println!("Project body and status: {body:?}, {status:?}");
+        assert!(body.is_object(), "Expected JSON object response");
         assert_eq!(
             status,
             StatusCode::CREATED,
             "Failed to create test project: {body:?}"
         );
+
         uuid::Uuid::parse_str(body["id"].as_str().unwrap()).unwrap()
     }
 
     #[tokio::test]
     async fn test_location_crud_operations() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create a test project for the location
-        let project_id = create_test_project(&app, "LOCATION_CRUD").await;
+        let project_id = create_test_project(&app).await;
 
         // Test creating a location with unique name
         let location_data = json!({
@@ -124,7 +126,7 @@ mod tests {
             "comment": "Location created via API test",
             "project_id": project_id
         });
-
+        println!("Location data: {location_data}");
         let response = app
             .clone()
             .oneshot(
@@ -224,15 +226,11 @@ mod tests {
         let (list_status, list_body) = extract_response_body(list_response).await;
         assert_eq!(list_status, StatusCode::OK, "Failed to get locations");
         assert!(list_body["items"].is_array());
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_location_validation() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Test creating location with invalid data (null name)
         let invalid_data = json!({
@@ -283,18 +281,14 @@ mod tests {
             status.is_client_error(),
             "Should reject incomplete location data"
         );
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_location_filtering_and_pagination() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create a test project for the locations
-        let project_id = create_test_project(&app, "LOCATION_FILTERING").await;
+        let project_id = create_test_project(&app).await;
 
         // Create some test locations for filtering
         for i in 1..=3 {
@@ -363,7 +357,5 @@ mod tests {
             paginated_items.len() <= 2,
             "Pagination should limit results"
         );
-
-        cleanup_test_data(&db).await;
     }
 }

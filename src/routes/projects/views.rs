@@ -1,8 +1,7 @@
 use super::models::{Project, ProjectCreate, ProjectUpdate};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
-use axum::{extract::Extension, response::IntoResponse};
-use axum_keycloak_auth::{PassthroughMode, decode::KeycloakToken, layer::KeycloakAuthLayer};
+use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -19,7 +18,6 @@ where
         .routes(routes!(update_one_handler))
         .routes(routes!(delete_one_handler))
         .routes(routes!(delete_many_handler))
-        .routes(routes!(debug_token))
         .with_state(state.db.clone());
 
     if let Some(instance) = state.keycloak_auth_instance.clone() {
@@ -42,31 +40,12 @@ where
     mutating_router
 }
 
-#[utoipa::path(
-    get,
-    path = "/debug-token",
-    responses(
-        (status = axum::http::StatusCode::OK, description = "Token debug information printed to console"),
-        (status = axum::http::StatusCode::UNAUTHORIZED, description = "Unauthorized access"),
-        (status = axum::http::StatusCode::INTERNAL_SERVER_ERROR, description = "Internal Server Error")
-    ),
-    operation_id = "debug_token_projects",
-    summary = "Debug Keycloak token",
-    description = "Prints the Keycloak token payload to the console for debugging purposes."
-)]
-pub async fn debug_token(Extension(token): Extension<KeycloakToken<Role>>) -> impl IntoResponse {
-    println!("Token payload: {token:#?}");
-    (StatusCode::OK, "Token debug information printed to console")
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::config::test_helpers::{cleanup_test_data, setup_test_app, setup_test_db};
+    use crate::config::test_helpers::setup_test_app;
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
-    use sea_orm::{ActiveModelTrait, Set};
     use serde_json::{Value, json};
-    use spice_entity::projects;
     use tower::ServiceExt;
 
     async fn extract_response_body(response: axum::response::Response) -> (StatusCode, Value) {
@@ -87,9 +66,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_project_crud_operations() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Test creating a project with unique name
         let project_data = json!({
@@ -114,26 +91,6 @@ mod tests {
             .unwrap();
 
         let (status, body) = extract_response_body(response).await;
-
-        // If this fails, let's try to understand why by testing the database connection directly
-        if status != StatusCode::CREATED {
-            // Test direct database operations
-            println!("Direct database test starting...");
-
-            let test_project = projects::ActiveModel {
-                id: Set(uuid::Uuid::new_v4()),
-                name: Set("Direct DB Test Project".to_string()),
-                note: Set(Some("Direct database insertion test".to_string())),
-                colour: Set(Some("#000000".to_string())),
-                created_at: Set(chrono::Utc::now().into()),
-                last_updated: Set(chrono::Utc::now().into()),
-            };
-
-            match test_project.insert(&db).await {
-                Ok(inserted) => println!("Direct database insert succeeded: {:?}", inserted.id),
-                Err(e) => println!("Direct database insert failed: {e:?}"),
-            }
-        }
 
         assert_eq!(
             status,
@@ -187,15 +144,11 @@ mod tests {
         let (list_status, list_body) = extract_response_body(list_response).await;
         assert_eq!(list_status, StatusCode::OK, "Failed to get projects");
         assert!(list_body["items"].is_array());
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_project_validation() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Test creating project with invalid data (null name)
         let invalid_data = json!({
@@ -246,15 +199,11 @@ mod tests {
             status.is_client_error(),
             "Should reject incomplete project data"
         );
-
-        cleanup_test_data(&db).await;
     }
 
     #[tokio::test]
     async fn test_project_filtering_and_pagination() {
-        let db = setup_test_db().await;
         let app = setup_test_app().await;
-        cleanup_test_data(&db).await;
 
         // Create some test projects for filtering
         for i in 1..=3 {
@@ -334,7 +283,5 @@ mod tests {
 
         let (sort_status, _) = extract_response_body(sort_response).await;
         assert_eq!(sort_status, StatusCode::OK, "Sorting should work");
-
-        cleanup_test_data(&db).await;
     }
 }

@@ -121,16 +121,10 @@ pub mod test_helpers {
     }
 
     pub async fn setup_test_app() -> Router {
-        let db = setup_test_db().await;
         let mut config = Config::for_tests();
+        let db = setup_test_db().await;
         // Disable Keycloak for tests by setting the URL to empty
         config.keycloak_url = String::new();
         build_router(&db, &config)
-    }
-
-    // No cleanup needed for in-memory SQLite - it's automatically destroyed
-    pub async fn cleanup_test_data(_db: &DatabaseConnection) {
-        // In-memory SQLite databases are automatically cleaned up when the connection is dropped
-        // This function is kept for API compatibility but does nothing
     }
 }
