@@ -143,7 +143,10 @@ mod tests {
 
         let (list_status, list_body) = extract_response_body(list_response).await;
         assert_eq!(list_status, StatusCode::OK, "Failed to get projects");
-        assert!(list_body["items"].is_array());
+        assert!(
+            list_body.is_array(),
+            "Projects list should be a direct array"
+        );
     }
 
     #[tokio::test]

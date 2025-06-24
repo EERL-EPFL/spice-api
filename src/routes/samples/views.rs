@@ -54,8 +54,11 @@ mod tests {
         let bytes = to_bytes(response.into_body(), usize::MAX)
             .await
             .expect("Failed to read response body");
-        let body: Value = serde_json::from_slice(&bytes)
-            .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
+
+        let body: Value = serde_json::from_slice(&bytes).unwrap_or_else(|_| {
+            let raw_text = String::from_utf8_lossy(&bytes);
+            json!({"error": raw_text})
+        });
         (status, body)
     }
 
@@ -132,28 +135,29 @@ mod tests {
         // Test creating a sample with valid enum values
         let sample_data = json!({
             "name": "Test Sample API",
-            "type": "bulk",
+            "type": "Bulk",
             "material_description": "Test material for API testing",
             "extraction_procedure": "Standard extraction via API",
             "filter_substrate": "Polycarbonate",
-            "suspension_volume_litres": "0.050",
-            "air_volume_litres": "100.0",
-            "water_volume_litres": "0.200",
-            "initial_concentration_gram_l": "0.001",
-            "well_volume_litres": "0.0001",
+            "suspension_volume_litres": 0.050,
+            "air_volume_litres": 100.0,
+            "water_volume_litres": 0.200,
+            "initial_concentration_gram_l": 0.001,
+            "well_volume_litres": 0.0001,
             "remarks": "Created via API test suite",
-            "longitude": "-74.006000",
-            "latitude": "40.712800",
+            "longitude": -74.006000,
+            "latitude": 40.712800,
             "location_id": location_id,
             "start_time": "2024-06-15T10:00:00Z",
             "stop_time": "2024-06-15T12:00:00Z",
-            "flow_litres_per_minute": "2.0",
-            "total_volume": "240.0",
+            "flow_litres_per_minute": 2.0,
+            "total_volume": 240.0,
             "treatments": [
                 {
+                    "id": "00000000-0000-0000-0000-000000000001",
                     "name": "heat",
                     "notes": "Heat treatment for API sample test",
-                    "enzyme_volume_litres": "0.00005"
+                    "enzyme_volume_litres": 0.00005
                 }
             ]
         });
@@ -181,7 +185,7 @@ mod tests {
         // Validate response structure
         assert!(body["id"].is_string(), "Response should include ID");
         assert_eq!(body["name"], "Test Sample API");
-        assert_eq!(body["type"], "bulk");
+        assert_eq!(body["type"], "Bulk");
         assert!(body["created_at"].is_string());
         assert!(body["treatments"].is_array());
 
@@ -223,7 +227,10 @@ mod tests {
 
         let (list_status, list_body) = extract_response_body(list_response).await;
         assert_eq!(list_status, StatusCode::OK, "Failed to get samples");
-        assert!(list_body["items"].is_array());
+        assert!(
+            list_body.is_array(),
+            "Samples list should be a direct array"
+        );
     }
 
     #[tokio::test]
@@ -234,10 +241,15 @@ mod tests {
         let (_project_id, location_id) =
             create_test_project_and_location(&app, "TYPE_VALIDATION").await;
 
-        // Test valid sample types (using lowercase as per enum definition)
-        for sample_type in ["bulk", "filter", "procedural_blank", "pure_water"] {
+        // Test valid sample types (using correct enum values)
+        for (sample_type, expected_type) in [
+            ("Bulk", "bulk"),
+            ("Filter", "filter"),
+            ("ProceduralBlank", "procedural_blank"),
+            ("PureWater", "pure_water"),
+        ] {
             let sample_data = json!({
-                "name": format!("Test {} Sample", sample_type),
+                "name": format!("Test {} Sample", expected_type),
                 "type": sample_type,
                 "material_description": "Test material for validation",
                 "location_id": location_id,
@@ -261,7 +273,7 @@ mod tests {
             assert_eq!(
                 status,
                 StatusCode::CREATED,
-                "Valid sample type {sample_type} should be accepted. Body: {body:?}"
+                "Valid sample type {expected_type} should be accepted. Body: {body:?}"
             );
         }
 
@@ -302,11 +314,11 @@ mod tests {
         let (_project_id, location_id) = create_test_project_and_location(&app, "FILTERING").await;
 
         // Create test samples for filtering
-        let sample_types = ["bulk", "filter"];
-        for sample_type in sample_types {
+        let sample_types = [("Bulk", "bulk"), ("Filter", "filter")];
+        for (input_type, display_type) in sample_types {
             let sample_data = json!({
-                "name": format!("Filter Test {} Sample", sample_type),
-                "type": sample_type,
+                "name": format!("Filter Test {} Sample", display_type),
+                "type": input_type,
                 "material_description": "Test material for filtering",
                 "location_id": location_id,
                 "treatments": []
@@ -384,11 +396,12 @@ mod tests {
 
             let sample_data = json!({
                 "name": format!("Treatment Test {} Sample", treatment_name),
-                "type": "bulk",
+                "type": "Bulk",
                 "material_description": "Test material for treatment validation",
                 "location_id": location_id,
                 "treatments": [
                     {
+                        "id": "00000000-0000-0000-0000-000000000001",
                         "name": treatment_name,
                         "notes": format!("Test {} treatment", treatment_name),
                         "enzyme_volume_litres": enzyme_volume
