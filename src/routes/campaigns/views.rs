@@ -138,6 +138,7 @@ mod tests {
             .await
             .unwrap();
 
+        println!("Response: {response:?}");
         let (status, body) = extract_response_body(response).await;
         assert_eq!(
             status,
