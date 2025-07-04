@@ -21,8 +21,6 @@ pub struct Location {
     last_updated: DateTime<Utc>,
     comment: Option<String>,
     name: String,
-    start_date: Option<DateTime<Utc>>,
-    end_date: Option<DateTime<Utc>>,
     project_id: Option<Uuid>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     experiments: Vec<crate::routes::experiments::models::Experiment>,
@@ -38,8 +36,6 @@ impl From<Model> for Location {
             comment: model.comment,
             id: model.id,
             name: model.name,
-            start_date: model.start_date.map(|dt| dt.with_timezone(&Utc)),
-            end_date: model.end_date.map(|dt| dt.with_timezone(&Utc)),
             project_id: model.project_id,
             experiments: vec![],
             samples: vec![],
@@ -174,8 +170,6 @@ impl CRUDResource for Location {
             ("name", Self::ColumnType::Name),
             ("comment", Self::ColumnType::Comment),
             ("last_updated", Self::ColumnType::LastUpdated),
-            ("start_date", Self::ColumnType::StartDate),
-            ("end_date", Self::ColumnType::EndDate),
             ("project_id", Self::ColumnType::ProjectId),
         ]
     }

@@ -9,8 +9,6 @@ pub struct Model {
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub comment: Option<String>,
-    pub start_date: Option<DateTimeWithTimeZone>,
-    pub end_date: Option<DateTimeWithTimeZone>,
     pub project_id: Option<Uuid>,
     pub last_updated: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,

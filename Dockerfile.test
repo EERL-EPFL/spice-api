@@ -27,7 +27,6 @@ RUN cargo chef cook --recipe-path recipe.json
 COPY ./src ./src
 COPY ./entity ./entity
 COPY ./migration ./migration
-COPY ./tests ./tests
 COPY Cargo.lock Cargo.toml ./
 
 # Build the actual application
