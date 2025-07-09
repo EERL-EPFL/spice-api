@@ -5,8 +5,6 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "trays")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     #[sea_orm(column_type = "Text", nullable)]
     pub name: Option<String>,
     pub qty_x_axis: Option<i32>,
@@ -14,14 +12,24 @@ pub struct Model {
     pub well_relative_diameter: Option<Decimal>,
     pub last_updated: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(has_many = "super::phase_change_events::Entity")]
+    PhaseChangeEvents,
     #[sea_orm(has_many = "super::tray_configuration_assignments::Entity")]
     TrayConfigurationAssignments,
     #[sea_orm(has_many = "super::wells::Entity")]
     Wells,
+}
+
+impl Related<super::phase_change_events::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhaseChangeEvents.def()
+    }
 }
 
 impl Related<super::tray_configuration_assignments::Entity> for Entity {

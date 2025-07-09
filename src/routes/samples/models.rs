@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
+use rust_decimal::Decimal;
 use sea_orm::{
     ActiveModelTrait, ActiveValue, Condition, DatabaseConnection, DbErr, EntityTrait, Order,
     QueryOrder, QuerySelect, Set, entity::prelude::*,
@@ -26,6 +27,66 @@ impl From<spice_entity::treatments::Model> for SampleTreatment {
             name: model.name,
             notes: model.notes,
             enzyme_volume_litres: model.enzyme_volume_litres,
+        }
+    }
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct SampleTreatmentCreate {
+    pub name: TreatmentName,
+    pub notes: Option<String>,
+    pub enzyme_volume_litres: Option<Decimal>,
+}
+
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct SampleCreateCustom {
+    pub name: String,
+    pub r#type: spice_entity::SampleType,
+    pub material_description: Option<String>,
+    pub extraction_procedure: Option<String>,
+    pub filter_substrate: Option<String>,
+    pub suspension_volume_litres: Option<Decimal>,
+    pub air_volume_litres: Option<Decimal>,
+    pub water_volume_litres: Option<Decimal>,
+    pub initial_concentration_gram_l: Option<Decimal>,
+    pub well_volume_litres: Option<Decimal>,
+    pub remarks: Option<String>,
+    pub location_id: Option<Uuid>,
+    pub latitude: Option<Decimal>,
+    pub longitude: Option<Decimal>,
+    pub start_time: Option<DateTime<Utc>>,
+    pub stop_time: Option<DateTime<Utc>>,
+    pub flow_litres_per_minute: Option<Decimal>,
+    pub total_volume: Option<Decimal>,
+    #[serde(default)]
+    pub treatments: Vec<SampleTreatmentCreate>,
+}
+
+impl From<SampleCreateCustom> for spice_entity::samples::ActiveModel {
+    fn from(create: SampleCreateCustom) -> Self {
+        spice_entity::samples::ActiveModel {
+            id: ActiveValue::Set(Uuid::new_v4()),
+            name: ActiveValue::Set(create.name),
+            r#type: ActiveValue::Set(create.r#type),
+            material_description: ActiveValue::Set(create.material_description),
+            extraction_procedure: ActiveValue::Set(create.extraction_procedure),
+            filter_substrate: ActiveValue::Set(create.filter_substrate),
+            suspension_volume_litres: ActiveValue::Set(create.suspension_volume_litres),
+            air_volume_litres: ActiveValue::Set(create.air_volume_litres),
+            water_volume_litres: ActiveValue::Set(create.water_volume_litres),
+            initial_concentration_gram_l: ActiveValue::Set(create.initial_concentration_gram_l),
+            well_volume_litres: ActiveValue::Set(create.well_volume_litres),
+            remarks: ActiveValue::Set(create.remarks),
+            created_at: ActiveValue::Set(chrono::Utc::now().into()),
+            last_updated: ActiveValue::Set(chrono::Utc::now().into()),
+            location_id: ActiveValue::Set(create.location_id),
+            latitude: ActiveValue::Set(create.latitude),
+            longitude: ActiveValue::Set(create.longitude),
+            start_time: ActiveValue::Set(create.start_time.map(std::convert::Into::into)),
+            stop_time: ActiveValue::Set(create.stop_time.map(std::convert::Into::into)),
+            flow_litres_per_minute: ActiveValue::Set(create.flow_litres_per_minute),
+            total_volume: ActiveValue::Set(create.total_volume),
         }
     }
 }
@@ -95,7 +156,7 @@ impl CRUDResource for Sample {
     type EntityType = spice_entity::samples::Entity;
     type ColumnType = spice_entity::samples::Column;
     type ActiveModelType = spice_entity::samples::ActiveModel;
-    type CreateModel = SampleCreate;
+    type CreateModel = SampleCreateCustom;
     type UpdateModel = SampleUpdate;
 
     const ID_COLUMN: Self::ColumnType = spice_entity::samples::Column::Id;
@@ -243,19 +304,20 @@ impl CRUDResource for Sample {
 
     async fn create(
         db: &DatabaseConnection,
-        mut create_data: Self::CreateModel,
+        create_data: Self::CreateModel,
     ) -> Result<Self, DbErr> {
         // Extract treatments if present
         let treatments = if create_data.treatments.is_empty() {
             None
         } else {
-            Some(std::mem::take(&mut create_data.treatments))
+            Some(create_data.treatments.clone())
         };
 
         let active_model: Self::ActiveModelType = create_data.into();
         let inserted = active_model.insert(db).await?;
         println!("Inserted sample with ID: {}", inserted.id);
         let sample_id = inserted.id;
+        
         // Insert treatments if provided
         if let Some(treatments) = treatments {
             for treatment in treatments {
@@ -335,3 +397,4 @@ impl CRUDResource for Sample {
         ]
     }
 }
+

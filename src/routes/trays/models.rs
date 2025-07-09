@@ -55,17 +55,17 @@ impl CRUDResource for Tray {
     const RESOURCE_DESCRIPTION: &'static str =
         "This endpoint manages individual trays used in experiments.";
 
-    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
-        let model =
-            Self::EntityType::find_by_id(id)
-                .one(db)
-                .await?
-                .ok_or(DbErr::RecordNotFound(format!(
-                    "{} not found",
-                    Self::RESOURCE_NAME_SINGULAR
-                )))?;
-        Ok(model.into())
-    }
+    // async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
+    //     let model =
+    //         Self::EntityType::find_by_id(id)
+    //             .one(db)
+    //             .await?
+    //             .ok_or(DbErr::RecordNotFound(format!(
+    //                 "{} not found",
+    //                 Self::RESOURCE_NAME_SINGULAR
+    //             )))?;
+    //     Ok(model.into())
+    // }
 
     // async fn create(
     //     db: &DatabaseConnection,
@@ -138,8 +138,8 @@ struct TrayInfo {
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 struct TrayAssignment {
-    order_sequence: i16,
-    rotation_degrees: i16,
+    order_sequence: i32,
+    rotation_degrees: i32,
     trays: Vec<TrayInfo>,
 }
 

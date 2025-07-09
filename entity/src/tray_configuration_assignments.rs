@@ -10,8 +10,8 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub tray_configuration_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
-    pub order_sequence: i16,
-    pub rotation_degrees: i16,
+    pub order_sequence: i32,
+    pub rotation_degrees: i32,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
 }

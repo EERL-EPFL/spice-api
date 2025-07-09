@@ -5,13 +5,13 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "wells")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     pub tray_id: Uuid,
-    pub row_number: i32,
     pub column_number: i32,
+    pub row_number: i32,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -26,6 +26,8 @@ pub enum Relation {
         on_delete = "NoAction"
     )]
     Trays,
+    #[sea_orm(has_many = "super::well_phase_transitions::Entity")]
+    WellPhaseTransitions,
     #[sea_orm(has_many = "super::well_temperatures::Entity")]
     WellTemperatures,
 }
@@ -39,6 +41,12 @@ impl Related<super::freezing_results::Entity> for Entity {
 impl Related<super::trays::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Trays.def()
+    }
+}
+
+impl Related<super::well_phase_transitions::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::WellPhaseTransitions.def()
     }
 }
 

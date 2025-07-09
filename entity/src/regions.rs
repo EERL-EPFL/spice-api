@@ -5,23 +5,23 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "regions")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     pub experiment_id: Uuid,
     pub treatment_id: Option<Uuid>,
     #[sea_orm(column_type = "Text", nullable)]
     pub name: Option<String>,
     #[sea_orm(column_type = "Text", nullable)]
     pub display_colour_hex: Option<String>,
-    pub tray_id: Option<i16>,
-    pub col_min: Option<i16>,
-    pub row_min: Option<i16>,
-    pub col_max: Option<i16>,
-    pub row_max: Option<i16>,
-    pub dilution_factor: Option<i16>,
-    pub is_background_key: bool,
+    pub tray_id: Option<i32>,
+    pub col_min: Option<i32>,
+    pub row_min: Option<i32>,
+    pub col_max: Option<i32>,
+    pub row_max: Option<i32>,
+    pub dilution_factor: Option<i32>,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
+    pub is_background_key: bool,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -38,6 +38,8 @@ pub enum Relation {
     FreezingResults,
     #[sea_orm(has_many = "super::inp_concentrations::Entity")]
     InpConcentrations,
+    #[sea_orm(has_many = "super::phase_change_events::Entity")]
+    PhaseChangeEvents,
     #[sea_orm(
         belongs_to = "super::treatments::Entity",
         from = "Column::TreatmentId",
@@ -63,6 +65,12 @@ impl Related<super::freezing_results::Entity> for Entity {
 impl Related<super::inp_concentrations::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::InpConcentrations.def()
+    }
+}
+
+impl Related<super::phase_change_events::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhaseChangeEvents.def()
     }
 }
 

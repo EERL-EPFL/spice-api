@@ -1,11 +1,11 @@
-use super::models::{Sample, SampleCreate, SampleUpdate};
+use super::models::{Sample, SampleCreateCustom, SampleUpdate};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
 use utoipa_axum::{router::OpenApiRouter, routes};
 
-crud_handlers!(Sample, SampleUpdate, SampleCreate);
+crud_handlers!(Sample, SampleUpdate, SampleCreateCustom);
 
 pub fn router(state: &AppState) -> OpenApiRouter
 where
@@ -154,7 +154,6 @@ mod tests {
             "total_volume": 240.0,
             "treatments": [
                 {
-                    "id": "00000000-0000-0000-0000-000000000001",
                     "name": "heat",
                     "notes": "Heat treatment for API sample test",
                     "enzyme_volume_litres": 0.00005
@@ -401,7 +400,6 @@ mod tests {
                 "location_id": location_id,
                 "treatments": [
                     {
-                        "id": "00000000-0000-0000-0000-000000000001",
                         "name": treatment_name,
                         "notes": format!("Test {} treatment", treatment_name),
                         "enzyme_volume_litres": enzyme_volume
@@ -429,5 +427,187 @@ mod tests {
                 "Valid treatment {treatment_name} should be accepted. Body: {body:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_create_sample_with_treatments_in_single_request() {
+        let app = setup_test_app().await;
+
+        // Create dependencies
+        let (_project_id, location_id) =
+            create_test_project_and_location(&app, "SINGLE_REQUEST").await;
+
+        // Test creating a sample WITH treatments in a single POST request
+        let sample_data = json!({
+            "name": "Sample With Multiple Treatments",
+            "type": "bulk",
+            "material_description": "Test sample with multiple treatments",
+            "location_id": location_id,
+            "treatments": [
+                {
+                    "name": "heat",
+                    "notes": "Heat treatment applied",
+                    "enzyme_volume_litres": 0.005
+                },
+                {
+                    "name": "h2o2",
+                    "notes": "Hydrogen peroxide treatment",
+                    "enzyme_volume_litres": 0.003
+                }
+            ]
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/samples")
+                    .header("content-type", "application/json")
+                    .body(Body::from(sample_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Sample creation should succeed. Body: {body:?}"
+        );
+
+        // Verify the sample was created and treatments were created in the same request
+        let sample_id = body["id"].as_str().expect("Sample should have an ID");
+
+        // Get the sample and verify its treatments were created
+        let get_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(&format!("/api/samples/{}", sample_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(get_response).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "Getting sample should succeed. Body: {body:?}"
+        );
+
+        // Verify treatments array contains both treatments
+        let treatments = body["treatments"]
+            .as_array()
+            .expect("Sample should have treatments array");
+        assert_eq!(
+            treatments.len(),
+            2,
+            "Sample should have exactly two treatments"
+        );
+
+        // Check that both treatments were created correctly
+        let treatment_names: Vec<&str> = treatments
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert!(
+            treatment_names.contains(&"heat"),
+            "Should contain heat treatment"
+        );
+        assert!(
+            treatment_names.contains(&"h2o2"),
+            "Should contain h2o2 treatment"
+        );
+
+        // Verify treatment details
+        for treatment in treatments {
+            match treatment["name"].as_str().unwrap() {
+                "heat" => {
+                    assert_eq!(treatment["notes"], "Heat treatment applied");
+                    // Compare as strings since Decimal is serialized as string
+                    assert_eq!(treatment["enzyme_volume_litres"], "0.005");
+                }
+                "h2o2" => {
+                    assert_eq!(treatment["notes"], "Hydrogen peroxide treatment");
+                    assert_eq!(treatment["enzyme_volume_litres"], "0.003");
+                }
+                _ => panic!("Unexpected treatment name"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_sample_without_treatments() {
+        let app = setup_test_app().await;
+
+        // Create dependencies
+        let (_project_id, location_id) =
+            create_test_project_and_location(&app, "NO_TREATMENTS").await;
+
+        // Test creating a sample WITHOUT any treatments
+        let sample_data = json!({
+            "name": "Sample Without Treatments",
+            "type": "bulk",
+            "material_description": "Test sample without treatments",
+            "location_id": location_id,
+            // Note: no treatments field provided
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/samples")
+                    .header("content-type", "application/json")
+                    .body(Body::from(sample_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Sample creation should succeed. Body: {body:?}"
+        );
+
+        // Verify the sample was created without any treatments
+        let sample_id = body["id"].as_str().expect("Sample should have an ID");
+
+        let get_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(&format!("/api/samples/{}", sample_id))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(get_response).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "Getting sample should succeed. Body: {body:?}"
+        );
+
+        // Verify treatments array is empty (no auto-creation)
+        let treatments = body["treatments"]
+            .as_array()
+            .expect("Sample should have treatments array");
+        assert_eq!(
+            treatments.len(),
+            0,
+            "Sample should have no treatments when none were provided"
+        );
     }
 }

@@ -5,8 +5,6 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "s3_assets")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     pub experiment_id: Option<Uuid>,
     #[sea_orm(column_type = "Text")]
     pub original_filename: String,
@@ -23,6 +21,8 @@ pub struct Model {
     pub r#type: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub role: Option<String>,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -35,11 +35,27 @@ pub enum Relation {
         on_delete = "NoAction"
     )]
     Experiments,
+    #[sea_orm(has_many = "super::phase_change_events::Entity")]
+    PhaseChangeEvents,
+    #[sea_orm(has_many = "super::time_points::Entity")]
+    TimePoints,
 }
 
 impl Related<super::experiments::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Experiments.def()
+    }
+}
+
+impl Related<super::phase_change_events::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::PhaseChangeEvents.def()
+    }
+}
+
+impl Related<super::time_points::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TimePoints.def()
     }
 }
 

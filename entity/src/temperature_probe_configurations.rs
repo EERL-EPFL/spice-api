@@ -3,17 +3,22 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "temperature_probes")]
+#[sea_orm(table_name = "temperature_probe_configurations")]
 pub struct Model {
-    pub experiment_id: Uuid,
-    #[sea_orm(column_type = "Text", nullable)]
-    pub probe_name: Option<String>,
-    pub column_index: Option<i32>,
-    pub created_at: DateTimeWithTimeZone,
-    pub last_updated: DateTimeWithTimeZone,
-    pub correction_factor: Option<Decimal>,
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+    pub experiment_id: Uuid,
+    pub probe_number: i32,
+    pub column_index: i32,
+    pub position_x: Decimal,
+    pub position_y: Decimal,
+    #[sea_orm(column_type = "Decimal(Some((16, 10)))")]
+    pub correction_slope: Decimal,
+    #[sea_orm(column_type = "Decimal(Some((16, 10)))")]
+    pub correction_intercept: Decimal,
+    pub interpolation_method: Option<String>,
+    pub created_at: DateTimeWithTimeZone,
+    pub last_updated: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -23,7 +28,7 @@ pub enum Relation {
         from = "Column::ExperimentId",
         to = "super::experiments::Column::Id",
         on_update = "NoAction",
-        on_delete = "NoAction"
+        on_delete = "Cascade"
     )]
     Experiments,
 }

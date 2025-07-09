@@ -3,17 +3,16 @@
 use super::sea_orm_active_enums::SampleType;
 use sea_orm::entity::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "samples")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
     #[sea_orm(column_type = "Text")]
     pub name: String,
-    pub r#type: SampleType,
     pub start_time: Option<DateTimeWithTimeZone>,
     pub stop_time: Option<DateTimeWithTimeZone>,
+    #[sea_orm(column_type = "Decimal(Some((16, 10)))", nullable)]
     pub flow_litres_per_minute: Option<Decimal>,
+    #[sea_orm(column_type = "Decimal(Some((16, 10)))", nullable)]
     pub total_volume: Option<Decimal>,
     #[sea_orm(column_type = "Text", nullable)]
     pub material_description: Option<String>,
@@ -35,6 +34,9 @@ pub struct Model {
     pub location_id: Option<Uuid>,
     pub created_at: DateTimeWithTimeZone,
     pub last_updated: DateTimeWithTimeZone,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub id: Uuid,
+    pub r#type: SampleType,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

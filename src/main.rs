@@ -2,6 +2,7 @@ mod common;
 mod config;
 mod external;
 mod routes;
+mod services;
 
 use crate::config::Config;
 use migration::{Migrator, MigratorTrait};

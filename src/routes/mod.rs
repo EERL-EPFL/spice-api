@@ -1,4 +1,4 @@
-pub mod assets;
+mod assets;
 mod campaigns;
 mod experiments;
 mod projects;
@@ -56,11 +56,7 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         )))
     };
 
-    let app_state: AppState = AppState {
-        db: db.clone(),
-        config: config.clone(),
-        keycloak_auth_instance: keycloak_instance,
-    };
+    let app_state: AppState = AppState::new(db.clone(), config.clone(), keycloak_instance);
 
     // Build the router with routes from the plots module
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -68,10 +64,15 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .nest("/api/locations", campaigns::views::router(&app_state))
         .nest("/api/projects", projects::views::router(&app_state))
         .nest("/api/experiments", experiments::views::router(&app_state))
+        // .nest("/api", phase_changes::router(&app_state))
         .nest("/api/samples", samples::views::router(&app_state))
         .nest("/api/assets", assets::views::router(&app_state))
         .nest("/api/trays", trays::views::router(&app_state))
         .nest("/api/treatments", treatments::views::router(&app_state))
+        // .nest(
+        //     "/api",
+        //     freezing_results::views::freezing_results_routes().with_state(app_state.clone()),
+        // )
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 
