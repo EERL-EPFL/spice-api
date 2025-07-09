@@ -12,7 +12,6 @@ pub struct Model {
     pub project_id: Option<Uuid>,
     pub last_updated: DateTimeWithTimeZone,
     pub created_at: DateTimeWithTimeZone,
-    pub project_id: Option<Uuid>,
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
 }
