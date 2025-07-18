@@ -21,22 +21,35 @@ pub fn coordinates_to_str(coord: &WellCoordinate) -> Result<String, String> {
 }
 
 pub fn str_to_coordinates(coordinate: &str) -> Result<WellCoordinate, String> {
-    if coordinate.len() < 2 {
-        return Err(String::from("Invalid coordinate format"));
+    if coordinate.len() < 2
+        || !coordinate.chars().next().unwrap().is_ascii_uppercase()
+        || !coordinate.chars().nth(1).unwrap().is_ascii_digit()
+    {
+        return Err(format!(
+            "Invalid coordinate format, must be like 'A1', provided: {}",
+            coordinate
+        ));
     }
 
-    let column_char = coordinate.chars().next().unwrap();
-    let row_str = &coordinate[1..];
+    let mut chars = coordinate.chars();
+    let column_char = chars.next().unwrap();
+    let row_str: String = chars.collect();
 
-    if !column_char.is_ascii_uppercase() || row_str.is_empty() {
-        return Err(String::from("Invalid coordinate format"));
+    if !column_char.is_ascii_uppercase()
+        || row_str.is_empty()
+        || row_str.len() != coordinate.len() - 1
+    {
+        return Err("Invalid coordinate format".into());
     }
 
     let column: u8 = (column_char as u8) - b'A' + 1;
     let row: u8 = row_str
         .parse()
-        .map_err(|_| String::from("Invalid row number"))?;
+        .map_err(|_| format!("Invalid row number: {coordinate}"))?;
 
+    if row < 1 {
+        return Err("Invalid row number, must be a positive integer".into());
+    }
     Ok(WellCoordinate { column, row })
 }
 
@@ -72,7 +85,14 @@ fn test_str_to_coordinates() {
     );
     assert_eq!(
         str_to_coordinates("AA1"),
-        Err("Invalid coordinate format".into())
+        Err("Invalid coordinate format, must be like 'A1', provided: AA1".into())
     );
-    assert_eq!(str_to_coordinates("A0"), Err("Invalid row number".into()));
+    assert_eq!(
+        str_to_coordinates("A0"),
+        Err("Invalid row number, must be a positive integer".into())
+    );
+    assert_eq!(
+        str_to_coordinates("H12"),
+        Ok(WellCoordinate { column: 8, row: 12 })
+    );
 }

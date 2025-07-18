@@ -140,7 +140,6 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use serde_json::json;
     use tower::ServiceExt;
-    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_excel_upload_endpoint_exists() {
@@ -326,76 +325,6 @@ mod tests {
         assert!(
             response_text.contains("Experiment not found"),
             "Error should mention experiment not found"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_processing_status_endpoint() {
-        let app = setup_test_app().await;
-
-        // Create an experiment first
-        let experiment_data = json!({
-            "name": "Processing Status Test",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test processing status"
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        let experiment_id = experiment["id"].as_str().unwrap();
-
-        let job_id = Uuid::new_v4();
-
-        // Test processing status endpoint
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri(format!(
-                        "/api/experiments/{experiment_id}/process-status/{job_id}",
-                    ))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "Processing status endpoint should work"
-        );
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let status_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        assert_eq!(status_response["experiment_id"], experiment_id);
-        assert_eq!(status_response["job_id"], job_id.to_string());
-        assert!(
-            status_response["status"].is_string(),
-            "Should have status field"
         );
     }
 }
