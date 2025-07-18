@@ -508,3 +508,275 @@ async fn test_experiment_with_phase_transitions_data() {
     
     println!("Test completed successfully even if some endpoints are not implemented");
 }
+
+#[tokio::test]
+async fn test_experiment_results_summary_structure() {
+    let app = setup_test_app().await;
+
+    // Create an experiment
+    let experiment_data = json!({
+        "name": "Results Summary Structure Test",
+        "username": "test@example.com",
+        "performed_at": "2024-06-20T14:30:00Z",
+        "temperature_ramp": -1.0,
+        "temperature_start": 5.0,
+        "temperature_end": -25.0,
+        "is_calibration": false,
+        "remarks": "Testing results summary structure"
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/experiments")
+                .header("content-type", "application/json")
+                .body(Body::from(experiment_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let experiment_id = experiment["id"].as_str().unwrap();
+
+    // Get experiment with results summary
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{}", experiment_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    // Detailed validation of results_summary structure
+    let results_summary = &experiment_response["results_summary"];
+    assert!(results_summary.is_object(), "results_summary should be an object");
+
+    // Check all required fields exist and have correct types
+    assert!(results_summary["total_wells"].is_number(), "total_wells should be a number");
+    assert!(results_summary["wells_with_data"].is_number(), "wells_with_data should be a number");
+    assert!(results_summary["wells_frozen"].is_number(), "wells_frozen should be a number");
+    assert!(results_summary["wells_liquid"].is_number(), "wells_liquid should be a number");
+    assert!(results_summary["total_time_points"].is_number(), "total_time_points should be a number");
+    assert!(results_summary["well_summaries"].is_array(), "well_summaries should be an array");
+    
+    // Check nullable timestamp fields
+    assert!(results_summary.get("first_timestamp").is_some(), "first_timestamp field should exist");
+    assert!(results_summary.get("last_timestamp").is_some(), "last_timestamp field should exist");
+
+    // Validate well_summaries structure if any exist
+    if let Some(summaries) = results_summary["well_summaries"].as_array() {
+        for (i, summary) in summaries.iter().enumerate() {
+            assert!(summary.is_object(), "well_summary[{}] should be an object", i);
+            
+            // Check required fields in well summary
+            assert!(summary.get("well_id").is_some(), "well_summary[{}] should have well_id", i);
+            assert!(summary.get("coordinate").is_some(), "well_summary[{}] should have coordinate", i);
+            assert!(summary.get("final_state").is_some(), "well_summary[{}] should have final_state", i);
+            assert!(summary.get("total_transitions").is_some(), "well_summary[{}] should have total_transitions", i);
+            
+            // Check coordinate format (should be like "A1", "B12", etc.)
+            if let Some(coord) = summary["coordinate"].as_str() {
+                assert!(
+                    coord.len() >= 2 && coord.chars().next().unwrap().is_alphabetic(),
+                    "Coordinate should be in format like 'A1', got: {}",
+                    coord
+                );
+            }
+            
+            // Check final_state values
+            if let Some(state) = summary["final_state"].as_str() {
+                assert!(
+                    state == "liquid" || state == "frozen" || state == "unknown",
+                    "final_state should be 'liquid', 'frozen', or 'unknown', got: {}",
+                    state
+                );
+            }
+        }
+    }
+
+    println!("Results summary structure validation passed!");
+}
+
+#[tokio::test]
+async fn test_experiment_with_mock_results_data() {
+    let app = setup_test_app().await;
+
+    // Create an experiment
+    let experiment_data = json!({
+        "name": "Mock Results Data Test",
+        "username": "test@example.com",
+        "performed_at": "2024-06-20T14:30:00Z",
+        "temperature_ramp": -1.0,
+        "temperature_start": 5.0,
+        "temperature_end": -25.0,
+        "is_calibration": false,
+        "remarks": "Testing with mock results data"
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/experiments")
+                .header("content-type", "application/json")
+                .body(Body::from(experiment_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    let experiment_id = experiment["id"].as_str().unwrap();
+
+    // Since we can't easily mock the database in integration tests,
+    // we'll just verify the API contract and response structure
+    
+    // Get experiment and verify empty results
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{}", experiment_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    let results_summary = &experiment_response["results_summary"];
+    
+    // For a new experiment with no data, verify initial state
+    assert_eq!(results_summary["total_wells"], 0, "New experiment should have 0 wells");
+    assert_eq!(results_summary["wells_with_data"], 0, "New experiment should have 0 wells with data");
+    assert_eq!(results_summary["wells_frozen"], 0, "New experiment should have 0 frozen wells");
+    assert_eq!(results_summary["wells_liquid"], 0, "New experiment should have 0 liquid wells");
+    assert_eq!(results_summary["total_time_points"], 0, "New experiment should have 0 time points");
+    assert!(results_summary["first_timestamp"].is_null(), "New experiment should have null first_timestamp");
+    assert!(results_summary["last_timestamp"].is_null(), "New experiment should have null last_timestamp");
+    assert_eq!(
+        results_summary["well_summaries"].as_array().unwrap().len(),
+        0,
+        "New experiment should have empty well_summaries"
+    );
+
+    println!("Mock results data test passed!");
+}
+
+#[tokio::test]
+async fn test_experiment_list_with_results_summary() {
+    let app = setup_test_app().await;
+
+    // Create multiple experiments
+    for i in 1..=3 {
+        let experiment_data = json!({
+            "name": format!("List Test Experiment {}", i),
+            "username": "test@example.com",
+            "performed_at": "2024-06-20T14:30:00Z",
+            "temperature_ramp": -1.0,
+            "temperature_start": 5.0,
+            "temperature_end": -25.0,
+            "is_calibration": i == 2, // Make one a calibration
+            "remarks": format!("Test experiment {} for list endpoint", i)
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/experiments")
+                    .header("content-type", "application/json")
+                    .body(Body::from(experiment_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    // Get all experiments
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/experiments")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiments_list: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    assert!(experiments_list.is_array(), "Response should be an array");
+    let experiments = experiments_list.as_array().unwrap();
+    
+    println!("Got {} experiments in list", experiments.len());
+    if let Some(first_exp) = experiments.first() {
+        println!("First experiment structure: {}", serde_json::to_string_pretty(first_exp).unwrap());
+    }
+    
+    // Verify each experiment in the list
+    for (i, exp) in experiments.iter().enumerate() {
+        assert!(exp.is_object(), "Experiment {} should be an object", i);
+        
+        // Check if results_summary is included in list view
+        if exp.get("results_summary").is_some() && !exp["results_summary"].is_null() {
+            if exp["results_summary"].is_object() {
+                let results_summary = &exp["results_summary"];
+                assert!(results_summary["total_wells"].is_number(), "Experiment {} results should have total_wells", i);
+                assert!(results_summary["wells_with_data"].is_number(), "Experiment {} results should have wells_with_data", i);
+                assert!(results_summary["well_summaries"].is_array(), "Experiment {} results should have well_summaries", i);
+                println!("Experiment {} has full results_summary in list view", i);
+            } else {
+                println!("Note: results_summary is null in list view for experiment {}", i);
+            }
+        } else {
+            println!("Note: results_summary not included in list view for experiment {}", i);
+        }
+        
+        // Verify basic experiment fields are present
+        assert!(exp.get("id").is_some(), "Experiment {} should have id", i);
+        assert!(exp.get("name").is_some(), "Experiment {} should have name", i);
+    }
+
+    println!("Experiment list test passed!");
+}
