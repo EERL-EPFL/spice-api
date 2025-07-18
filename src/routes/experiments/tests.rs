@@ -1,4 +1,3 @@
-
 use crate::config::test_helpers::setup_test_app;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -47,7 +46,7 @@ async fn test_experiment_endpoint_includes_results_summary() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )

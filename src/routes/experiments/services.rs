@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 // Generate experiment results summary
 #[allow(clippy::too_many_lines)]
-async fn build_results_summary(
+pub(super) async fn build_results_summary(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsSummary>, DbErr> {
@@ -234,7 +234,7 @@ async fn build_results_summary(
             row: u8::try_from(well.row_number)
                 .map_err(|_| DbErr::Custom("Row number out of range for u8".to_string()))?,
         };
-        let coordinate = coordinates_to_str(coordinate).map_err(|e| DbErr::Custom(e))?;
+        let coordinate = coordinates_to_str(coordinate).map_err(DbErr::Custom)?;
         // Get phase transitions for this well
         let well_transitions: Vec<&well_phase_transitions::Model> = phase_transitions_data
             .iter()
@@ -371,7 +371,7 @@ async fn build_results_summary(
 }
 
 // Convert regions input to active models
-fn create_region_active_models(
+pub(super) fn create_region_active_models(
     experiment_id: Uuid,
     regions: Vec<RegionInput>,
     _db: &impl ConnectionTrait,
@@ -405,7 +405,7 @@ fn create_region_active_models(
 }
 
 // Fetch treatment information with sample and location data
-async fn fetch_treatment_info(
+pub(super) async fn fetch_treatment_info(
     treatment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<TreatmentInfo>, DbErr> {
@@ -458,7 +458,7 @@ async fn fetch_treatment_info(
 }
 
 // Fetch tray information by sequence ID for a given experiment
-async fn fetch_tray_info_by_sequence(
+pub(super) async fn fetch_tray_info_by_sequence(
     experiment_id: Uuid,
     tray_sequence_id: i32,
     db: &impl ConnectionTrait,
@@ -499,7 +499,7 @@ async fn fetch_tray_info_by_sequence(
 }
 
 // Convert region model back to RegionInput for response
-async fn region_model_to_input_with_treatment(
+pub(super) async fn region_model_to_input_with_treatment(
     region: spice_entity::regions::Model,
     db: &impl ConnectionTrait,
 ) -> Result<RegionInput, DbErr> {
