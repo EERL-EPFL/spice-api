@@ -35,27 +35,11 @@ pub enum Relation {
         on_delete = "NoAction"
     )]
     Experiments,
-    #[sea_orm(has_many = "super::phase_change_events::Entity")]
-    PhaseChangeEvents,
-    #[sea_orm(has_many = "super::time_points::Entity")]
-    TimePoints,
 }
 
 impl Related<super::experiments::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Experiments.def()
-    }
-}
-
-impl Related<super::phase_change_events::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::PhaseChangeEvents.def()
-    }
-}
-
-impl Related<super::time_points::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::TimePoints.def()
     }
 }
 

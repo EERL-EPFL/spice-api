@@ -34,12 +34,6 @@ pub enum Relation {
         on_delete = "NoAction"
     )]
     Experiments,
-    #[sea_orm(has_many = "super::freezing_results::Entity")]
-    FreezingResults,
-    #[sea_orm(has_many = "super::inp_concentrations::Entity")]
-    InpConcentrations,
-    #[sea_orm(has_many = "super::phase_change_events::Entity")]
-    PhaseChangeEvents,
     #[sea_orm(
         belongs_to = "super::treatments::Entity",
         from = "Column::TreatmentId",
@@ -53,24 +47,6 @@ pub enum Relation {
 impl Related<super::experiments::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Experiments.def()
-    }
-}
-
-impl Related<super::freezing_results::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::FreezingResults.def()
-    }
-}
-
-impl Related<super::inp_concentrations::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::InpConcentrations.def()
-    }
-}
-
-impl Related<super::phase_change_events::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::PhaseChangeEvents.def()
     }
 }
 

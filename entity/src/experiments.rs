@@ -25,20 +25,12 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::phase_change_events::Entity")]
-    PhaseChangeEvents,
     #[sea_orm(has_many = "super::regions::Entity")]
     Regions,
     #[sea_orm(has_many = "super::s3_assets::Entity")]
     S3Assets,
-    #[sea_orm(has_many = "super::temperature_probe_configurations::Entity")]
-    TemperatureProbeConfigurations,
-    #[sea_orm(has_many = "super::temperature_probes::Entity")]
-    TemperatureProbes,
     #[sea_orm(has_many = "super::temperature_readings::Entity")]
     TemperatureReadings,
-    #[sea_orm(has_many = "super::time_points::Entity")]
-    TimePoints,
     #[sea_orm(
         belongs_to = "super::tray_configurations::Entity",
         from = "Column::TrayConfigurationId",
@@ -49,12 +41,6 @@ pub enum Relation {
     TrayConfigurations,
     #[sea_orm(has_many = "super::well_phase_transitions::Entity")]
     WellPhaseTransitions,
-}
-
-impl Related<super::phase_change_events::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::PhaseChangeEvents.def()
-    }
 }
 
 impl Related<super::regions::Entity> for Entity {
@@ -69,27 +55,9 @@ impl Related<super::s3_assets::Entity> for Entity {
     }
 }
 
-impl Related<super::temperature_probe_configurations::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::TemperatureProbeConfigurations.def()
-    }
-}
-
-impl Related<super::temperature_probes::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::TemperatureProbes.def()
-    }
-}
-
 impl Related<super::temperature_readings::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TemperatureReadings.def()
-    }
-}
-
-impl Related<super::time_points::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::TimePoints.def()
     }
 }
 

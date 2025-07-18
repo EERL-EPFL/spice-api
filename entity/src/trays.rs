@@ -18,18 +18,10 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::phase_change_events::Entity")]
-    PhaseChangeEvents,
     #[sea_orm(has_many = "super::tray_configuration_assignments::Entity")]
     TrayConfigurationAssignments,
     #[sea_orm(has_many = "super::wells::Entity")]
     Wells,
-}
-
-impl Related<super::phase_change_events::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::PhaseChangeEvents.def()
-    }
 }
 
 impl Related<super::tray_configuration_assignments::Entity> for Entity {
