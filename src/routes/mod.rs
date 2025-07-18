@@ -3,7 +3,7 @@ mod campaigns;
 mod experiments;
 mod projects;
 mod samples;
-mod trays;
+pub mod trays;
 mod treatments;
 
 use crate::common::state::AppState;

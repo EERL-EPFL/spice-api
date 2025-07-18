@@ -1,3 +1,4 @@
+use crate::routes::trays::services::str_to_coordinates;
 use anyhow::{Context, Result, anyhow};
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
 use chrono::{NaiveDateTime, TimeZone, Utc};
@@ -12,8 +13,7 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use uuid::Uuid;
 
-const CHUNK_SIZE: usize = 100; // Conservative chunk size for SQLite compatibility
-
+const CHUNK_SIZE: usize = 500;
 #[derive(Debug)]
 pub struct DirectExcelProcessor {
     db: DatabaseConnection,
@@ -134,7 +134,7 @@ impl DirectExcelProcessor {
                 "   💾 Inserting {} phase transitions...",
                 phase_transitions_batch.len()
             );
-            const CHUNK_SIZE: usize = 500; // Smaller records, can use larger chunks
+
             for chunk in phase_transitions_batch.chunks(CHUNK_SIZE) {
                 well_phase_transitions::Entity::insert_many(chunk.to_vec())
                     .exec(&self.db)
@@ -468,34 +468,11 @@ impl DirectExcelProcessor {
     }
 
     fn parse_well_coordinate(&self, coordinate: &str) -> Result<(i32, i32)> {
-        if coordinate.len() < 2 {
-            return Err(anyhow!("Invalid well coordinate: {}", coordinate));
-        }
+        let well_coord = str_to_coordinates(coordinate)
+            .map_err(|e| anyhow!("Invalid well coordinate '{}': {}", coordinate, e))?;
 
-        let col_char = coordinate.chars().next().unwrap();
-        let row_str = &coordinate[1..];
-
-        // Parse column letter: A-Z supported (A=1, B=2, ..., Z=26)
-        let column = match col_char {
-            'A'..='Z' => i32::from(col_char as u8 - b'A') + 1,
-            'a'..='z' => i32::from(col_char as u8 - b'a') + 1,
-            _ => return Err(anyhow!("Invalid column letter: {}", col_char)),
-        };
-
-        let row = row_str
-            .parse::<i32>()
-            .context("Failed to parse row number")?;
-
-        if column < 1 || row < 1 {
-            return Err(anyhow!(
-                "Well coordinate out of range: {} (col {}, row {})",
-                coordinate,
-                column,
-                row
-            ));
-        }
-
-        Ok((row, column))
+        // Convert u8 to i32 for consistency with existing code
+        Ok((well_coord.row as i32, well_coord.column as i32))
     }
 
     fn is_valid_tray_name(&self, tray_name: &str) -> bool {
@@ -503,21 +480,8 @@ impl DirectExcelProcessor {
     }
 
     fn is_valid_well_coordinate(&self, coordinate: &str) -> bool {
-        if coordinate.len() < 2 || coordinate.len() > 4 {
-            return false;
-        }
-
-        let col_char = coordinate.chars().next().unwrap();
-        if !col_char.is_ascii_alphabetic() {
-            return false;
-        }
-
-        let row_str = &coordinate[1..];
-        if let Ok(row) = row_str.parse::<i32>() {
-            row >= 1 // No upper limit - depends on tray configuration
-        } else {
-            false
-        }
+        // Use the primary coordinate parsing function for validation
+        str_to_coordinates(coordinate).is_ok()
     }
 
     /// Load well IDs for all wells in the experiment
@@ -747,14 +711,10 @@ mod tests {
         assert_eq!(processor.parse_well_coordinate("B2").unwrap(), (2, 2));
         assert_eq!(processor.parse_well_coordinate("H12").unwrap(), (12, 8));
 
-        // Test lowercase
-        assert_eq!(processor.parse_well_coordinate("a1").unwrap(), (1, 1));
-
         // Test invalid coordinates
-        assert!(processor.parse_well_coordinate("Z99").is_err());
-        assert!(processor.parse_well_coordinate("A13").is_err());
         assert!(processor.parse_well_coordinate("1A").is_err());
         assert!(processor.parse_well_coordinate("").is_err());
+        assert!(processor.parse_well_coordinate("a1").is_err()); // lowercase not supported by primary function
     }
 
     #[test]
@@ -773,9 +733,9 @@ mod tests {
 
         assert!(processor.is_valid_well_coordinate("A1"));
         assert!(processor.is_valid_well_coordinate("H12"));
-        assert!(processor.is_valid_well_coordinate("a1"));
-        assert!(!processor.is_valid_well_coordinate("Z1"));
-        assert!(!processor.is_valid_well_coordinate("A13"));
+        assert!(processor.is_valid_well_coordinate("Z1")); // Z is valid (column 26)
+        assert!(!processor.is_valid_well_coordinate("a1")); // lowercase not supported by primary function
         assert!(!processor.is_valid_well_coordinate(""));
+        assert!(!processor.is_valid_well_coordinate("1A"));
     }
 }
