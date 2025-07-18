@@ -114,6 +114,45 @@ async fn fetch_treatment_info(
     }
 }
 
+// Fetch tray information by sequence ID for a given experiment
+async fn fetch_tray_info_by_sequence(
+    experiment_id: Uuid,
+    tray_sequence_id: i32,
+    db: &impl ConnectionTrait,
+) -> Result<Option<TrayInfo>, DbErr> {
+    use spice_entity::{experiments, tray_configuration_assignments, trays};
+    
+    // Get the experiment to find its tray configuration
+    let experiment = experiments::Entity::find_by_id(experiment_id)
+        .one(db)
+        .await?;
+    
+    if let Some(exp) = experiment {
+        if let Some(tray_config_id) = exp.tray_configuration_id {
+            // Find the tray assignment with the matching sequence ID
+            let assignment = tray_configuration_assignments::Entity::find()
+                .filter(tray_configuration_assignments::Column::TrayConfigurationId.eq(tray_config_id))
+                .filter(tray_configuration_assignments::Column::OrderSequence.eq(tray_sequence_id))
+                .find_also_related(trays::Entity)
+                .one(db)
+                .await?;
+            
+            if let Some((assignment, Some(tray))) = assignment {
+                return Ok(Some(TrayInfo {
+                    id: tray.id,
+                    name: tray.name,
+                    sequence_id: assignment.order_sequence,
+                    qty_x_axis: tray.qty_x_axis,
+                    qty_y_axis: tray.qty_y_axis,
+                    well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
+                }));
+            }
+        }
+    }
+    
+    Ok(None)
+}
+
 // Convert region model back to RegionInput for response
 async fn region_model_to_input_with_treatment(
     region: spice_entity::regions::Model,
@@ -121,6 +160,13 @@ async fn region_model_to_input_with_treatment(
 ) -> Result<RegionInput, DbErr> {
     let treatment_info = if let Some(treatment_id) = region.treatment_id {
         fetch_treatment_info(treatment_id, db).await?
+    } else {
+        None
+    };
+
+    // Get tray information for this region
+    let tray_info = if let Some(tray_sequence_id) = region.tray_id {
+        fetch_tray_info_by_sequence(region.experiment_id, tray_sequence_id, db).await?
     } else {
         None
     };
@@ -137,6 +183,7 @@ async fn region_model_to_input_with_treatment(
         treatment_id: region.treatment_id,
         is_background_key: Some(region.is_background_key),
         treatment: treatment_info,
+        tray: tray_info,
     })
 }
 
@@ -589,6 +636,16 @@ pub struct ExperimentResultsSummary {
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct TrayInfo {
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub sequence_id: i32,
+    pub qty_x_axis: Option<i32>,
+    pub qty_y_axis: Option<i32>,
+    pub well_relative_diameter: Option<String>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct RegionInput {
     pub name: Option<String>,
     pub tray_sequence_id: Option<i32>, // Renamed from tray_id for clarity
@@ -602,6 +659,8 @@ pub struct RegionInput {
     pub is_background_key: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub treatment: Option<TreatmentInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tray: Option<TrayInfo>,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]

@@ -374,6 +374,7 @@ async fn get_well_results_summary(
             experiment_id,
             well_data.well.row_number - 1,
             well_data.well.column_number - 1,
+            well_data.well.tray_id,
         )
         .await?;
 
@@ -444,7 +445,7 @@ async fn get_single_well_summary(
 
     // Convert 1-based well coordinates to 0-based for region comparison
     let (sample_info, treatment_info, dilution_factor) =
-        get_well_sample_treatment_info(db, experiment_id, row - 1, col - 1).await?;
+        get_well_sample_treatment_info(db, experiment_id, row - 1, col - 1, well_data.well.tray_id).await?;
 
     Ok(Some(WellResultSummary {
         row,
@@ -592,19 +593,65 @@ async fn get_well_temperature_summary(
     })
 }
 
+async fn get_tray_sequence_id_for_well(
+    db: &sea_orm::DatabaseConnection,
+    experiment_id: Uuid,
+    well_tray_id: Uuid,
+) -> anyhow::Result<Option<i32>> {
+    use spice_entity::tray_configuration_assignments;
+    
+    // Get the experiment to find its tray configuration
+    let experiment = experiments::Entity::find_by_id(experiment_id)
+        .one(db)
+        .await?;
+    
+    let tray_sequence_id = if let Some(exp) = experiment {
+        if let Some(tray_config_id) = exp.tray_configuration_id {
+            // Find the tray assignment for this tray in the configuration
+            let assignment = tray_configuration_assignments::Entity::find()
+                .filter(tray_configuration_assignments::Column::TrayConfigurationId.eq(tray_config_id))
+                .filter(tray_configuration_assignments::Column::TrayId.eq(well_tray_id))
+                .one(db)
+                .await?;
+            
+            assignment.map(|a| a.order_sequence)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
+    Ok(tray_sequence_id)
+}
+
 async fn get_well_sample_treatment_info(
     db: &sea_orm::DatabaseConnection,
     experiment_id: Uuid,
     row: i32,
     col: i32,
+    well_tray_id: Uuid,
 ) -> anyhow::Result<(
     Option<(Uuid, String)>,
     Option<(Uuid, String)>,
     Option<Decimal>,
 )> {
-    // Find the region that contains this well coordinate
+    
+    let tray_sequence_id = get_tray_sequence_id_for_well(db, experiment_id, well_tray_id).await?;
+    
+    // Only proceed if we have a valid tray sequence ID
+    let tray_sequence_id = match tray_sequence_id {
+        Some(seq_id) => seq_id,
+        None => {
+            // If we can't determine the tray sequence ID, return no region info
+            return Ok((None, None, None));
+        }
+    };
+    
+    // Find the region that contains this well coordinate on the specific tray
     let region = regions::Entity::find()
         .filter(regions::Column::ExperimentId.eq(experiment_id))
+        .filter(regions::Column::TrayId.eq(tray_sequence_id)) // Filter by tray FIRST
         .filter(regions::Column::RowMin.lte(row))
         .filter(regions::Column::RowMax.gte(row))
         .filter(regions::Column::ColMin.lte(col))
