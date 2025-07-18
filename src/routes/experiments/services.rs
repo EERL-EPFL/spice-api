@@ -234,7 +234,7 @@ pub(super) async fn build_results_summary(
             row: u8::try_from(well.row_number)
                 .map_err(|_| DbErr::Custom("Row number out of range for u8".to_string()))?,
         };
-        let coordinate = coordinates_to_str(coordinate).map_err(DbErr::Custom)?;
+        let coordinate = coordinates_to_str(&coordinate).map_err(DbErr::Custom)?;
         // Get phase transitions for this well
         let well_transitions: Vec<&well_phase_transitions::Model> = phase_transitions_data
             .iter()

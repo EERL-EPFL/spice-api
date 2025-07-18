@@ -5,7 +5,7 @@ pub struct WellCoordinate {
 }
 
 // Convert row/col to coordinate (A1, B2, etc.)
-pub fn coordinates_to_str(coord: WellCoordinate) -> Result<String, String> {
+pub fn coordinates_to_str(coord: &WellCoordinate) -> Result<String, String> {
     if coord.column == 0 || coord.row == 0 {
         return Err(String::from("Invalid coordinate"));
     }
@@ -43,19 +43,19 @@ pub fn str_to_coordinates(coordinate: &str) -> Result<WellCoordinate, String> {
 #[test]
 fn test_coordinates_to_str() {
     assert_eq!(
-        coordinates_to_str(WellCoordinate { column: 1, row: 1 }),
+        coordinates_to_str(&WellCoordinate { column: 1, row: 1 }),
         Ok("A1".into())
     );
     assert_eq!(
-        coordinates_to_str(WellCoordinate { column: 26, row: 1 }),
+        coordinates_to_str(&WellCoordinate { column: 26, row: 1 }),
         Ok("Z1".into())
     );
     assert_eq!(
-        coordinates_to_str(WellCoordinate { column: 0, row: 1 }),
+        coordinates_to_str(&WellCoordinate { column: 0, row: 1 }),
         Err("Invalid coordinate".into())
     );
     assert_eq!(
-        coordinates_to_str(WellCoordinate { column: 27, row: 1 }),
+        coordinates_to_str(&WellCoordinate { column: 27, row: 1 }),
         Err("Only supports A-Z for columns".into())
     );
 }
