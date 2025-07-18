@@ -291,7 +291,7 @@ async fn test_experiment_with_phase_transitions_data() {
         .oneshot(
             axum::http::Request::builder()
                 .method("GET")
-                .uri(&format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )

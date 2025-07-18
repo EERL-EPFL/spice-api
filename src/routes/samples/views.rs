@@ -486,7 +486,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(&format!("/api/samples/{}", sample_id))
+                    .uri(format!("/api/samples/{sample_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -586,7 +586,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(&format!("/api/samples/{}", sample_id))
+                    .uri(format!("/api/samples/{sample_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )

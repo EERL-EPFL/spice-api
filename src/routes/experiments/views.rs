@@ -144,7 +144,7 @@ pub async fn upload_file(
         if existing_asset.is_some() {
             return Err((
                 StatusCode::CONFLICT,
-                format!("File '{}' already exists in this experiment", file_name),
+                format!("File '{file_name}' already exists in this experiment"),
             ));
         }
 
@@ -182,7 +182,7 @@ pub async fn upload_file(
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to insert asset record: {}", e),
+                    format!("Failed to insert asset record: {e}"),
                 )
             })?;
 
@@ -310,7 +310,7 @@ mod tests {
         let tray_id = Uuid::new_v4();
         let tray = trays::ActiveModel {
             id: Set(tray_id),
-            name: Set(Some(format!("{}x{} Tray", rows, cols))),
+            name: Set(Some(format!("{rows}x{cols} Tray"))),
             qty_x_axis: Set(Some(cols)),
             qty_y_axis: Set(Some(rows)),
             well_relative_diameter: Set(None),
@@ -511,7 +511,7 @@ mod tests {
         let events: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
         assert!(events.is_array(), "Response should be an array of events");
-        println!("Phase change events response: {}", events);
+        println!("Phase change events response: {events}");
     }
 
     #[tokio::test]
@@ -559,9 +559,8 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!(
-                        "/api/experiments/{}/phase_changes/upload",
-                        experiment_id
+                    .uri(format!(
+                        "/api/experiments/{experiment_id}/phase_changes/upload"
                     ))
                     .header("content-type", "text/plain")
                     .body(Body::from("invalid"))
@@ -582,7 +581,7 @@ mod tests {
             .await
             .unwrap();
         let response_text = String::from_utf8_lossy(&body_bytes);
-        println!("Upload endpoint response: {}", response_text);
+        println!("Upload endpoint response: {response_text}");
     }
 
     #[tokio::test]
@@ -603,7 +602,7 @@ mod tests {
                 );
             }
             Err(e) => {
-                panic!("Failed to query time_points table: {:?}", e);
+                panic!("Failed to query time_points table: {e:?}");
             }
         }
     }
@@ -680,7 +679,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -695,8 +694,8 @@ mod tests {
         let response_text = String::from_utf8_lossy(&body_bytes);
 
         if status != StatusCode::OK {
-            println!("Error response status: {}", status);
-            println!("Error response body: {}", response_text);
+            println!("Error response status: {status}");
+            println!("Error response body: {response_text}");
         }
 
         assert_eq!(status, StatusCode::OK, "Time point creation should work");
@@ -713,7 +712,7 @@ mod tests {
             "INP_49640_2025-03-20_15-14-17.jpg"
         );
 
-        println!("Time point response: {}", time_point);
+        println!("Time point response: {time_point}");
     }
 
     #[tokio::test]
@@ -769,7 +768,7 @@ mod tests {
                 well_states.push(json!({
                     "row": row,
                     "col": col,
-                    "value": if (row + col) % 2 == 0 { 0 } else { 1 } // Alternating pattern
+                    "value": i32::from((row + col) % 2 != 0) // Alternating pattern
                 }));
             }
         }
@@ -794,7 +793,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -880,7 +879,7 @@ mod tests {
                     well_states.push(json!({
                         "row": row,
                         "col": col,
-                        "value": if row < 8 { 0 } else { 1 } // Half frozen, half liquid
+                        "value": i32::from(row >= 8) // Half frozen, half liquid
                     }));
                 }
             }
@@ -902,7 +901,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -923,7 +922,7 @@ mod tests {
 
         // Should handle sparse data properly
         assert!(
-            time_point["well_states"].as_array().unwrap().len() > 0,
+            !time_point["well_states"].as_array().unwrap().is_empty(),
             "Should have some wells"
         );
         assert_eq!(
@@ -1005,7 +1004,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -1109,7 +1108,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -1191,7 +1190,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(invalid_time_data.to_string()))
                     .unwrap(),
@@ -1217,9 +1216,8 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!(
-                        "/api/experiments/{}/time_points",
-                        fake_experiment_id
+                    .uri(format!(
+                        "/api/experiments/{fake_experiment_id}/time_points"
                     ))
                     .header("content-type", "application/json")
                     .body(Body::from(valid_data.to_string()))
@@ -1288,7 +1286,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -1373,7 +1371,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
@@ -1460,7 +1458,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/api/experiments/{}/time_points", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
                     .header("content-type", "application/json")
                     .body(Body::from(time_point_data.to_string()))
                     .unwrap(),
