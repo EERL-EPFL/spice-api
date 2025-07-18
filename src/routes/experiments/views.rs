@@ -38,14 +38,6 @@ where
             "/{experiment_id}/process-excel",
             post(super::excel_upload::process_excel_upload),
         )
-        .route(
-            "/{experiment_id}/results",
-            get(super::results::get_experiment_results),
-        )
-        .route(
-            "/{experiment_id}/wells/{row}/{col}/results",
-            get(super::results::get_well_detailed_results),
-        )
         .with_state(state.clone());
 
     if let Some(instance) = &state.keycloak_auth_instance {
@@ -152,7 +144,7 @@ pub async fn upload_file(
         if existing_asset.is_some() {
             return Err((
                 StatusCode::CONFLICT,
-                format!("File '{}' already exists in this experiment", file_name)
+                format!("File '{}' already exists in this experiment", file_name),
             ));
         }
 
