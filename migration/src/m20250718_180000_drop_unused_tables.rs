@@ -7,45 +7,96 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Drop unused normalized time-based tables (3 tables)
+
         manager
-            .drop_table(Table::drop().table(TimePoints::Table).if_exists().to_owned())
-            .await?;
-        
-        manager
-            .drop_table(Table::drop().table(TimePointTemperatures::Table).if_exists().to_owned())
-            .await?;
-        
-        manager
-            .drop_table(Table::drop().table(TimePointWellStates::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(TimePointTemperatures::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(TimePointWellStates::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(TimePoints::Table)
+                    .if_exists()
+                    .cascade()
+                    .to_owned(),
+            )
+            .await?;
         // Drop unused results/debug tables (7 tables)
         manager
-            .drop_table(Table::drop().table(PhaseChangeEvents::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(PhaseChangeEvents::Table)
+                    .if_exists()
+                    .cascade()
+                    .to_owned(),
+            )
             .await?;
 
         manager
-            .drop_table(Table::drop().table(TemperatureProbes::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(TemperatureProbes::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
         manager
-            .drop_table(Table::drop().table(TemperatureProbeConfigurations::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(TemperatureProbeConfigurations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
         manager
-            .drop_table(Table::drop().table(FreezingResults::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(FreezingResults::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
         manager
-            .drop_table(Table::drop().table(InpConcentrations::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(InpConcentrations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
         manager
-            .drop_table(Table::drop().table(PhaseChangeTemperatures::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(PhaseChangeTemperatures::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
         manager
-            .drop_table(Table::drop().table(WellTemperatures::Table).if_exists().to_owned())
+            .drop_table(
+                Table::drop()
+                    .table(WellTemperatures::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
             .await?;
 
         Ok(())
@@ -57,13 +108,15 @@ impl MigrationTrait for Migration {
         // Since these tables are unused and we're removing them intentionally,
         // we don't implement the down migration (would be very complex).
         // If needed, the tables can be recreated from the original schema migrations.
-        
+
         println!("Warning: Cannot recreate dropped tables in down migration.");
         println!("If you need to restore these tables, please restore from backup or run the original schema migrations:");
         println!("- time_points, time_point_temperatures, time_point_well_states");
-        println!("- phase_change_events, temperature_probes, temperature_probe_configurations"); 
-        println!("- freezing_results, inp_concentrations, phase_change_temperatures, well_temperatures");
-        
+        println!("- phase_change_events, temperature_probes, temperature_probe_configurations");
+        println!(
+            "- freezing_results, inp_concentrations, phase_change_temperatures, well_temperatures"
+        );
+
         Ok(())
     }
 }

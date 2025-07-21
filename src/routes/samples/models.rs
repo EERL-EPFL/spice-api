@@ -38,6 +38,21 @@ pub struct SampleTreatmentCreate {
     pub enzyme_volume_litres: Option<Decimal>,
 }
 
+#[derive(ToSchema, Serialize, Deserialize, Clone)]
+pub struct ExperimentalResult {
+    pub experiment_id: Uuid,
+    pub experiment_name: String,
+    pub experiment_date: Option<DateTime<Utc>>,
+    pub well_coordinate: String,
+    pub tray_name: Option<String>,
+    pub freezing_temperature_avg: Option<Decimal>,
+    pub freezing_time_seconds: Option<i64>,
+    pub treatment_name: Option<String>,
+    pub treatment_id: Option<Uuid>,
+    pub dilution_factor: Option<i32>,
+    pub final_state: String,
+}
+
 
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct SampleCreateCustom {
@@ -95,7 +110,7 @@ impl From<SampleCreateCustom> for spice_entity::samples::ActiveModel {
 #[active_model = "spice_entity::samples::ActiveModel"]
 pub struct Sample {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
-    id: Uuid,
+    pub id: Uuid,
     name: String,
     r#type: spice_entity::SampleType,
     material_description: Option<String>,
@@ -120,6 +135,8 @@ pub struct Sample {
     total_volume: Option<Decimal>,
     #[crudcrate(non_db_attr = true, default = vec![])]
     pub treatments: Vec<SampleTreatment>,
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    pub experimental_results: Vec<ExperimentalResult>,
 }
 
 impl From<Model> for Sample {
@@ -147,8 +164,153 @@ impl From<Model> for Sample {
             latitude: model.latitude,
             longitude: model.longitude,
             treatments: vec![],
+            experimental_results: vec![],
         }
     }
+}
+
+async fn fetch_experimental_results_for_sample(
+    db: &DatabaseConnection,
+    sample_id: Uuid,
+) -> Result<Vec<ExperimentalResult>, DbErr> {
+    // Find all treatments that use this sample
+    let treatments = spice_entity::treatments::Entity::find()
+        .filter(spice_entity::treatments::Column::SampleId.eq(sample_id))
+        .all(db)
+        .await?;
+
+    if treatments.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let treatment_ids: Vec<Uuid> = treatments.iter().map(|t| t.id).collect();
+
+    // Find all regions that use these treatments
+    let regions = spice_entity::regions::Entity::find()
+        .filter(spice_entity::regions::Column::TreatmentId.is_in(treatment_ids.clone()))
+        .find_with_related(spice_entity::experiments::Entity)
+        .all(db)
+        .await?;
+
+    let mut experimental_results = Vec::new();
+
+    for (region, experiments) in regions {
+        for experiment in experiments {
+            // Find wells that fall within this region's coordinates
+            let wells = if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = 
+                (region.row_min, region.row_max, region.col_min, region.col_max) {
+                spice_entity::wells::Entity::find()
+                    .filter(
+                        spice_entity::wells::Column::RowNumber
+                            .gte(row_min + 1) // Convert 0-based to 1-based
+                            .and(spice_entity::wells::Column::RowNumber.lte(row_max + 1))
+                            .and(spice_entity::wells::Column::ColumnNumber.gte(col_min + 1))
+                            .and(spice_entity::wells::Column::ColumnNumber.lte(col_max + 1))
+                    )
+                    .all(db)
+                    .await?
+            } else {
+                // Skip this region if coordinates are not complete
+                continue;
+            };
+
+            for well in wells {
+                // Find phase transitions for this well in this experiment
+                let phase_transitions = spice_entity::well_phase_transitions::Entity::find()
+                    .filter(
+                        spice_entity::well_phase_transitions::Column::WellId
+                            .eq(well.id)
+                            .and(spice_entity::well_phase_transitions::Column::ExperimentId.eq(experiment.id))
+                            .and(spice_entity::well_phase_transitions::Column::PreviousState.eq(0))
+                            .and(spice_entity::well_phase_transitions::Column::NewState.eq(1))
+                    )
+                    .find_with_related(spice_entity::temperature_readings::Entity)
+                    .all(db)
+                    .await?;
+
+                // Get the first freezing transition and its temperature data
+                let (freezing_time_seconds, freezing_temperature_avg) = if let Some((transition, temp_readings)) = phase_transitions.first() {
+                    let freezing_time = if let Some(temp_reading) = temp_readings.first() {
+                        if let Some(experiment_start) = experiment.performed_at {
+                            let transition_time = temp_reading.timestamp;
+                            Some((transition_time - experiment_start).num_seconds())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    let avg_temp = if let Some(temp_reading) = temp_readings.first() {
+                        // Calculate average of all 8 temperature probes
+                        let temps = vec![
+                            temp_reading.probe_1, temp_reading.probe_2,
+                            temp_reading.probe_3, temp_reading.probe_4,
+                            temp_reading.probe_5, temp_reading.probe_6,
+                            temp_reading.probe_7, temp_reading.probe_8,
+                        ];
+                        let valid_temps: Vec<Decimal> = temps.into_iter().flatten().collect();
+                        if !valid_temps.is_empty() {
+                            Some(valid_temps.iter().sum::<Decimal>() / Decimal::from(valid_temps.len()))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    (freezing_time, avg_temp)
+                } else {
+                    (None, None)
+                };
+
+                // Determine final state - check if there are any frozen transitions
+                let has_frozen_transition = spice_entity::well_phase_transitions::Entity::find()
+                    .filter(
+                        spice_entity::well_phase_transitions::Column::WellId
+                            .eq(well.id)
+                            .and(spice_entity::well_phase_transitions::Column::ExperimentId.eq(experiment.id))
+                            .and(spice_entity::well_phase_transitions::Column::NewState.eq(1))
+                    )
+                    .one(db)
+                    .await?
+                    .is_some();
+
+                let final_state = if has_frozen_transition { "frozen".to_string() } else { "liquid".to_string() };
+
+                // Get well coordinate in A1 format
+                let well_coordinate = format!(
+                    "{}{}",
+                    char::from(b'A' + (well.column_number - 1) as u8),
+                    well.row_number
+                );
+
+                // Find the treatment for this region
+                let treatment = treatments.iter().find(|t| t.id == region.treatment_id.unwrap_or_default());
+
+                // Get tray name
+                let tray = spice_entity::trays::Entity::find_by_id(well.tray_id)
+                    .one(db)
+                    .await?;
+
+                experimental_results.push(ExperimentalResult {
+                    experiment_id: experiment.id,
+                    experiment_name: experiment.name.clone(),
+                    experiment_date: experiment.performed_at.map(|dt| dt.with_timezone(&Utc)),
+                    well_coordinate,
+                    tray_name: tray.and_then(|t| t.name),
+                    freezing_temperature_avg: freezing_temperature_avg,
+                    freezing_time_seconds: freezing_time_seconds,
+                    treatment_name: treatment.map(|t| format!("{:?}", t.name)),
+                    treatment_id: treatment.map(|t| t.id),
+                    dilution_factor: region.dilution_factor,
+                    final_state,
+                });
+            }
+        }
+    }
+
+    Ok(experimental_results)
 }
 
 #[async_trait]
@@ -193,6 +355,9 @@ impl CRUDResource for Sample {
                 .cloned()
                 .map(SampleTreatment::from)
                 .collect();
+            
+            // Fetch experimental results for each sample
+            model.experimental_results = fetch_experimental_results_for_sample(db, model.id).await?;
         }
         if models.is_empty() {
             return Ok(vec![]);
@@ -215,8 +380,11 @@ impl CRUDResource for Sample {
             .all(db)
             .await?;
 
+        let experimental_results = fetch_experimental_results_for_sample(db, id).await?;
+
         let mut model: Self = model.into();
         model.treatments = treatments.into_iter().map(SampleTreatment::from).collect();
+        model.experimental_results = experimental_results;
 
         Ok(model)
     }
