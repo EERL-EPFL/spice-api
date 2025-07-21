@@ -26,8 +26,6 @@ pub struct DirectProcessingResult {
     pub success: bool,
     pub temperature_readings_created: usize,
     pub phase_transitions_created: usize,
-    pub well_states_created: usize,
-    pub time_points_created: usize,
     pub wells_tracked: usize,
     pub errors: Vec<String>,
     pub processing_time_ms: u128,
@@ -160,8 +158,6 @@ impl DirectExcelProcessor {
             success: errors.len() < 10,
             temperature_readings_created: temperature_readings_batch.len(),
             phase_transitions_created: phase_transitions_batch.len(),
-            well_states_created: 0, // No longer storing all well states, only transitions
-            time_points_created: 0, // No longer using time_points table
             wells_tracked: headers.wells.len(),
             errors,
             processing_time_ms: processing_time,
