@@ -24,10 +24,22 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 async fn test_tray_crud_operations() {
     let app = setup_test_app().await;
     let tray_data = json!({
-        "name": format!("Test Tray CRUD {}", uuid::Uuid::new_v4()),
-        "qty_x_axis": 12,
-        "qty_y_axis": 8,
-        "well_relative_diameter": 2.5
+        "name": format!("Test Tray Config CRUD {}", uuid::Uuid::new_v4()),
+        "experiment_default": false,
+        "trays": [
+            {
+                "order_sequence": 1,
+                "rotation_degrees": 0,
+                "trays": [
+                    {
+                        "name": "CRUD Test Tray",
+                        "qty_x_axis": 12,
+                        "qty_y_axis": 8,
+                        "well_relative_diameter": 2.5
+                    }
+                ]
+            }
+        ]
     });
 
     let response = app
@@ -47,12 +59,11 @@ async fn test_tray_crud_operations() {
 
     if status == StatusCode::CREATED {
         assert!(body["id"].is_string(), "Response should include ID");
-        assert!(body["name"].as_str().unwrap().contains("Test Tray CRUD"));
-        assert_eq!(body["qty_x_axis"], 12);
-        assert_eq!(body["qty_y_axis"], 8);
-        assert_eq!(body["well_relative_diameter"], 2.5);
+        assert!(body["name"].as_str().unwrap().contains("Test Tray Config CRUD"));
+        assert_eq!(body["experiment_default"], false);
         assert!(body["created_at"].is_string());
         assert!(body["last_updated"].is_string());
+        assert!(body["trays"].is_array());
         let tray_id = body["id"].as_str().unwrap();
 
         let get_response = app
@@ -74,13 +85,13 @@ async fn test_tray_crud_operations() {
                 get_body["name"]
                     .as_str()
                     .unwrap()
-                    .contains("Test Tray CRUD")
+                    .contains("Test Tray Config CRUD")
             );
         }
 
         let update_data = json!({
-            "qty_x_axis": 16,
-            "well_relative_diameter": 3.0
+            "name": "Updated Test Tray Config CRUD",
+            "experiment_default": true
         });
 
         let update_response = app
@@ -98,8 +109,8 @@ async fn test_tray_crud_operations() {
 
         let (update_status, update_body) = extract_response_body(update_response).await;
         if update_status == StatusCode::OK {
-            assert_eq!(update_body["qty_x_axis"], 16);
-            assert_eq!(update_body["well_relative_diameter"], 3.0);
+            assert!(update_body["name"].as_str().unwrap().contains("Updated"));
+            assert_eq!(update_body["experiment_default"], true);
         }
 
         // Test deleting the tray
@@ -116,19 +127,12 @@ async fn test_tray_crud_operations() {
             .unwrap();
 
         let delete_status = delete_response.status();
-        if delete_status.is_success() {
-            println!("✅ Tray delete successful");
-        } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Tray delete not implemented (405)");
-        } else {
-            println!("📋 Tray delete returned: {delete_status}");
-        }
+        // Note: Delete may not be implemented yet, so we don't assert specific behavior
     } else {
-        println!("⚠️  Tray creation failed: Status {status}, Body: {body}");
         // Document the current behavior even if it fails
         assert!(
             status.is_client_error() || status.is_server_error(),
-            "Tray creation should either succeed or fail gracefully"
+            "Tray creation should either succeed or fail gracefully, got: {status}"
         );
     }
 }
@@ -191,12 +195,24 @@ async fn test_tray_list_operations() {
 async fn test_tray_validation() {
     let app = setup_test_app().await;
 
-    // Test creating tray with invalid axis values (negative numbers)
+    // Test creating tray configuration with invalid nested tray data (negative axis values)
     let invalid_data = json!({
-        "name": "Invalid Tray",
-        "qty_x_axis": -5,  // Should be positive
-        "qty_y_axis": 8,
-        "well_relative_diameter": 2.5
+        "name": "Invalid Tray Config",
+        "experiment_default": false,
+        "trays": [
+            {
+                "order_sequence": 1,
+                "rotation_degrees": 0,
+                "trays": [
+                    {
+                        "name": "Invalid Tray",
+                        "qty_x_axis": -5,  // Should be positive
+                        "qty_y_axis": 8,
+                        "well_relative_diameter": 2.5
+                    }
+                ]
+            }
+        ]
     });
 
     let response = app
@@ -214,20 +230,29 @@ async fn test_tray_validation() {
 
     let (status, _body) = extract_response_body(response).await;
 
-    if status.is_client_error() {
-        println!("✅ Tray validation working - rejected negative axis value");
-    } else if status == StatusCode::CREATED {
-        println!("📋 Tray allows negative axis values (no validation)");
-    } else {
-        println!("📋 Tray validation returned: {status}");
-    }
+    assert!(
+        status.is_client_error(),
+        "Tray configuration should reject negative axis values, but got status: {status}"
+    );
 
-    // Test creating tray with zero dimensions
+    // Test creating tray configuration with zero dimensions
     let zero_data = json!({
-        "name": "Zero Dimensions Tray",
-        "qty_x_axis": 0,
-        "qty_y_axis": 0,
-        "well_relative_diameter": 0.0
+        "name": "Zero Dimensions Tray Config",
+        "experiment_default": false,
+        "trays": [
+            {
+                "order_sequence": 1,
+                "rotation_degrees": 0,
+                "trays": [
+                    {
+                        "name": "Zero Dimensions Tray",
+                        "qty_x_axis": 0,
+                        "qty_y_axis": 0,
+                        "well_relative_diameter": 0.0
+                    }
+                ]
+            }
+        ]
     });
 
     let response = app
@@ -245,13 +270,10 @@ async fn test_tray_validation() {
 
     let (status, _body) = extract_response_body(response).await;
 
-    if status.is_client_error() {
-        println!("✅ Tray validation rejects zero dimensions");
-    } else if status == StatusCode::CREATED {
-        println!("📋 Tray allows zero dimensions");
-    } else {
-        println!("📋 Tray zero dimension validation returned: {status}");
-    }
+    assert!(
+        status.is_client_error(),
+        "Tray configuration should reject zero dimensions, but got status: {status}"
+    );
 }
 
 #[tokio::test]
@@ -269,10 +291,22 @@ async fn test_tray_filtering_and_sorting() {
 
     for (name, x_axis, y_axis) in test_trays {
         let tray_data = json!({
-            "name": format!("{} {}", name, &uuid::Uuid::new_v4().to_string()[..8]),
-            "qty_x_axis": x_axis,
-            "qty_y_axis": y_axis,
-            "well_relative_diameter": 2.0
+            "name": format!("{} Config {}", name, &uuid::Uuid::new_v4().to_string()[..8]),
+            "experiment_default": false,
+            "trays": [
+                {
+                    "order_sequence": 1,
+                    "rotation_degrees": 0,
+                    "trays": [
+                        {
+                            "name": format!("{} {}", name, &uuid::Uuid::new_v4().to_string()[..8]),
+                            "qty_x_axis": x_axis,
+                            "qty_y_axis": y_axis,
+                            "well_relative_diameter": 2.0
+                        }
+                    ]
+                }
+            ]
         });
 
         let response = app
@@ -303,7 +337,7 @@ async fn test_tray_filtering_and_sorting() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/trays?filter[name]=96-Well Plate")
+                    .uri("/api/trays?filter[name]=96-Well%20Plate%20Config")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -316,26 +350,21 @@ async fn test_tray_filtering_and_sorting() {
             println!("✅ Tray filtering endpoint accessible");
             let filtered_trays = filter_body.as_array().unwrap();
             println!(
-                "Filtered trays by name=96-Well Plate: {} results",
+                "Filtered tray configs by name=96-Well Plate Config: {} results",
                 filtered_trays.len()
             );
 
-            // Check if filtering actually works
-            let mut filtering_works = true;
+            // Check if filtering actually works - it should only return matching trays
             for tray in filtered_trays {
                 if let Some(name) = tray["name"].as_str() {
-                    if !name.contains("96-Well Plate") {
-                        filtering_works = false;
-                        println!("🐛 BUG: Filtering returned non-matching tray: {name:?}");
-                    }
+                    assert!(
+                        name.contains("96-Well Plate Config"),
+                        "Filtering should only return matching results, but got non-matching tray: {name}"
+                    );
                 }
             }
-
-            if filtering_works && !filtered_trays.is_empty() {
-                println!("✅ Tray filtering appears to work correctly");
-            } else if filtered_trays.is_empty() {
-                println!("📋 Tray filtering returned no results (may be working or broken)");
-            }
+            
+            println!("✅ Tray filtering works correctly - all results match filter criteria");
         } else {
             println!("⚠️  Tray filtering failed: Status {filter_status}");
         }
@@ -390,7 +419,7 @@ async fn test_tray_not_found() {
     println!("✅ Tray 404 handling working correctly");
 }
 
-async fn create_tray_configuration() -> Result<Value, Box<dyn std::error::Error>> {
+async fn create_tray_configuration(app: &axum::Router) -> Result<Value, Box<dyn std::error::Error>> {
     let tray_config_data = json!({
         "name": format!("Test Tray Config {}", uuid::Uuid::new_v4()),
         "experiment_default": false,
@@ -410,13 +439,12 @@ async fn create_tray_configuration() -> Result<Value, Box<dyn std::error::Error>
         ]
     });
 
-    let response = setup_test_app()
-        .await
+    let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/tray_configurations")
+                .uri("/api/trays")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_config_data.to_string()))
                 .unwrap(),
@@ -430,7 +458,7 @@ async fn create_tray_configuration() -> Result<Value, Box<dyn std::error::Error>
             body["name"]
                 .as_str()
                 .unwrap()
-                .contains("Test Tray Config CRUD")
+                .contains("Test Tray Config")
         );
         assert_eq!(body["experiment_default"], false);
         assert!(body["created_at"].is_string());
@@ -444,7 +472,7 @@ async fn create_tray_configuration() -> Result<Value, Box<dyn std::error::Error>
 #[tokio::test]
 async fn test_tray_configuration_crud_operations() {
     let app = setup_test_app().await;
-    let body = create_tray_configuration()
+    let body = create_tray_configuration(&app)
         .await
         .expect("Failed to create tray configuration for testing");
 
@@ -468,7 +496,7 @@ async fn test_tray_configuration_crud_operations() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/tray_configurations/{tray_config_id}"))
+                .uri(format!("/api/trays/{tray_config_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -490,7 +518,7 @@ async fn test_tray_configuration_crud_operations() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/tray_configurations/{tray_config_id}"))
+                .uri(format!("/api/trays/{tray_config_id}"))
                 .header("content-type", "application/json")
                 .body(Body::from(update_data.to_string()))
                 .unwrap(),
@@ -509,7 +537,7 @@ async fn test_tray_configuration_crud_operations() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/tray_configurations/{tray_config_id}"))
+                .uri(format!("/api/trays/{tray_config_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -532,7 +560,7 @@ async fn test_tray_configuration_list_operations() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/tray_configurations")
+                .uri("/api/trays")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -607,7 +635,7 @@ async fn test_tray_configuration_default_behavior() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/tray_configurations")
+                .uri("/api/trays")
                 .header("content-type", "application/json")
                 .body(Body::from(default_config_data.to_string()))
                 .unwrap(),
@@ -648,7 +676,7 @@ async fn test_tray_configuration_default_behavior() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/tray_configurations")
+                    .uri("/api/trays")
                     .header("content-type", "application/json")
                     .body(Body::from(second_default_config_data.to_string()))
                     .unwrap(),
@@ -668,7 +696,7 @@ async fn test_tray_configuration_default_behavior() {
                 .oneshot(
                     Request::builder()
                         .method("GET")
-                        .uri(format!("/api/tray_configurations/{first_config_id}"))
+                        .uri(format!("/api/trays/{first_config_id}"))
                         .body(Body::empty())
                         .unwrap(),
                 )
@@ -711,10 +739,22 @@ async fn test_tray_dimensions_validation() {
 
     for (x_axis, y_axis, description) in dimension_tests {
         let tray_data = json!({
-            "name": format!("{} Test {}", description, &uuid::Uuid::new_v4().to_string()[..8]),
-            "qty_x_axis": x_axis,
-            "qty_y_axis": y_axis,
-            "well_relative_diameter": 2.0
+            "name": format!("{} Config Test {}", description, &uuid::Uuid::new_v4().to_string()[..8]),
+            "experiment_default": false,
+            "trays": [
+                {
+                    "order_sequence": 1,
+                    "rotation_degrees": 0,
+                    "trays": [
+                        {
+                            "name": format!("{} Test {}", description, &uuid::Uuid::new_v4().to_string()[..8]),
+                            "qty_x_axis": x_axis,
+                            "qty_y_axis": y_axis,
+                            "well_relative_diameter": 2.0
+                        }
+                    ]
+                }
+            ]
         });
 
         let response = app
@@ -733,9 +773,9 @@ async fn test_tray_dimensions_validation() {
         let (status, _body) = extract_response_body(response).await;
 
         if status == StatusCode::CREATED {
-            println!("✅ Tray accepts {description} ({x_axis}x{y_axis})");
+            println!("✅ Tray config accepts {description} ({x_axis}x{y_axis})");
         } else {
-            println!("📋 Tray rejects {description} ({x_axis}x{y_axis}) - Status: {status}");
+            println!("📋 Tray config rejects {description} ({x_axis}x{y_axis}) - Status: {status}");
         }
     }
 }
@@ -797,7 +837,7 @@ async fn create_tray_configuration_complex_structure() -> axum::response::Respon
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/tray_configurations")
+                .uri("/api/trays")
                 .header("content-type", "application/json")
                 .body(Body::from(complex_config_data.to_string()))
                 .unwrap(),
@@ -861,7 +901,7 @@ async fn test_tray_configuration_complex_structure() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/tray_configurations/{config_id}"))
+                    .uri(format!("/api/trays/{config_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -897,7 +937,7 @@ async fn test_tray_configuration_not_found() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/tray_configurations/{fake_id}"))
+                .uri(format!("/api/trays/{fake_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -918,10 +958,22 @@ async fn test_tray_workflow_comprehensive() {
     let app = setup_test_app().await;
 
     let individual_tray_data = json!({
-        "name": format!("Workflow Individual Tray {}", uuid::Uuid::new_v4()),
-        "qty_x_axis": 8,
-        "qty_y_axis": 12,
-        "well_relative_diameter": 2.2
+        "name": format!("Workflow Individual Tray Config {}", uuid::Uuid::new_v4()),
+        "experiment_default": false,
+        "trays": [
+            {
+                "order_sequence": 1,
+                "rotation_degrees": 0,
+                "trays": [
+                    {
+                        "name": "Individual Workflow Tray",
+                        "qty_x_axis": 8,
+                        "qty_y_axis": 12,
+                        "well_relative_diameter": 2.2
+                    }
+                ]
+            }
+        ]
     });
 
     let individual_response = app
@@ -937,8 +989,14 @@ async fn test_tray_workflow_comprehensive() {
         .await
         .unwrap();
 
-    let (individual_status, _individual_body) = extract_response_body(individual_response).await;
-    assert!(individual_status == StatusCode::CREATED,);
+    let (individual_status, individual_body) = extract_response_body(individual_response).await;
+    assert_eq!(
+        individual_status, 
+        StatusCode::CREATED,
+        "Failed to create individual tray configuration: Status {}, Body: {:?}",
+        individual_status,
+        individual_body
+    );
     // Step 2: Create comprehensive tray configuration
     let comprehensive_config_data = json!({
         "name": format!("Comprehensive Workflow Config {}", uuid::Uuid::new_v4()),
@@ -976,7 +1034,7 @@ async fn test_tray_workflow_comprehensive() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/tray_configurations")
+                .uri("/api/trays")
                 .header("content-type", "application/json")
                 .body(Body::from(comprehensive_config_data.to_string()))
                 .unwrap(),
@@ -997,7 +1055,7 @@ async fn test_tray_workflow_comprehensive() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/tray_configurations/{config_id}"))
+                    .uri(format!("/api/trays/{config_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1438,10 +1496,10 @@ async fn test_experiment_default_exclusivity() {
 async fn test_validation_errors() {
     let app = setup_test_app().await;
 
-    // Test with missing required fields
+    // Test with missing required fields for TrayConfiguration
     let invalid_data = json!({
-        "name": "Invalid Tray"
-        // Missing experiment_default
+        "name": "Invalid Tray Config"
+        // Missing experiment_default and trays array
     });
 
     let response = app
