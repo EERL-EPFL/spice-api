@@ -26,8 +26,7 @@ pub fn str_to_coordinates(coordinate: &str) -> Result<WellCoordinate, String> {
         || !coordinate.chars().nth(1).unwrap().is_ascii_digit()
     {
         return Err(format!(
-            "Invalid coordinate format, must be like 'A1', provided: {}",
-            coordinate
+            "Invalid coordinate format, must be like 'A1', provided: {coordinate}"
         ));
     }
 

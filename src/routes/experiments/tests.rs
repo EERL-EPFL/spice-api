@@ -156,7 +156,7 @@ async fn assign_tray_config_to_experiment_via_api(
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .header("content-type", "application/json")
                 .body(Body::from(update_data.to_string()))
                 .unwrap(),
@@ -369,7 +369,7 @@ async fn test_experiment_with_phase_transitions_data() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            println!("Skipping test due to missing tray API: {}", e);
+            println!("Skipping test due to missing tray API: {e}");
             return;
         }
     };
@@ -416,8 +416,7 @@ async fn test_experiment_with_phase_transitions_data() {
         Ok(sample_id) => create_treatment_via_api(&app, &sample_id).await,
         Err(e) => {
             println!(
-                "Skipping sample/treatment creation due to missing API: {}",
-                e
+                "Skipping sample/treatment creation due to missing API: {e}"
             );
             Err(e)
         }
@@ -442,7 +441,7 @@ async fn test_experiment_with_phase_transitions_data() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/experiments/{}/time_points", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}/time_points"))
                 .header("content-type", "application/json")
                 .body(Body::from(time_point_data.to_string()))
                 .unwrap(),
@@ -458,7 +457,7 @@ async fn test_experiment_with_phase_transitions_data() {
             .await
             .unwrap();
         let error_text = String::from_utf8_lossy(&body_bytes);
-        println!("Time point creation failed: {} - {}", status, error_text);
+        println!("Time point creation failed: {status} - {error_text}");
     }
 
     // Try to create a region for the experiment (might not exist)
@@ -582,7 +581,7 @@ async fn test_experiment_results_summary_structure() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -644,38 +643,32 @@ async fn test_experiment_results_summary_structure() {
         for (i, summary) in summaries.iter().enumerate() {
             assert!(
                 summary.is_object(),
-                "well_summary[{}] should be an object",
-                i
+                "well_summary[{i}] should be an object"
             );
 
             // Check required fields in well summary
             assert!(
                 summary.get("well_id").is_some(),
-                "well_summary[{}] should have well_id",
-                i
+                "well_summary[{i}] should have well_id"
             );
             assert!(
                 summary.get("coordinate").is_some(),
-                "well_summary[{}] should have coordinate",
-                i
+                "well_summary[{i}] should have coordinate"
             );
             assert!(
                 summary.get("final_state").is_some(),
-                "well_summary[{}] should have final_state",
-                i
+                "well_summary[{i}] should have final_state"
             );
             assert!(
                 summary.get("total_transitions").is_some(),
-                "well_summary[{}] should have total_transitions",
-                i
+                "well_summary[{i}] should have total_transitions"
             );
 
             // Check coordinate format (should be like "A1", "B12", etc.)
             if let Some(coord) = summary["coordinate"].as_str() {
                 assert!(
                     coord.len() >= 2 && coord.chars().next().unwrap().is_alphabetic(),
-                    "Coordinate should be in format like 'A1', got: {}",
-                    coord
+                    "Coordinate should be in format like 'A1', got: {coord}"
                 );
             }
 
@@ -683,8 +676,7 @@ async fn test_experiment_results_summary_structure() {
             if let Some(state) = summary["final_state"].as_str() {
                 assert!(
                     state == "liquid" || state == "frozen" || state == "unknown",
-                    "final_state should be 'liquid', 'frozen', or 'unknown', got: {}",
-                    state
+                    "final_state should be 'liquid', 'frozen', or 'unknown', got: {state}"
                 );
             }
         }
@@ -739,7 +731,7 @@ async fn test_experiment_with_mock_results_data() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -858,7 +850,7 @@ async fn test_experiment_list_with_results_summary() {
 
     // Verify each experiment in the list
     for (i, exp) in experiments.iter().enumerate() {
-        assert!(exp.is_object(), "Experiment {} should be an object", i);
+        assert!(exp.is_object(), "Experiment {i} should be an object");
 
         // Check if results_summary is included in list view
         if exp.get("results_summary").is_some() && !exp["results_summary"].is_null() {
@@ -866,39 +858,33 @@ async fn test_experiment_list_with_results_summary() {
                 let results_summary = &exp["results_summary"];
                 assert!(
                     results_summary["total_wells"].is_number(),
-                    "Experiment {} results should have total_wells",
-                    i
+                    "Experiment {i} results should have total_wells"
                 );
                 assert!(
                     results_summary["wells_with_data"].is_number(),
-                    "Experiment {} results should have wells_with_data",
-                    i
+                    "Experiment {i} results should have wells_with_data"
                 );
                 assert!(
                     results_summary["well_summaries"].is_array(),
-                    "Experiment {} results should have well_summaries",
-                    i
+                    "Experiment {i} results should have well_summaries"
                 );
-                println!("Experiment {} has full results_summary in list view", i);
+                println!("Experiment {i} has full results_summary in list view");
             } else {
                 println!(
-                    "Note: results_summary is null in list view for experiment {}",
-                    i
+                    "Note: results_summary is null in list view for experiment {i}"
                 );
             }
         } else {
             println!(
-                "Note: results_summary not included in list view for experiment {}",
-                i
+                "Note: results_summary not included in list view for experiment {i}"
             );
         }
 
         // Verify basic experiment fields are present
-        assert!(exp.get("id").is_some(), "Experiment {} should have id", i);
+        assert!(exp.get("id").is_some(), "Experiment {i} should have id");
         assert!(
             exp.get("name").is_some(),
-            "Experiment {} should have name",
-            i
+            "Experiment {i} should have name"
         );
     }
 
@@ -979,7 +965,7 @@ async fn test_experiment_crud_operations() {
             assert_eq!(get_body["id"], experiment_id);
             assert_eq!(get_body["device_name"], "RTDTempX8");
         } else {
-            println!("⚠️  Experiment retrieval failed: {}", get_status);
+            println!("⚠️  Experiment retrieval failed: {get_status}");
         }
 
         // Test updating the experiment
@@ -1008,7 +994,7 @@ async fn test_experiment_crud_operations() {
         } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Experiment update not implemented (405)");
         } else {
-            println!("📋 Experiment update returned: {}", update_status);
+            println!("📋 Experiment update returned: {update_status}");
         }
 
         // Test deleting the experiment
@@ -1030,12 +1016,11 @@ async fn test_experiment_crud_operations() {
         } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Experiment delete not implemented (405)");
         } else {
-            println!("📋 Experiment delete returned: {}", delete_status);
+            println!("📋 Experiment delete returned: {delete_status}");
         }
     } else {
         println!(
-            "⚠️  Experiment creation failed: Status {}, Body: {}",
-            status, body
+            "⚠️  Experiment creation failed: Status {status}, Body: {body}"
         );
         // Document the current behavior even if it fails
         assert!(
@@ -1082,7 +1067,7 @@ async fn test_experiment_list_operations() {
             );
         }
     } else {
-        println!("⚠️  Experiment listing failed: Status {}", list_status);
+        println!("⚠️  Experiment listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Experiment listing should either succeed or fail gracefully"
@@ -1119,8 +1104,7 @@ async fn test_experiment_validation() {
         "Should reject incomplete experiment data"
     );
     println!(
-        "✅ Experiment validation working - rejected incomplete data with status {}",
-        status
+        "✅ Experiment validation working - rejected incomplete data with status {status}"
     );
 
     // Test creating experiment with invalid data types
@@ -1145,7 +1129,7 @@ async fn test_experiment_validation() {
 
     let (status, _body) = extract_response_body(response).await;
     assert!(status.is_client_error(), "Should reject invalid data types");
-    println!("✅ Experiment type validation working - status {}", status);
+    println!("✅ Experiment type validation working - status {status}");
 }
 
 #[tokio::test]
@@ -1188,7 +1172,9 @@ async fn test_experiment_filtering_and_sorting() {
         }
     }
 
-    if !created_ids.is_empty() {
+    if created_ids.is_empty() {
+        println!("📋 No test experiments created - skipping filtering tests");
+    } else {
         // Test filtering by device name
         let filter_response = app
             .clone()
@@ -1230,7 +1216,7 @@ async fn test_experiment_filtering_and_sorting() {
                 println!("📋 Experiment filtering returned no results (may be working or broken)");
             }
         } else {
-            println!("⚠️  Experiment filtering failed: Status {}", filter_status);
+            println!("⚠️  Experiment filtering failed: Status {filter_status}");
         }
 
         // Test sorting by name
@@ -1251,10 +1237,8 @@ async fn test_experiment_filtering_and_sorting() {
         if sort_status == StatusCode::OK {
             println!("✅ Experiment sorting endpoint accessible");
         } else {
-            println!("⚠️  Experiment sorting failed: Status {}", sort_status);
+            println!("⚠️  Experiment sorting failed: Status {sort_status}");
         }
-    } else {
-        println!("📋 No test experiments created - skipping filtering tests");
     }
 }
 
@@ -1321,7 +1305,7 @@ async fn test_experiment_excel_upload_endpoint() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/experiments/{}/process-excel", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/process-excel"))
                     .header("content-type", "multipart/form-data")
                     .body(Body::empty()) // Empty body to test error handling
                     .unwrap(),
@@ -1338,7 +1322,7 @@ async fn test_experiment_excel_upload_endpoint() {
         } else if upload_status == StatusCode::NOT_FOUND {
             println!("⚠️  Excel upload endpoint not found or experiment doesn't exist");
         } else {
-            println!("📋 Excel upload endpoint returned: {}", upload_status);
+            println!("📋 Excel upload endpoint returned: {upload_status}");
         }
     } else {
         println!("📋 Skipping Excel upload test - couldn't create experiment");
@@ -1381,7 +1365,7 @@ async fn test_experiment_results_endpoint() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/experiments/{}/results", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/results"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1398,12 +1382,12 @@ async fn test_experiment_results_endpoint() {
             } else if results_body.is_array() {
                 println!("   Results returned as array");
             } else {
-                println!("   Results returned unknown structure: {:?}", results_body);
+                println!("   Results returned unknown structure: {results_body:?}");
             }
         } else if results_status == StatusCode::NOT_FOUND {
             println!("⚠️  Results endpoint or experiment not found");
         } else {
-            println!("📋 Results endpoint returned: {}", results_status);
+            println!("📋 Results endpoint returned: {results_status}");
         }
     } else {
         println!("📋 Skipping results test - couldn't create experiment");
@@ -1424,8 +1408,7 @@ async fn test_experiment_process_status_endpoint() {
             Request::builder()
                 .method("GET")
                 .uri(format!(
-                    "/api/experiments/{}/process-status/{}",
-                    fake_experiment_id, fake_job_id
+                    "/api/experiments/{fake_experiment_id}/process-status/{fake_job_id}"
                 ))
                 .body(Body::empty())
                 .unwrap(),
@@ -1442,7 +1425,7 @@ async fn test_experiment_process_status_endpoint() {
     } else if status_status == StatusCode::OK {
         println!("📋 Process status endpoint returned OK (unexpected for fake job)");
     } else {
-        println!("📋 Process status endpoint returned: {}", status_status);
+        println!("📋 Process status endpoint returned: {status_status}");
     }
 }
 
@@ -1487,7 +1470,7 @@ async fn test_experiment_complex_workflow() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/experiments/{}", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1498,7 +1481,7 @@ async fn test_experiment_complex_workflow() {
         if get_status == StatusCode::OK {
             println!("   ✅ Step 2: Experiment retrieval working");
         } else {
-            println!("   ⚠️  Step 2: Experiment retrieval failed: {}", get_status);
+            println!("   ⚠️  Step 2: Experiment retrieval failed: {get_status}");
         }
 
         // Step 3: Check results (should be empty)
@@ -1507,7 +1490,7 @@ async fn test_experiment_complex_workflow() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/experiments/{}/results", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/results"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1519,8 +1502,7 @@ async fn test_experiment_complex_workflow() {
             println!("   ✅ Step 3: Results endpoint accessible");
         } else {
             println!(
-                "   📋 Step 3: Results endpoint returned: {}",
-                results_status
+                "   📋 Step 3: Results endpoint returned: {results_status}"
             );
         }
 
@@ -1530,7 +1512,7 @@ async fn test_experiment_complex_workflow() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/api/experiments/{}/process-excel", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}/process-excel"))
                     .header("content-type", "application/json")
                     .body(Body::from("{}")) // Empty JSON to test error handling
                     .unwrap(),
@@ -1545,23 +1527,20 @@ async fn test_experiment_complex_workflow() {
             println!("   ✅ Step 4: Excel processing endpoint accessible");
         } else {
             println!(
-                "   📋 Step 4: Excel processing returned: {}",
-                process_status
+                "   📋 Step 4: Excel processing returned: {process_status}"
             );
         }
 
         println!("   📋 Workflow test completed");
     } else {
         println!(
-            "   ⚠️  Workflow test failed - couldn't create experiment: {}",
-            create_status
+            "   ⚠️  Workflow test failed - couldn't create experiment: {create_status}"
         );
     }
 
     // This test always passes - it's for workflow documentation
     assert!(true, "This test documents experiment workflow behavior");
 }
-use super::*;
 use crate::common::state::AppState;
 use crate::config::{Config, test_helpers::setup_test_db};
 use crate::routes::trays::services::{coordinates_to_str, str_to_coordinates};
@@ -1732,7 +1711,7 @@ async fn test_excel_upload_and_validate_results() {
 
     match result {
         Ok(processing_result) => {
-            println!("📊 Excel processing result: {:#?}", processing_result);
+            println!("📊 Excel processing result: {processing_result:#?}");
 
             // Validate processing results
             assert!(
@@ -1770,7 +1749,7 @@ async fn test_excel_upload_and_validate_results() {
                 .count(&db)
                 .await
                 .expect("Failed to count temperature_readings");
-            println!("      - temperature_readings: {}", temp_readings_count);
+            println!("      - temperature_readings: {temp_readings_count}");
 
             // Check phase transitions
             let phase_transitions_count = spice_entity::well_phase_transitions::Entity::find()
@@ -1778,8 +1757,7 @@ async fn test_excel_upload_and_validate_results() {
                 .await
                 .expect("Failed to count well_phase_transitions");
             println!(
-                "      - well_phase_transitions: {}",
-                phase_transitions_count
+                "      - well_phase_transitions: {phase_transitions_count}"
             );
 
             // Check wells
@@ -1787,7 +1765,7 @@ async fn test_excel_upload_and_validate_results() {
                 .count(&db)
                 .await
                 .expect("Failed to count wells");
-            println!("      - wells: {}", wells_count);
+            println!("      - wells: {wells_count}");
 
             // Check existing business logic tables are still there
             let locations_count = spice_entity::locations::Entity::find()
@@ -1817,28 +1795,22 @@ async fn test_excel_upload_and_validate_results() {
 
             println!("   ✅ Business logic tables still exist:");
             println!(
-                "      - locations: {} (kept - has API endpoints)",
-                locations_count
+                "      - locations: {locations_count} (kept - has API endpoints)"
             );
             println!(
-                "      - projects: {} (kept - has API endpoints)",
-                projects_count
+                "      - projects: {projects_count} (kept - has API endpoints)"
             );
             println!(
-                "      - samples: {} (kept - has API endpoints)",
-                samples_count
+                "      - samples: {samples_count} (kept - has API endpoints)"
             );
             println!(
-                "      - treatments: {} (kept - has API endpoints)",
-                treatments_count
+                "      - treatments: {treatments_count} (kept - has API endpoints)"
             );
             println!(
-                "      - regions: {} (kept - used in experiments)",
-                regions_count
+                "      - regions: {regions_count} (kept - used in experiments)"
             );
             println!(
-                "      - s3_assets: {} (kept - file management)",
-                s3_assets_count
+                "      - s3_assets: {s3_assets_count} (kept - file management)"
             );
 
             // Validate the core data was stored correctly
@@ -1862,8 +1834,8 @@ async fn test_excel_upload_and_validate_results() {
             println!("✅ Excel upload and validation test completed successfully!");
         }
         Err(e) => {
-            println!("❌ Excel processing failed: {}", e);
-            panic!("Excel processing should succeed, got error: {}", e);
+            println!("❌ Excel processing failed: {e}");
+            panic!("Excel processing should succeed, got error: {e}");
         }
     }
 }
@@ -1922,8 +1894,7 @@ async fn test_validate_specific_well_transitions() {
         let coord_str = coordinates_to_str(&well).unwrap();
         assert_eq!(
             coord_str, well_coord,
-            "Coordinate conversion should work for {}",
-            well_coord
+            "Coordinate conversion should work for {well_coord}"
         );
     }
 

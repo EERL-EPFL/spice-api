@@ -83,7 +83,7 @@ async fn test_project_crud_operations() {
                 println!("   ✅ Locations array present");
             }
         } else {
-            println!("⚠️  Project retrieval failed: {}", get_status);
+            println!("⚠️  Project retrieval failed: {get_status}");
         }
 
         // Test updating the project
@@ -113,7 +113,7 @@ async fn test_project_crud_operations() {
         } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Project update not implemented (405)");
         } else {
-            println!("📋 Project update returned: {}", update_status);
+            println!("📋 Project update returned: {update_status}");
         }
 
         // Test deleting the project
@@ -135,11 +135,11 @@ async fn test_project_crud_operations() {
         } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Project delete not implemented (405)");
         } else {
-            println!("📋 Project delete returned: {}", delete_status);
+            println!("📋 Project delete returned: {delete_status}");
         }
         
     } else {
-        println!("⚠️  Project creation failed: Status {}, Body: {}", status, body);
+        println!("⚠️  Project creation failed: Status {status}, Body: {body}");
         // Document the current behavior even if it fails
         assert!(status.is_client_error() || status.is_server_error(),
                "Project creation should either succeed or fail gracefully");
@@ -179,7 +179,7 @@ async fn test_project_list_operations() {
             assert!(project["last_updated"].is_string(), "Each project should have last_updated");
         }
     } else {
-        println!("⚠️  Project listing failed: Status {}", list_status);
+        println!("⚠️  Project listing failed: Status {list_status}");
         assert!(list_status.is_client_error() || list_status.is_server_error(),
                "Project listing should either succeed or fail gracefully");
     }
@@ -210,7 +210,7 @@ async fn test_project_validation() {
 
     let (status, _body) = extract_response_body(response).await;
     assert!(status.is_client_error(), "Should reject incomplete project data");
-    println!("✅ Project validation working - rejected incomplete data with status {}", status);
+    println!("✅ Project validation working - rejected incomplete data with status {status}");
 
     // Test creating project with invalid colour format (if validation exists)
     let invalid_data = json!({
@@ -234,11 +234,11 @@ async fn test_project_validation() {
     let (status, _body) = extract_response_body(response).await;
     // Note: This may succeed if colour validation is not strict
     if status.is_client_error() {
-        println!("✅ Project colour validation working - status {}", status);
+        println!("✅ Project colour validation working - status {status}");
     } else if status == StatusCode::CREATED {
         println!("📋 Project allows any colour format (no strict validation)");
     } else {
-        println!("📋 Project colour validation returned: {}", status);
+        println!("📋 Project colour validation returned: {status}");
     }
 }
 
@@ -281,7 +281,9 @@ async fn test_project_filtering_and_sorting() {
         }
     }
 
-    if !created_ids.is_empty() {
+    if created_ids.is_empty() {
+        println!("📋 No test projects created - skipping filtering tests");
+    } else {
         // Test filtering by colour
         let filter_response = app
             .clone()
@@ -317,7 +319,7 @@ async fn test_project_filtering_and_sorting() {
                 println!("📋 Project filtering returned no results (may be working or broken)");
             }
         } else {
-            println!("⚠️  Project filtering failed: Status {}", filter_status);
+            println!("⚠️  Project filtering failed: Status {filter_status}");
         }
 
         // Test filtering by note
@@ -338,7 +340,7 @@ async fn test_project_filtering_and_sorting() {
         if note_filter_status == StatusCode::OK {
             println!("✅ Project note filtering endpoint accessible");
         } else {
-            println!("⚠️  Project note filtering failed: Status {}", note_filter_status);
+            println!("⚠️  Project note filtering failed: Status {note_filter_status}");
         }
 
         // Test sorting by name
@@ -359,10 +361,8 @@ async fn test_project_filtering_and_sorting() {
         if sort_status == StatusCode::OK {
             println!("✅ Project sorting endpoint accessible");
         } else {
-            println!("⚠️  Project sorting failed: Status {}", sort_status);
+            println!("⚠️  Project sorting failed: Status {sort_status}");
         }
-    } else {
-        println!("📋 No test projects created - skipping filtering tests");
     }
 }
 
@@ -533,9 +533,9 @@ async fn test_project_colour_variations() {
         let (status, _body) = extract_response_body(response).await;
         
         if status == StatusCode::CREATED {
-            println!("✅ Project accepts {} colour format: '{}'", description, colour);
+            println!("✅ Project accepts {description} colour format: '{colour}'");
         } else {
-            println!("📋 Project rejects {} colour format: '{}' (Status: {})", description, colour, status);
+            println!("📋 Project rejects {description} colour format: '{colour}' (Status: {status})");
         }
     }
 }
@@ -573,7 +573,7 @@ async fn test_project_pagination_and_limits() {
             println!("   🐛 BUG: Limit parameter not working - got {} results", projects.len());
         }
     } else {
-        println!("   ⚠️  Pagination query failed: {}", pagination_status);
+        println!("   ⚠️  Pagination query failed: {pagination_status}");
     }
     
     // Test sorting with pagination
@@ -594,7 +594,7 @@ async fn test_project_pagination_and_limits() {
     if sorted_pagination_status == StatusCode::OK {
         println!("   ✅ Sorted pagination query successful");
     } else {
-        println!("   ⚠️  Sorted pagination query failed: {}", sorted_pagination_status);
+        println!("   ⚠️  Sorted pagination query failed: {sorted_pagination_status}");
     }
     
     // This test always passes - it's for documenting pagination behavior

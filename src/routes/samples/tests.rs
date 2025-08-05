@@ -139,7 +139,7 @@ async fn test_sample_crud_operations() {
                 println!("   ✅ Experimental results array present");
             }
         } else {
-            println!("⚠️  Sample retrieval failed: {}", get_status);
+            println!("⚠️  Sample retrieval failed: {get_status}");
         }
 
         // Test updating the sample
@@ -169,7 +169,7 @@ async fn test_sample_crud_operations() {
         } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Sample update not implemented (405)");
         } else {
-            println!("📋 Sample update returned: {}", update_status);
+            println!("📋 Sample update returned: {update_status}");
         }
 
         // Test deleting the sample
@@ -191,11 +191,11 @@ async fn test_sample_crud_operations() {
         } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Sample delete not implemented (405)");
         } else {
-            println!("📋 Sample delete returned: {}", delete_status);
+            println!("📋 Sample delete returned: {delete_status}");
         }
         
     } else {
-        println!("⚠️  Sample creation failed: Status {}, Body: {}", status, body);
+        println!("⚠️  Sample creation failed: Status {status}, Body: {body}");
         // Document the current behavior even if it fails
         assert!(status.is_client_error() || status.is_server_error(),
                "Sample creation should either succeed or fail gracefully");
@@ -240,7 +240,7 @@ async fn test_sample_list_operations() {
             assert!(sample["experimental_results"].is_array(), "Each sample should have experimental_results array");
         }
     } else {
-        println!("⚠️  Sample listing failed: Status {}", list_status);
+        println!("⚠️  Sample listing failed: Status {list_status}");
         assert!(list_status.is_client_error() || list_status.is_server_error(),
                "Sample listing should either succeed or fail gracefully");
     }
@@ -271,7 +271,7 @@ async fn test_sample_validation() {
 
     let (status, _body) = extract_response_body(response).await;
     assert!(status.is_client_error(), "Should reject incomplete sample data");
-    println!("✅ Sample validation working - rejected incomplete data with status {}", status);
+    println!("✅ Sample validation working - rejected incomplete data with status {status}");
 
     // Test creating sample with invalid sample type
     let invalid_data = json!({
@@ -294,7 +294,7 @@ async fn test_sample_validation() {
 
     let (status, _body) = extract_response_body(response).await;
     assert!(status.is_client_error(), "Should reject invalid sample type");
-    println!("✅ Sample type validation working - status {}", status);
+    println!("✅ Sample type validation working - status {status}");
 
     // Test creating sample with invalid volume (negative number)
     let invalid_volume_data = json!({
@@ -322,7 +322,7 @@ async fn test_sample_validation() {
     } else if status == StatusCode::CREATED {
         println!("📋 Sample allows negative volumes (no validation)");
     } else {
-        println!("📋 Sample volume validation returned: {}", status);
+        println!("📋 Sample volume validation returned: {status}");
     }
 }
 
@@ -365,7 +365,9 @@ async fn test_sample_filtering_and_sorting() {
         }
     }
 
-    if !created_ids.is_empty() {
+    if created_ids.is_empty() {
+        println!("📋 No test samples created - skipping filtering tests");
+    } else {
         // Test filtering by type
         let filter_response = app
             .clone()
@@ -401,7 +403,7 @@ async fn test_sample_filtering_and_sorting() {
                 println!("📋 Sample filtering returned no results (may be working or broken)");
             }
         } else {
-            println!("⚠️  Sample filtering failed: Status {}", filter_status);
+            println!("⚠️  Sample filtering failed: Status {filter_status}");
         }
 
         // Test filtering by material description
@@ -422,7 +424,7 @@ async fn test_sample_filtering_and_sorting() {
         if material_filter_status == StatusCode::OK {
             println!("✅ Sample material description filtering endpoint accessible");
         } else {
-            println!("⚠️  Sample material description filtering failed: Status {}", material_filter_status);
+            println!("⚠️  Sample material description filtering failed: Status {material_filter_status}");
         }
 
         // Test sorting by name
@@ -443,10 +445,8 @@ async fn test_sample_filtering_and_sorting() {
         if sort_status == StatusCode::OK {
             println!("✅ Sample sorting endpoint accessible");
         } else {
-            println!("⚠️  Sample sorting failed: Status {}", sort_status);
+            println!("⚠️  Sample sorting failed: Status {sort_status}");
         }
-    } else {
-        println!("📋 No test samples created - skipping filtering tests");
     }
 }
 
@@ -560,7 +560,7 @@ async fn test_sample_with_treatments() {
             }
         }
     } else {
-        println!("📋 Sample with treatments creation failed: Status {}", status);
+        println!("📋 Sample with treatments creation failed: Status {status}");
     }
 }
 
@@ -624,7 +624,7 @@ async fn test_sample_location_assignment() {
             assert_eq!(get_body["longitude"], -73.5673);
         }
     } else {
-        println!("📋 Sample with location assignment failed: Status {}", status);
+        println!("📋 Sample with location assignment failed: Status {status}");
     }
 }
 
@@ -675,7 +675,7 @@ async fn test_sample_volume_and_concentration_fields() {
         
         println!("   ✅ All volume and concentration fields preserved correctly");
     } else {
-        println!("📋 Sample with volume/concentration fields failed: Status {}", status);
+        println!("📋 Sample with volume/concentration fields failed: Status {status}");
     }
 }
 
@@ -746,7 +746,7 @@ async fn test_sample_experimental_results_structure() {
             
             println!("   📋 Experimental results loading appears to be working");
         } else {
-            println!("📋 Could not test experimental results - sample retrieval failed: {}", get_status);
+            println!("📋 Could not test experimental results - sample retrieval failed: {get_status}");
         }
     } else {
         println!("📋 Skipping experimental results test - couldn't create sample");
@@ -854,13 +854,13 @@ async fn test_sample_complex_workflow() {
             }
             
         } else {
-            println!("   ⚠️  Step 3: Sample retrieval failed: {}", get_status);
+            println!("   ⚠️  Step 3: Sample retrieval failed: {get_status}");
         }
         
         println!("   📋 Complex workflow test completed successfully");
         
     } else {
-        println!("   ⚠️  Complex workflow test failed - couldn't create sample: {}", create_status);
+        println!("   ⚠️  Complex workflow test failed - couldn't create sample: {create_status}");
     }
     
     // This test always passes - it's for workflow documentation

@@ -117,7 +117,7 @@ async fn test_location_crud_operations() {
                 println!("   ✅ Samples array present");
             }
         } else {
-            println!("⚠️  Location retrieval failed: {}", get_status);
+            println!("⚠️  Location retrieval failed: {get_status}");
         }
 
         // Test updating the location
@@ -145,7 +145,7 @@ async fn test_location_crud_operations() {
         } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Location update not implemented (405)");
         } else {
-            println!("📋 Location update returned: {}", update_status);
+            println!("📋 Location update returned: {update_status}");
         }
 
         // Test deleting the location
@@ -167,11 +167,11 @@ async fn test_location_crud_operations() {
         } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Location delete not implemented (405)");
         } else {
-            println!("📋 Location delete returned: {}", delete_status);
+            println!("📋 Location delete returned: {delete_status}");
         }
         
     } else {
-        println!("⚠️  Location creation failed: Status {}, Body: {}", status, body);
+        println!("⚠️  Location creation failed: Status {status}, Body: {body}");
         // Document the current behavior even if it fails
         assert!(status.is_client_error() || status.is_server_error(),
                "Location creation should either succeed or fail gracefully");
@@ -211,7 +211,7 @@ async fn test_location_list_operations() {
             assert!(location["last_updated"].is_string(), "Each location should have last_updated");
         }
     } else {
-        println!("⚠️  Location listing failed: Status {}", list_status);
+        println!("⚠️  Location listing failed: Status {list_status}");
         assert!(list_status.is_client_error() || list_status.is_server_error(),
                "Location listing should either succeed or fail gracefully");
     }
@@ -242,7 +242,7 @@ async fn test_location_validation() {
 
     let (status, _body) = extract_response_body(response).await;
     assert!(status.is_client_error(), "Should reject incomplete location data");
-    println!("✅ Location validation working - rejected incomplete data with status {}", status);
+    println!("✅ Location validation working - rejected incomplete data with status {status}");
 
     // Test creating location with invalid data types
     let invalid_data = json!({
@@ -265,7 +265,7 @@ async fn test_location_validation() {
 
     let (status, _body) = extract_response_body(response).await;
     assert!(status.is_client_error(), "Should reject invalid data types");
-    println!("✅ Location type validation working - status {}", status);
+    println!("✅ Location type validation working - status {status}");
 }
 
 #[tokio::test]
@@ -306,7 +306,9 @@ async fn test_location_filtering_and_sorting() {
         }
     }
 
-    if !created_ids.is_empty() {
+    if created_ids.is_empty() {
+        println!("📋 No test locations created - skipping filtering tests");
+    } else {
         // Test filtering by comment
         let filter_response = app
             .clone()
@@ -342,7 +344,7 @@ async fn test_location_filtering_and_sorting() {
                 println!("📋 Location filtering returned no results (may be working or broken)");
             }
         } else {
-            println!("⚠️  Location filtering failed: Status {}", filter_status);
+            println!("⚠️  Location filtering failed: Status {filter_status}");
         }
 
         // Test sorting by name
@@ -363,10 +365,8 @@ async fn test_location_filtering_and_sorting() {
         if sort_status == StatusCode::OK {
             println!("✅ Location sorting endpoint accessible");
         } else {
-            println!("⚠️  Location sorting failed: Status {}", sort_status);
+            println!("⚠️  Location sorting failed: Status {sort_status}");
         }
-    } else {
-        println!("📋 No test locations created - skipping filtering tests");
     }
 }
 
@@ -446,7 +446,7 @@ async fn test_location_project_assignment() {
             assert_eq!(get_body["project_id"], project_id);
         }
     } else {
-        println!("📋 Location with project assignment failed: Status {}", status);
+        println!("📋 Location with project assignment failed: Status {status}");
     }
 }
 
@@ -521,7 +521,7 @@ async fn test_location_related_data_structure() {
             
             println!("   📋 Related data loading appears to be working");
         } else {
-            println!("📋 Could not test related data - location retrieval failed: {}", get_status);
+            println!("📋 Could not test related data - location retrieval failed: {get_status}");
         }
     } else {
         println!("📋 Skipping related data test - couldn't create location");
@@ -555,7 +555,7 @@ async fn test_location_complex_queries() {
         let locations = pagination_body.as_array().unwrap();
         println!("   Returned {} locations with limit=5", locations.len());
     } else {
-        println!("   ⚠️  Pagination query failed: {}", pagination_status);
+        println!("   ⚠️  Pagination query failed: {pagination_status}");
     }
     
     // Test multiple filters
@@ -576,7 +576,7 @@ async fn test_location_complex_queries() {
     if multi_filter_status == StatusCode::OK {
         println!("   ✅ Multi-filter query successful");
     } else {
-        println!("   ⚠️  Multi-filter query failed: {}", multi_filter_status);
+        println!("   ⚠️  Multi-filter query failed: {multi_filter_status}");
     }
     
     // This test always passes - it's for documenting query capabilities

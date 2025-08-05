@@ -217,7 +217,7 @@ async fn test_treatment_list_operations() {
     
     for created_id in &created_ids {
         assert!(treatment_ids.contains(&created_id.as_str()), 
-               "Created treatment {} should be in list", created_id);
+               "Created treatment {created_id} should be in list");
     }
 }
 
@@ -306,7 +306,7 @@ async fn test_treatment_enum_values() {
 
         let (status, body) = extract_response_body(response).await;
         assert_eq!(status, StatusCode::CREATED, 
-                  "Failed to create treatment with name '{}': {body:?}", treatment_name);
+                  "Failed to create treatment with name '{treatment_name}': {body:?}");
         assert_eq!(body["name"], treatment_name);
     }
 }
@@ -433,7 +433,7 @@ async fn test_treatment_filtering_and_sorting() {
     println!("BUG: Filtering returned {} treatments but should only return 'heat' treatments", filtered_treatments.len());
     
     // Document the bug: filtering is not implemented correctly
-    assert!(filtered_treatments.len() >= 1, "Should return at least some treatments (even if filtering is broken)");
+    assert!(!filtered_treatments.is_empty(), "Should return at least some treatments (even if filtering is broken)");
     
     // TODO: Fix filtering implementation in CRUDResource framework
     // For now, just verify that at least one treatment with name 'heat' exists in the results

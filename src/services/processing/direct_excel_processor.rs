@@ -468,7 +468,7 @@ impl DirectExcelProcessor {
             .map_err(|e| anyhow!("Invalid well coordinate '{}': {}", coordinate, e))?;
 
         // Convert u8 to i32 for consistency with existing code
-        Ok((well_coord.row as i32, well_coord.column as i32))
+        Ok((i32::from(well_coord.row), i32::from(well_coord.column)))
     }
 
     fn is_valid_tray_name(&self, tray_name: &str) -> bool {

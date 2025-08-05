@@ -117,7 +117,7 @@ async fn test_asset_crud_operations() {
         assert_eq!(get_body["original_filename"], "test_image.jpg");
         
     } else {
-        println!("⚠️  Asset creation failed (expected - likely requires S3 setup): Status {}, Body: {}", status, body);
+        println!("⚠️  Asset creation failed (expected - likely requires S3 setup): Status {status}, Body: {body}");
         // This is expected if S3 is not configured - document the behavior
         assert!(status.is_client_error() || status.is_server_error(), 
                "Asset creation should fail gracefully when S3 is not configured");
@@ -149,7 +149,7 @@ async fn test_asset_list_operations() {
         let assets = list_body.as_array().unwrap();
         println!("Found {} assets in the system", assets.len());
     } else {
-        println!("⚠️  Asset listing failed: Status {}, Body: {}", list_status, list_body);
+        println!("⚠️  Asset listing failed: Status {list_status}, Body: {list_body}");
         // Document the failure case
         assert!(list_status.is_client_error() || list_status.is_server_error(),
                "Asset listing should fail gracefully when not properly configured");
@@ -184,7 +184,7 @@ async fn test_asset_validation() {
     // Should reject incomplete asset data
     assert!(status.is_client_error() || status.is_server_error(), 
            "Should reject incomplete asset data");
-    println!("✅ Asset validation working - rejected incomplete data with status {}", status);
+    println!("✅ Asset validation working - rejected incomplete data with status {status}");
 }
 
 #[tokio::test]
@@ -220,7 +220,7 @@ async fn test_asset_filtering_and_sorting() {
             }
         }
     } else {
-        println!("⚠️  Asset filtering failed: Status {}", filter_status);
+        println!("⚠️  Asset filtering failed: Status {filter_status}");
     }
 
     // Test sorting by filename
@@ -241,7 +241,7 @@ async fn test_asset_filtering_and_sorting() {
     if sort_status == StatusCode::OK {
         println!("✅ Asset sorting endpoint accessible");
     } else {
-        println!("⚠️  Asset sorting failed: Status {}", sort_status);
+        println!("⚠️  Asset sorting failed: Status {sort_status}");
     }
 }
 
@@ -298,7 +298,7 @@ async fn test_asset_update_operations() {
     } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
         println!("⚠️  Asset update operations not implemented (405 Method Not Allowed)");
     } else {
-        println!("📋 Asset update returned unexpected status: {}", update_status);
+        println!("📋 Asset update returned unexpected status: {update_status}");
     }
 }
 
@@ -327,7 +327,7 @@ async fn test_asset_delete_operations() {
     } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
         println!("⚠️  Asset delete operations not implemented (405 Method Not Allowed)");
     } else {
-        println!("📋 Asset delete returned unexpected status: {}", delete_status);
+        println!("📋 Asset delete returned unexpected status: {delete_status}");
     }
 }
 
@@ -369,7 +369,7 @@ async fn test_asset_s3_dependency_documentation() {
     if status.is_success() {
         println!("   ✅ S3 appears to be configured - asset creation succeeded");
     } else {
-        println!("   ⚠️  S3 likely not configured - asset creation failed: {}", status);
+        println!("   ⚠️  S3 likely not configured - asset creation failed: {status}");
         println!("   This is expected in test environments without S3 setup");
     }
     

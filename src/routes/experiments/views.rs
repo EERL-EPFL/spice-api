@@ -452,7 +452,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("PATCH")
-                    .uri(format!("/api/experiments/{}", experiment_id))
+                    .uri(format!("/api/experiments/{experiment_id}"))
                     .header("content-type", "application/json")
                     .body(Body::from(update_data.to_string()))
                     .unwrap(),
@@ -597,7 +597,7 @@ mod tests {
         let (_tray_id, config_id) = match tray_setup_result {
             Ok(result) => result,
             Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
+                println!("Skipping test due to missing tray API: {e}");
                 return;
             }
         };
@@ -708,7 +708,7 @@ mod tests {
         let (_tray_id, config_id) = match tray_setup_result {
             Ok(result) => result,
             Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
+                println!("Skipping test due to missing tray API: {e}");
                 return;
             }
         };
@@ -821,7 +821,7 @@ mod tests {
         let (_tray_id, config_id) = match tray_setup_result {
             Ok(result) => result,
             Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
+                println!("Skipping test due to missing tray API: {e}");
                 return;
             }
         };
@@ -933,7 +933,7 @@ mod tests {
         let (_tray_id, config_id) = match tray_setup_result {
             Ok(result) => result,
             Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
+                println!("Skipping test due to missing tray API: {e}");
                 return;
             }
         };
@@ -1050,7 +1050,7 @@ mod tests {
         let (_tray_id, config_id) = match tray_setup_result {
             Ok(result) => result,
             Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
+                println!("Skipping test due to missing tray API: {e}");
                 return;
             }
         };

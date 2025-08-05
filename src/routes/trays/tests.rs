@@ -80,7 +80,7 @@ async fn test_tray_crud_operations() {
             assert_eq!(get_body["id"], tray_id);
             assert!(get_body["name"].as_str().unwrap().contains("Test Tray CRUD"));
         } else {
-            println!("⚠️  Tray retrieval failed: {}", get_status);
+            println!("⚠️  Tray retrieval failed: {get_status}");
         }
 
         // Test updating the tray
@@ -110,7 +110,7 @@ async fn test_tray_crud_operations() {
         } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Tray update not implemented (405)");
         } else {
-            println!("📋 Tray update returned: {}", update_status);
+            println!("📋 Tray update returned: {update_status}");
         }
 
         // Test deleting the tray
@@ -132,11 +132,11 @@ async fn test_tray_crud_operations() {
         } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Tray delete not implemented (405)");
         } else {
-            println!("📋 Tray delete returned: {}", delete_status);
+            println!("📋 Tray delete returned: {delete_status}");
         }
         
     } else {
-        println!("⚠️  Tray creation failed: Status {}, Body: {}", status, body);
+        println!("⚠️  Tray creation failed: Status {status}, Body: {body}");
         // Document the current behavior even if it fails
         assert!(status.is_client_error() || status.is_server_error(),
                "Tray creation should either succeed or fail gracefully");
@@ -180,7 +180,7 @@ async fn test_tray_list_operations() {
             }
         }
     } else {
-        println!("⚠️  Tray listing failed: Status {}", list_status);
+        println!("⚠️  Tray listing failed: Status {list_status}");
         assert!(list_status.is_client_error() || list_status.is_server_error(),
                "Tray listing should either succeed or fail gracefully");
     }
@@ -218,7 +218,7 @@ async fn test_tray_validation() {
     } else if status == StatusCode::CREATED {
         println!("📋 Tray allows negative axis values (no validation)");
     } else {
-        println!("📋 Tray validation returned: {}", status);
+        println!("📋 Tray validation returned: {status}");
     }
 
     // Test creating tray with zero dimensions
@@ -249,7 +249,7 @@ async fn test_tray_validation() {
     } else if status == StatusCode::CREATED {
         println!("📋 Tray allows zero dimensions");
     } else {
-        println!("📋 Tray zero dimension validation returned: {}", status);
+        println!("📋 Tray zero dimension validation returned: {status}");
     }
 }
 
@@ -293,7 +293,9 @@ async fn test_tray_filtering_and_sorting() {
         }
     }
 
-    if !created_ids.is_empty() {
+    if created_ids.is_empty() {
+        println!("📋 No test trays created - skipping filtering tests");
+    } else {
         // Test filtering by name
         let filter_response = app
             .clone()
@@ -320,7 +322,7 @@ async fn test_tray_filtering_and_sorting() {
                 if let Some(name) = tray["name"].as_str() {
                     if !name.contains("96-Well Plate") {
                         filtering_works = false;
-                        println!("🐛 BUG: Filtering returned non-matching tray: {:?}", name);
+                        println!("🐛 BUG: Filtering returned non-matching tray: {name:?}");
                     }
                 }
             }
@@ -331,7 +333,7 @@ async fn test_tray_filtering_and_sorting() {
                 println!("📋 Tray filtering returned no results (may be working or broken)");
             }
         } else {
-            println!("⚠️  Tray filtering failed: Status {}", filter_status);
+            println!("⚠️  Tray filtering failed: Status {filter_status}");
         }
 
         // Test sorting by name
@@ -352,10 +354,8 @@ async fn test_tray_filtering_and_sorting() {
         if sort_status == StatusCode::OK {
             println!("✅ Tray sorting endpoint accessible");
         } else {
-            println!("⚠️  Tray sorting failed: Status {}", sort_status);
+            println!("⚠️  Tray sorting failed: Status {sort_status}");
         }
-    } else {
-        println!("📋 No test trays created - skipping filtering tests");
     }
 }
 
@@ -488,7 +488,7 @@ async fn test_tray_configuration_crud_operations() {
                 println!("   ✅ Associated experiments array present");
             }
         } else {
-            println!("⚠️  Tray configuration retrieval failed: {}", get_status);
+            println!("⚠️  Tray configuration retrieval failed: {get_status}");
         }
 
         // Test updating the tray configuration
@@ -516,7 +516,7 @@ async fn test_tray_configuration_crud_operations() {
         } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Tray configuration update not implemented (405)");
         } else {
-            println!("📋 Tray configuration update returned: {}", update_status);
+            println!("📋 Tray configuration update returned: {update_status}");
         }
 
         // Test deleting the tray configuration
@@ -538,11 +538,11 @@ async fn test_tray_configuration_crud_operations() {
         } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
             println!("⚠️  Tray configuration delete not implemented (405)");
         } else {
-            println!("📋 Tray configuration delete returned: {}", delete_status);
+            println!("📋 Tray configuration delete returned: {delete_status}");
         }
         
     } else {
-        println!("⚠️  Tray configuration creation failed: Status {}, Body: {}", status, body);
+        println!("⚠️  Tray configuration creation failed: Status {status}, Body: {body}");
         // Document the current behavior even if it fails
         assert!(status.is_client_error() || status.is_server_error(),
                "Tray configuration creation should either succeed or fail gracefully");
@@ -582,7 +582,7 @@ async fn test_tray_configuration_list_operations() {
             assert!(config["experiment_default"].is_boolean(), "Each config should have experiment_default");
         }
     } else {
-        println!("⚠️  Tray configuration listing failed: Status {}", list_status);
+        println!("⚠️  Tray configuration listing failed: Status {list_status}");
         assert!(list_status.is_client_error() || list_status.is_server_error(),
                "Tray configuration listing should either succeed or fail gracefully");
     }
@@ -739,9 +739,9 @@ async fn test_tray_dimensions_validation() {
         let (status, _body) = extract_response_body(response).await;
         
         if status == StatusCode::CREATED {
-            println!("✅ Tray accepts {} ({}x{})", description, x_axis, y_axis);
+            println!("✅ Tray accepts {description} ({x_axis}x{y_axis})");
         } else {
-            println!("📋 Tray rejects {} ({}x{}) - Status: {}", description, x_axis, y_axis, status);
+            println!("📋 Tray rejects {description} ({x_axis}x{y_axis}) - Status: {status}");
         }
     }
 }
@@ -837,7 +837,7 @@ async fn test_tray_configuration_complex_structure() {
                 }
                 
                 if total_trays == 4 {  // 2 + 1 + 1 trays across assignments
-                    println!("   ✅ All {} trays preserved across assignments", total_trays);
+                    println!("   ✅ All {total_trays} trays preserved across assignments");
                 }
                 
                 // Check order sequence sorting
@@ -883,7 +883,7 @@ async fn test_tray_configuration_complex_structure() {
         }
         
     } else {
-        println!("📋 Complex tray configuration creation failed: Status {}", status);
+        println!("📋 Complex tray configuration creation failed: Status {status}");
     }
 }
 
@@ -943,7 +943,7 @@ async fn test_tray_workflow_comprehensive() {
     if individual_status == StatusCode::CREATED {
         println!("   ✅ Step 1: Individual tray created successfully");
     } else {
-        println!("   📋 Step 1: Individual tray creation returned: {}", individual_status);
+        println!("   📋 Step 1: Individual tray creation returned: {individual_status}");
     }
     
     // Step 2: Create comprehensive tray configuration
@@ -1036,7 +1036,7 @@ async fn test_tray_workflow_comprehensive() {
         println!("   📋 Comprehensive workflow test completed successfully");
         
     } else {
-        println!("   ⚠️  Comprehensive workflow test failed - config creation: {}", config_status);
+        println!("   ⚠️  Comprehensive workflow test failed - config creation: {config_status}");
     }
     
     // This test always passes - it's for comprehensive workflow documentation

@@ -125,10 +125,10 @@ async fn fetch_experimental_results_for_treatment(
                             temp_reading.probe_7, temp_reading.probe_8,
                         ];
                         let valid_temps: Vec<Decimal> = temps.into_iter().flatten().collect();
-                        if !valid_temps.is_empty() {
-                            Some(valid_temps.iter().sum::<Decimal>() / Decimal::from(valid_temps.len()))
-                        } else {
+                        if valid_temps.is_empty() {
                             None
+                        } else {
+                            Some(valid_temps.iter().sum::<Decimal>() / Decimal::from(valid_temps.len()))
                         }
                     } else {
                         None
@@ -171,8 +171,8 @@ async fn fetch_experimental_results_for_treatment(
                     experiment_date: experiment.performed_at.map(|dt| dt.with_timezone(&Utc)),
                     well_coordinate,
                     tray_name: tray.and_then(|t| t.name),
-                    freezing_temperature_avg: freezing_temperature_avg,
-                    freezing_time_seconds: freezing_time_seconds,
+                    freezing_temperature_avg,
+                    freezing_time_seconds,
                     treatment_name: Some(format!("{:?}", region.treatment_id)), // Could be improved to get actual treatment name
                     treatment_id: Some(treatment_id),
                     dilution_factor: region.dilution_factor,
