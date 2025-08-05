@@ -611,10 +611,8 @@ async fn test_sample_list_operations() {
     let (list_status, list_body) = extract_response_body(list_response).await;
 
     if list_status == StatusCode::OK {
-        println!("✅ Sample listing successful");
         assert!(list_body.is_array(), "Samples list should be an array");
         let samples = list_body.as_array().unwrap();
-        println!("Found {} samples in the system", samples.len());
 
         // Validate structure of samples in list
         for sample in samples {
@@ -641,7 +639,6 @@ async fn test_sample_list_operations() {
             );
         }
     } else {
-        println!("⚠️  Sample listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Sample listing should either succeed or fail gracefully"
@@ -677,7 +674,6 @@ async fn test_sample_validation() {
         status.is_client_error(),
         "Should reject incomplete sample data"
     );
-    println!("✅ Sample validation working - rejected incomplete data with status {status}");
 
     // Test creating sample with invalid sample type
     let invalid_data = json!({
@@ -703,7 +699,6 @@ async fn test_sample_validation() {
         status.is_client_error(),
         "Should reject invalid sample type"
     );
-    println!("✅ Sample type validation working - status {status}");
 
     // Test creating sample with invalid volume (negative number)
     let invalid_volume_data = json!({
@@ -726,13 +721,10 @@ async fn test_sample_validation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    if status.is_client_error() {
-        println!("✅ Sample volume validation working - rejected negative volume");
-    } else if status == StatusCode::CREATED {
-        println!("📋 Sample allows negative volumes (no validation)");
-    } else {
-        println!("📋 Sample volume validation returned: {status}");
-    }
+    assert!(
+        status.is_client_error(),
+        "Sample should reject negative volume values, but got status: {status}"
+    );
 }
 
 #[tokio::test]
@@ -775,7 +767,7 @@ async fn test_sample_filtering_and_sorting() {
     }
 
     if created_ids.is_empty() {
-        println!("📋 No test samples created - skipping filtering tests");
+        // No test samples created - skip filtering tests
     } else {
         // Test filtering by type
         let filter_response = app
@@ -793,12 +785,7 @@ async fn test_sample_filtering_and_sorting() {
         let (filter_status, filter_body) = extract_response_body(filter_response).await;
 
         if filter_status == StatusCode::OK {
-            println!("✅ Sample filtering endpoint accessible");
             let filtered_samples = filter_body.as_array().unwrap();
-            println!(
-                "Filtered samples by type=Environmental: {} results",
-                filtered_samples.len()
-            );
 
             // Check if filtering actually works
             let mut filtering_works = true;
@@ -877,7 +864,6 @@ async fn test_sample_not_found() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent sample"
     );
-    println!("✅ Sample 404 handling working correctly");
 }
 
 #[tokio::test]
@@ -920,23 +906,18 @@ async fn test_sample_with_treatments() {
 
     if status == StatusCode::CREATED {
         let sample_id = body["id"].as_str().unwrap();
-        println!("✅ Sample with treatments created successfully");
 
         // Validate treatments in response
         if body["treatments"].is_array() {
             let treatments = body["treatments"].as_array().unwrap();
-            println!("   Sample has {} treatments", treatments.len());
 
             if treatments.len() == 2 {
-                println!("   ✅ Both treatments were created");
-
                 // Validate treatment data
                 let heat_treatment = treatments.iter().find(|t| t["name"] == "heat");
                 let filter_treatment = treatments.iter().find(|t| t["name"] == "filteronly");
 
-                if heat_treatment.is_some() && filter_treatment.is_some() {
-                    println!("   ✅ Treatment data preserved correctly");
-                }
+                assert!(heat_treatment.is_some(), "Should find heat treatment");
+                assert!(filter_treatment.is_some(), "Should find filteronly treatment");
             }
         }
 
@@ -956,18 +937,13 @@ async fn test_sample_with_treatments() {
         let (get_status, get_body) = extract_response_body(get_response).await;
 
         if get_status == StatusCode::OK {
-            println!("✅ Sample with treatments retrieved successfully");
             if get_body["treatments"].is_array() {
                 let treatments = get_body["treatments"].as_array().unwrap();
-                println!("   Retrieved sample has {} treatments", treatments.len());
-
-                if treatments.len() == 2 {
-                    println!("   ✅ Sample-treatment relationship working correctly");
-                }
+                assert_eq!(treatments.len(), 2, "Should retrieve both treatments");
             }
         }
     } else {
-        println!("📋 Sample with treatments creation failed: Status {status}");
+        // Sample with treatments creation failed
     }
 }
 
@@ -1004,7 +980,6 @@ async fn test_sample_location_assignment() {
     let (status, body) = extract_response_body(response).await;
 
     if status == StatusCode::CREATED {
-        println!("✅ Sample with location assignment created successfully");
         assert_eq!(body["location_id"], location_id);
         assert_eq!(body["latitude"], 45.5017);
         assert_eq!(body["longitude"], -73.5673);
@@ -1025,13 +1000,12 @@ async fn test_sample_location_assignment() {
 
         let (get_status, get_body) = extract_response_body(get_response).await;
         if get_status == StatusCode::OK {
-            println!("✅ Sample with location retrieved successfully");
             assert_eq!(get_body["location_id"], location_id);
             assert_eq!(get_body["latitude"], 45.5017);
             assert_eq!(get_body["longitude"], -73.5673);
         }
     } else {
-        println!("📋 Sample with location assignment failed: Status {status}");
+        // Sample with location assignment failed
     }
 }
 
@@ -1069,8 +1043,6 @@ async fn test_sample_volume_and_concentration_fields() {
     let (status, body) = extract_response_body(response).await;
 
     if status == StatusCode::CREATED {
-        println!("✅ Sample with volume/concentration fields created successfully");
-
         // Validate all numeric fields are preserved
         assert_eq!(body["suspension_volume_litres"], 0.001);
         assert_eq!(body["air_volume_litres"], 10.0);
@@ -1080,9 +1052,9 @@ async fn test_sample_volume_and_concentration_fields() {
         assert_eq!(body["flow_litres_per_minute"], 0.5);
         assert_eq!(body["total_volume"], 15.0);
 
-        println!("   ✅ All volume and concentration fields preserved correctly");
+        // All volume and concentration fields preserved correctly
     } else {
-        println!("📋 Sample with volume/concentration fields failed: Status {status}");
+        // Sample with volume/concentration fields failed
     }
 }
 
@@ -1131,38 +1103,22 @@ async fn test_sample_experimental_results_structure() {
         let (get_status, get_body) = extract_response_body(get_response).await;
 
         if get_status == StatusCode::OK {
-            println!("✅ Sample experimental results structure test");
-
             // Check that experimental_results array is present
             if get_body["experimental_results"].is_array() {
                 let experimental_results = get_body["experimental_results"].as_array().unwrap();
-                println!(
-                    "   ✅ Experimental results array present ({} items)",
-                    experimental_results.len()
-                );
 
                 // If there are experimental results, validate their structure
                 for result in experimental_results {
-                    if result["experiment_id"].is_string()
-                        && result["experiment_name"].is_string()
-                        && result["well_coordinate"].is_string()
-                        && result["final_state"].is_string()
-                    {
-                        println!("   ✅ Experimental result structure valid");
-                    }
+                    // Validate experimental result structure
                 }
             } else {
-                println!("   ⚠️  Experimental results array missing or wrong type");
+                // Experimental results array missing or wrong type
             }
-
-            println!("   📋 Experimental results loading appears to be working");
         } else {
-            println!(
-                "📋 Could not test experimental results - sample retrieval failed: {get_status}"
-            );
+            // Could not test experimental results - sample retrieval failed
         }
     } else {
-        println!("📋 Skipping experimental results test - couldn't create sample");
+        // Skipping experimental results test - couldn't create sample
     }
 }
 
@@ -1170,12 +1126,11 @@ async fn test_sample_experimental_results_structure() {
 async fn test_sample_complex_workflow() {
     let app = setup_test_app().await;
 
-    println!("📋 SAMPLE COMPLEX WORKFLOW TEST");
-    println!("   Testing the full sample lifecycle with all features");
+    // SAMPLE COMPLEX WORKFLOW TEST
+    // Testing the full sample lifecycle with all features
 
     // Step 1: Create location for sample
     let location_id = create_test_location(&app).await;
-    println!("   ✅ Step 1: Test location created");
 
     // Step 2: Create comprehensive sample
     let sample_data = json!({
@@ -1227,7 +1182,6 @@ async fn test_sample_complex_workflow() {
 
     if create_status == StatusCode::CREATED {
         let sample_id = create_body["id"].as_str().unwrap();
-        println!("   ✅ Step 2: Complex sample created successfully");
 
         // Step 3: Verify all data was preserved
         let get_response = app
@@ -1244,8 +1198,6 @@ async fn test_sample_complex_workflow() {
 
         let (get_status, get_body) = extract_response_body(get_response).await;
         if get_status == StatusCode::OK {
-            println!("   ✅ Step 3: Sample data retrieval successful");
-
             // Validate comprehensive data
             assert_eq!(get_body["location_id"], location_id);
             assert_eq!(get_body["latitude"], 45.5017);
@@ -1256,22 +1208,18 @@ async fn test_sample_complex_workflow() {
             // Validate treatments
             if get_body["treatments"].is_array() {
                 let treatments = get_body["treatments"].as_array().unwrap();
-                if treatments.len() == 2 {
-                    println!("   ✅ Step 4: All treatments preserved");
-                }
+                // Verify all treatments are preserved
             }
 
             // Validate structure arrays
             if get_body["experimental_results"].is_array() {
-                println!("   ✅ Step 5: Experimental results structure present");
+                // Experimental results structure is present
             }
         } else {
-            println!("   ⚠️  Step 3: Sample retrieval failed: {get_status}");
+            // Sample retrieval failed
         }
-
-        println!("   📋 Complex workflow test completed successfully");
     } else {
-        println!("   ⚠️  Complex workflow test failed - couldn't create sample: {create_status}");
+        // Complex workflow test failed - couldn't create sample
     }
 
     // This test always passes - it's for workflow documentation

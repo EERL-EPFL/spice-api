@@ -427,17 +427,15 @@ async fn test_treatment_filtering_and_sorting() {
     assert_eq!(filter_status, StatusCode::OK, "Filtering should work");
     
     let filtered_treatments = filter_body.as_array().unwrap();
-    println!("Filtered treatments: {}", serde_json::to_string_pretty(&filter_body).unwrap());
     
-    // BUG DISCOVERED: Filtering is not working correctly - it returns ALL treatments instead of filtered ones
-    // This is a serious issue that needs to be fixed in the CRUD framework
-    println!("BUG: Filtering returned {} treatments but should only return 'heat' treatments", filtered_treatments.len());
-    
-    // Document the bug: filtering is not implemented correctly
-    assert!(!filtered_treatments.is_empty(), "Should return at least some treatments (even if filtering is broken)");
-    
-    // TODO: Fix filtering implementation in CRUDResource framework
-    // For now, just verify that at least one treatment with name 'heat' exists in the results
+    // Verify filtering actually filters - should only return "heat" treatments
+    for treatment in filtered_treatments {
+        assert_eq!(
+            treatment["treatment_type"], "heat",
+            "Filtering should only return heat treatments, but got: {:?}", treatment["treatment_type"]
+        );
+    }
+    assert!(!filtered_treatments.is_empty(), "Should return at least some treatments");
     let heat_treatments: Vec<_> = filtered_treatments.iter()
         .filter(|t| t["name"] == "heat")
         .collect();

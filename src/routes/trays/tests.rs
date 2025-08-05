@@ -157,10 +157,8 @@ async fn test_tray_list_operations() {
     let (list_status, list_body) = extract_response_body(list_response).await;
 
     if list_status == StatusCode::OK {
-        println!("✅ Tray listing successful");
         assert!(list_body.is_array(), "Trays list should be an array");
         let trays = list_body.as_array().unwrap();
-        println!("Found {} trays in the system", trays.len());
 
         // Validate structure of trays in list
         for tray in trays {
@@ -183,7 +181,6 @@ async fn test_tray_list_operations() {
             }
         }
     } else {
-        println!("⚠️  Tray listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Tray listing should either succeed or fail gracefully"
@@ -329,7 +326,7 @@ async fn test_tray_filtering_and_sorting() {
     }
 
     if created_ids.is_empty() {
-        println!("📋 No test trays created - skipping filtering tests");
+        // Skip filtering tests if no trays were created
     } else {
         // Test filtering by name
         let filter_response = app
@@ -347,12 +344,7 @@ async fn test_tray_filtering_and_sorting() {
         let (filter_status, filter_body) = extract_response_body(filter_response).await;
 
         if filter_status == StatusCode::OK {
-            println!("✅ Tray filtering endpoint accessible");
             let filtered_trays = filter_body.as_array().unwrap();
-            println!(
-                "Filtered tray configs by name=96-Well Plate Config: {} results",
-                filtered_trays.len()
-            );
 
             // Check if filtering actually works - it should only return matching trays
             for tray in filtered_trays {
@@ -363,10 +355,8 @@ async fn test_tray_filtering_and_sorting() {
                     );
                 }
             }
-            
-            println!("✅ Tray filtering works correctly - all results match filter criteria");
         } else {
-            println!("⚠️  Tray filtering failed: Status {filter_status}");
+            // Tray filtering failed
         }
 
         // Test sorting by name
@@ -385,9 +375,9 @@ async fn test_tray_filtering_and_sorting() {
         let (sort_status, _) = extract_response_body(sort_response).await;
 
         if sort_status == StatusCode::OK {
-            println!("✅ Tray sorting endpoint accessible");
+            // Tray sorting endpoint accessible
         } else {
-            println!("⚠️  Tray sorting failed: Status {sort_status}");
+            // Tray sorting failed
         }
     }
 }
@@ -416,7 +406,6 @@ async fn test_tray_not_found() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent tray"
     );
-    println!("✅ Tray 404 handling working correctly");
 }
 
 async fn create_tray_configuration(app: &axum::Router) -> Result<Value, Box<dyn std::error::Error>> {
@@ -570,16 +559,11 @@ async fn test_tray_configuration_list_operations() {
     let (list_status, list_body) = extract_response_body(list_response).await;
 
     if list_status == StatusCode::OK {
-        println!("✅ Tray configuration listing successful");
         assert!(
             list_body.is_array(),
             "Tray configurations list should be an array"
         );
         let tray_configs = list_body.as_array().unwrap();
-        println!(
-            "Found {} tray configurations in the system",
-            tray_configs.len()
-        );
 
         // Validate structure of tray configurations in list
         for config in tray_configs {
@@ -598,7 +582,6 @@ async fn test_tray_configuration_list_operations() {
             );
         }
     } else {
-        println!("⚠️  Tray configuration listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Tray configuration listing should either succeed or fail gracefully"
@@ -646,7 +629,6 @@ async fn test_tray_configuration_default_behavior() {
     let (status, body) = extract_response_body(response).await;
 
     if status == StatusCode::CREATED {
-        println!("✅ Default tray configuration created successfully");
         assert_eq!(body["experiment_default"], true);
 
         let first_config_id = body["id"].as_str().unwrap();
@@ -687,7 +669,6 @@ async fn test_tray_configuration_default_behavior() {
         let (second_status, second_body) = extract_response_body(second_response).await;
 
         if second_status == StatusCode::CREATED {
-            println!("✅ Second default configuration created");
             assert_eq!(second_body["experiment_default"], true);
 
             // Check if the first configuration is no longer default
@@ -706,21 +687,16 @@ async fn test_tray_configuration_default_behavior() {
             let (check_status, check_body) = extract_response_body(check_first_response).await;
 
             if check_status == StatusCode::OK {
-                if check_body["experiment_default"] == false {
-                    println!(
-                        "   ✅ Default configuration behavior working - first config no longer default"
-                    );
-                } else {
-                    println!(
-                        "   📋 Multiple default configurations allowed (or default logic not working)"
-                    );
-                }
+                assert_eq!(
+                    check_body["experiment_default"], false,
+                    "First tray configuration should no longer be experiment_default after creating second default"
+                );
             }
         } else {
-            println!("📋 Could not test default behavior - second config creation failed");
+            // Could not test default behavior - second config creation failed
         }
     } else {
-        println!("📋 Skipping default behavior test - couldn't create first config");
+        // Skipping default behavior test - couldn't create first config
     }
 }
 
@@ -772,11 +748,7 @@ async fn test_tray_dimensions_validation() {
 
         let (status, _body) = extract_response_body(response).await;
 
-        if status == StatusCode::CREATED {
-            println!("✅ Tray config accepts {description} ({x_axis}x{y_axis})");
-        } else {
-            println!("📋 Tray config rejects {description} ({x_axis}x{y_axis}) - Status: {status}");
-        }
+        // Tray config validation results for {description} ({x_axis}x{y_axis})
     }
 }
 
@@ -855,44 +827,32 @@ async fn test_tray_configuration_complex_structure() {
     let (status, body) = extract_response_body(response).await;
 
     if status == StatusCode::CREATED {
-        println!("✅ Complex tray configuration created successfully");
-
         let config_id = body["id"].as_str().unwrap();
 
         // Validate complex structure
         if body["trays"].is_array() {
             let assignments = body["trays"].as_array().unwrap();
-            println!("   Configuration has {} assignments", assignments.len());
 
-            if assignments.len() == 3 {
-                println!("   ✅ All assignments preserved");
+            assert_eq!(assignments.len(), 3, "Configuration should have exactly 3 assignments");
 
-                // Count total trays across all assignments
-                let mut total_trays = 0;
-                for assignment in assignments {
-                    if assignment["trays"].is_array() {
-                        total_trays += assignment["trays"].as_array().unwrap().len();
-                    }
-                }
-
-                if total_trays == 4 {
-                    // 2 + 1 + 1 trays across assignments
-                    println!("   ✅ All {total_trays} trays preserved across assignments");
-                }
-
-                // Check order sequence sorting
-                let mut sequences: Vec<i64> = Vec::new();
-                for assignment in assignments {
-                    sequences.push(assignment["order_sequence"].as_i64().unwrap());
-                }
-                let is_sorted = sequences.windows(2).all(|w| w[0] <= w[1]);
-
-                if is_sorted {
-                    println!("   ✅ Assignments are properly sorted by order_sequence");
-                } else {
-                    println!("   📋 Assignment ordering may not be working correctly");
+            // Count total trays across all assignments
+            let mut total_trays = 0;
+            for assignment in assignments {
+                if assignment["trays"].is_array() {
+                    total_trays += assignment["trays"].as_array().unwrap().len();
                 }
             }
+
+            assert_eq!(total_trays, 4, "Total trays across assignments should be 4 (2 + 1 + 1)");
+
+            // Check order sequence sorting
+            let mut sequences: Vec<i64> = Vec::new();
+            for assignment in assignments {
+                sequences.push(assignment["order_sequence"].as_i64().unwrap());
+            }
+            let is_sorted = sequences.windows(2).all(|w| w[0] <= w[1]);
+
+            assert!(is_sorted, "Assignments should be sorted by order_sequence, got: {:?}", sequences);
         }
 
         // Test retrieval of complex configuration
@@ -911,18 +871,14 @@ async fn test_tray_configuration_complex_structure() {
         let (get_status, get_body) = extract_response_body(get_response).await;
 
         if get_status == StatusCode::OK {
-            println!("   ✅ Complex configuration retrieval successful");
-
             // Validate that all data is loaded correctly
             if get_body["trays"].is_array() {
                 let assignments = get_body["trays"].as_array().unwrap();
-                if assignments.len() == 3 {
-                    println!("   ✅ Complex structure fully loaded and preserved");
-                }
+                // Complex structure should be fully loaded and preserved
             }
         }
     } else {
-        println!("📋 Complex tray configuration creation failed: Status {status}");
+        // Complex tray configuration creation failed
     }
 }
 
@@ -950,7 +906,6 @@ async fn test_tray_configuration_not_found() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent tray configuration"
     );
-    println!("✅ Tray configuration 404 handling working correctly");
 }
 
 #[tokio::test]
@@ -1045,8 +1000,6 @@ async fn test_tray_workflow_comprehensive() {
     let (config_status, config_body) = extract_response_body(config_response).await;
 
     if config_status == StatusCode::CREATED {
-        println!("   ✅ Step 2: Comprehensive tray configuration created");
-
         let config_id = config_body["id"].as_str().unwrap();
 
         // Step 3: Validate configuration retrieval and structure
@@ -1065,31 +1018,21 @@ async fn test_tray_workflow_comprehensive() {
         let (get_config_status, get_config_body) = extract_response_body(get_config_response).await;
 
         if get_config_status == StatusCode::OK {
-            println!("   ✅ Step 3: Configuration retrieval successful");
-
             // Validate comprehensive structure
             assert_eq!(get_config_body["experiment_default"], true);
 
             if get_config_body["trays"].is_array() {
                 let assignments = get_config_body["trays"].as_array().unwrap();
-                println!(
-                    "   Configuration loaded with {} assignments",
-                    assignments.len()
-                );
-
-                if assignments.len() == 2 {
-                    println!("   ✅ Step 4: All assignments preserved and loaded");
-                }
+                assert_eq!(assignments.len(), 2, "Comprehensive config should have 2 assignments when retrieved");
             }
 
-            if get_config_body["associated_experiments"].is_array() {
-                println!("   ✅ Step 5: Associated experiments structure present");
-            }
+            assert!(
+                get_config_body["associated_experiments"].is_array(),
+                "Associated experiments structure should be present"
+            );
         }
-
-        println!("   📋 Comprehensive workflow test completed successfully");
     } else {
-        println!("   ⚠️  Comprehensive workflow test failed - config creation: {config_status}");
+        // Comprehensive workflow test failed - config creation failed
     }
 
     // This test always passes - it's for comprehensive workflow documentation

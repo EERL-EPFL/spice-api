@@ -383,7 +383,6 @@ async fn test_time_point_endpoint() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            println!("Skipping test due to missing tray API: {e}");
             return;
         }
     };
@@ -462,8 +461,6 @@ async fn test_time_point_endpoint() {
     let response_text = String::from_utf8_lossy(&body_bytes);
 
     if status != StatusCode::OK {
-        println!("Error response status: {status}");
-        println!("Error response body: {response_text}");
     }
 
     assert_eq!(status, StatusCode::OK, "Time point creation should work");
@@ -493,7 +490,6 @@ async fn test_time_point_with_96_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            println!("Skipping test due to missing tray API: {e}");
             return;
         }
     };
@@ -605,7 +601,6 @@ async fn test_time_point_with_384_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            println!("Skipping test due to missing tray API: {e}");
             return;
         }
     };
@@ -717,7 +712,6 @@ async fn test_time_point_with_custom_tray_configuration() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            println!("Skipping test due to missing tray API: {e}");
             return;
         }
     };
@@ -834,7 +828,6 @@ async fn test_time_point_with_minimal_data() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            println!("Skipping test due to missing tray API: {e}");
             return;
         }
     };
@@ -1079,7 +1072,6 @@ async fn test_experiment_with_phase_transitions_data() {
     let experiment_id = match setup_experiment_with_tray_config(&app).await {
         Ok(id) => id,
         Err(e) => {
-            println!("Skipping test due to setup failure: {e}");
             return;
         }
     };
@@ -1093,7 +1085,6 @@ async fn test_experiment_with_phase_transitions_data() {
     // Step 4: Test experiment results retrieval
     test_experiment_results_retrieval(&app, &experiment_id).await;
 
-    println!("Test completed successfully even if some endpoints are not implemented");
 }
 
 /// Setup experiment with tray configuration
@@ -1434,7 +1425,6 @@ async fn test_experiment_list_with_results_summary() {
     assert!(experiments_list.is_array(), "Response should be an array");
     let experiments = experiments_list.as_array().unwrap();
 
-    println!("Got {} experiments in list", experiments.len());
     if let Some(first_exp) = experiments.first() {
         println!(
             "First experiment structure: {}",
@@ -1514,10 +1504,8 @@ async fn test_experiment_list_operations() {
     let (list_status, list_body) = extract_response_body(list_response).await;
 
     if list_status == StatusCode::OK {
-        println!("✅ Experiment listing successful");
         assert!(list_body.is_array(), "Experiments list should be an array");
         let experiments = list_body.as_array().unwrap();
-        println!("Found {} experiments in the system", experiments.len());
 
         // Validate structure of experiments in list
         for experiment in experiments {
@@ -1531,7 +1519,6 @@ async fn test_experiment_list_operations() {
             );
         }
     } else {
-        println!("⚠️  Experiment listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Experiment listing should either succeed or fail gracefully"
@@ -1580,7 +1567,6 @@ async fn test_experiment_filtering_and_sorting() {
     }
 
     if created_ids.is_empty() {
-        println!("📋 No test experiments created - skipping filtering tests");
     } else {
         // Test filtering by device name
         let filter_response = app
@@ -1598,7 +1584,6 @@ async fn test_experiment_filtering_and_sorting() {
         let (filter_status, filter_body) = extract_response_body(filter_response).await;
 
         if filter_status == StatusCode::OK {
-            println!("✅ Experiment filtering endpoint accessible");
             let filtered_experiments = filter_body.as_array().unwrap();
             println!(
                 "Filtered experiments by device_name=DeviceA: {} results",
@@ -1606,24 +1591,13 @@ async fn test_experiment_filtering_and_sorting() {
             );
 
             // Check if filtering actually works
-            let mut filtering_works = true;
             for experiment in filtered_experiments {
-                if experiment["device_name"] != "DeviceA" {
-                    filtering_works = false;
-                    println!(
-                        "🐛 BUG: Filtering returned non-DeviceA experiment: {:?}",
-                        experiment["device_name"]
-                    );
-                }
-            }
-
-            if filtering_works && !filtered_experiments.is_empty() {
-                println!("✅ Experiment filtering appears to work correctly");
-            } else if filtered_experiments.is_empty() {
-                println!("📋 Experiment filtering returned no results (may be working or broken)");
+                assert_eq!(
+                    experiment["device_name"], "DeviceA",
+                    "Filtering should only return DeviceA experiments, but got: {:?}", experiment["device_name"]
+                );
             }
         } else {
-            println!("⚠️  Experiment filtering failed: Status {filter_status}");
         }
 
         // Test sorting by name
@@ -1642,9 +1616,7 @@ async fn test_experiment_filtering_and_sorting() {
         let (sort_status, _) = extract_response_body(sort_response).await;
 
         if sort_status == StatusCode::OK {
-            println!("✅ Experiment sorting endpoint accessible");
         } else {
-            println!("⚠️  Experiment sorting failed: Status {sort_status}");
         }
     }
 }
@@ -1673,7 +1645,6 @@ async fn test_experiment_not_found() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent experiment"
     );
-    println!("✅ Experiment 404 handling working correctly");
 }
 
 #[tokio::test]
@@ -1723,16 +1694,11 @@ async fn test_experiment_excel_upload_endpoint() {
         let (upload_status, _upload_body) = extract_response_body(upload_response).await;
 
         if upload_status == StatusCode::BAD_REQUEST {
-            println!("✅ Excel upload endpoint accessible - correctly rejects empty requests");
         } else if upload_status == StatusCode::UNPROCESSABLE_ENTITY {
-            println!("✅ Excel upload endpoint accessible - validation working");
         } else if upload_status == StatusCode::NOT_FOUND {
-            println!("⚠️  Excel upload endpoint not found or experiment doesn't exist");
         } else {
-            println!("📋 Excel upload endpoint returned: {upload_status}");
         }
     } else {
-        println!("📋 Skipping Excel upload test - couldn't create experiment");
     }
 }
 
@@ -1782,7 +1748,6 @@ async fn test_experiment_results_endpoint() {
         let (results_status, results_body) = extract_response_body(results_response).await;
 
         if results_status == StatusCode::OK {
-            println!("✅ Experiment results endpoint working");
             // Validate results structure
             if results_body.is_object() {
                 println!("   Results returned as object (expected structure)");
@@ -1792,12 +1757,9 @@ async fn test_experiment_results_endpoint() {
                 println!("   Results returned unknown structure: {results_body:?}");
             }
         } else if results_status == StatusCode::NOT_FOUND {
-            println!("⚠️  Results endpoint or experiment not found");
         } else {
-            println!("📋 Results endpoint returned: {results_status}");
         }
     } else {
-        println!("📋 Skipping results test - couldn't create experiment");
     }
 }
 
@@ -1830,9 +1792,7 @@ async fn test_experiment_process_status_endpoint() {
             "✅ Process status endpoint accessible - correctly returns 404 for non-existent job"
         );
     } else if status_status == StatusCode::OK {
-        println!("📋 Process status endpoint returned OK (unexpected for fake job)");
     } else {
-        println!("📋 Process status endpoint returned: {status_status}");
     }
 }
 
@@ -1844,11 +1804,9 @@ async fn test_excel_upload_complete_pipeline() {
     println!("🚀 Starting complete Excel upload pipeline test...");
 
     // Step 1: Setup test environment via API
-    println!("🔧 Setting up test environment via API...");
     let (experiment_id, _tray_config_id) = setup_excel_test_environment(&app).await;
 
     // Step 2: Get experiment details BEFORE upload
-    println!("📊 Getting experiment details before upload...");
     let experiment_before = get_experiment_details(&app, &experiment_id).await;
     validate_experiment_results_via_api(&experiment_before);
 
@@ -1864,14 +1822,11 @@ async fn test_excel_upload_complete_pipeline() {
 
     // Step 3: Load and upload Excel file
     let excel_data = load_test_excel_file();
-    println!("📁 Loaded merged.xlsx file: {} bytes", excel_data.len());
 
-    println!("📤 Uploading Excel file via API...");
     let upload_result = upload_excel_file(&app, &experiment_id, excel_data).await;
     validate_excel_upload_results(&upload_result);
 
     // Step 4: Get experiment details AFTER upload and validate results
-    println!("📊 Getting experiment details after upload...");
     let experiment_after = get_experiment_details(&app, &experiment_id).await;
     validate_experiment_results_via_api(&experiment_after);
 
@@ -1886,7 +1841,6 @@ async fn test_excel_upload_complete_pipeline() {
         );
     }
 
-    println!("✅ Complete Excel upload pipeline test passed!");
 }
 
 // Legacy DB-dependent test (commented out to fix clippy warnings)
@@ -2005,7 +1959,6 @@ async fn test_excel_upload_and_validate_results_legacy() {
         .join("merged.xlsx");
     let excel_data = fs::read(&excel_path).expect("Failed to read merged.xlsx test resource file");
 
-    println!("📁 Loaded merged.xlsx file: {} bytes", excel_data.len());
 
     // Test the service layer directly instead of HTTP endpoint
     let result = app_state
@@ -2015,7 +1968,6 @@ async fn test_excel_upload_and_validate_results_legacy() {
 
     match result {
         Ok(processing_result) => {
-            println!("📊 Excel processing result: {processing_result:#?}");
 
             // Validate processing results
             assert!(
@@ -2035,7 +1987,6 @@ async fn test_excel_upload_and_validate_results_legacy() {
             );
 
             // Now query the database to validate the specific well transitions you provided
-            println!("🔍 Validating specific well transitions from uploaded data...");
 
             // TODO: Test specific well transitions from CSV data
             // let _test_cases = vec![
@@ -2121,10 +2072,8 @@ async fn test_excel_upload_and_validate_results_legacy() {
             // This requires understanding how the Excel processor stores timestamps
             // and connecting them to the specific well transition data
 
-            println!("✅ Excel upload and validation test completed successfully!");
         }
         Err(e) => {
-            println!("❌ Excel processing failed: {e}");
             panic!("Excel processing should succeed, got error: {e}");
         }
     }
@@ -2172,7 +2121,6 @@ async fn test_validate_specific_well_transitions() {
         ),
     ];
 
-    println!("🔍 Validating specific well transitions from uploaded Excel data:");
 
     for (tray, well_coord, timestamp, expected_temps) in test_cases {
         println!(
@@ -2405,7 +2353,6 @@ async fn upload_excel_file(
         })
     } else {
         let body_text = String::from_utf8_lossy(&body_bytes);
-        println!("❌ Excel upload failed with status: {status}");
         println!("   Response body: {body_text}");
 
         serde_json::json!({
@@ -2494,14 +2441,11 @@ fn validate_experiment_results_structure(results_summary: &serde_json::Value) {
 
 /// Validate well summaries structure
 fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
-    println!("📋 Validating well summaries structure and phase transitions");
 
     if let Some(summaries) = well_summaries.as_array() {
-        println!("📊 Found {} well summaries", summaries.len());
 
         // If no summaries, this might be before upload - just return
         if summaries.is_empty() {
-            println!("📋 No well summaries found (likely before Excel upload)");
             return;
         }
 
@@ -2575,7 +2519,6 @@ fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
             "All 192 wells should end up in frozen state"
         );
 
-        println!("✅ Well summaries validation passed:");
         println!(
             "   - Total wells: {} (P1: {}, P2: {})",
             summaries.len(),
@@ -2615,7 +2558,6 @@ fn load_test_excel_file() -> Vec<u8> {
 
 /// Validate Excel upload results
 fn validate_excel_upload_results(upload_result: &serde_json::Value) {
-    println!("📋 Validating Excel upload results");
 
     // Check for status "completed"
     let is_successful = upload_result["status"].as_str() == Some("completed");
@@ -2630,7 +2572,6 @@ fn validate_excel_upload_results(upload_result: &serde_json::Value) {
             temp_readings, 6786,
             "Should create exactly 6786 temperature readings from merged.xlsx"
         );
-        println!("✅ Temperature readings count validated: {temp_readings}");
     }
 
     // Validate processing time is reasonable (should be under 10 seconds)
@@ -2640,10 +2581,8 @@ fn validate_excel_upload_results(upload_result: &serde_json::Value) {
             processing_time < 10_000,
             "Processing should complete in under 10 seconds, took {processing_time}ms"
         );
-        println!("✅ Processing time acceptable: {processing_time}ms");
     }
 
-    println!("📊 Excel upload validation passed: {upload_result}");
 }
 
 /// Validate experiment results via API
@@ -2663,7 +2602,6 @@ fn validate_experiment_results_via_api(experiment_details: &serde_json::Value) {
         validate_well_summaries_structure(&results_summary["well_summaries"]);
     }
 
-    println!("✅ Experiment details validation passed");
 }
 
 /// Validate that uploaded data actually exists in the results
@@ -2695,7 +2633,6 @@ fn validate_expected_data_counts(results_summary: &serde_json::Value) {
     let total_wells = results_summary["total_wells"].as_u64().unwrap_or(0);
 
     if time_points == EXPECTED_TIME_POINTS {
-        println!("✅ Time points match expected: {time_points}");
     } else {
         println!(
             "⚠️ Time points differ from expected: got {time_points}, expected {EXPECTED_TIME_POINTS}"
@@ -2703,7 +2640,6 @@ fn validate_expected_data_counts(results_summary: &serde_json::Value) {
     }
 
     if total_wells == EXPECTED_TOTAL_WELLS {
-        println!("✅ Total wells match expected: {total_wells}");
     } else {
         println!(
             "⚠️ Total wells differ from expected: got {total_wells}, expected {EXPECTED_TOTAL_WELLS}"
@@ -2726,14 +2662,11 @@ fn validate_well_phase_transitions(results_summary: &serde_json::Value) {
             }
         }
 
-        println!("📊 Phase transition summary:");
         println!("   - Wells with transitions: {wells_with_transitions}");
         println!("   - Total transitions: {total_transitions}");
 
         if wells_with_transitions > 0 {
-            println!("✅ Phase transitions detected in uploaded data");
         } else {
-            println!("⚠️ No phase transitions found - this may indicate processing issues");
         }
     }
 }

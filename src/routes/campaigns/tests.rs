@@ -36,7 +36,6 @@ async fn create_test_project(app: &axum::Router) -> uuid::Uuid {
 
     let (status, body) = extract_response_body(response).await;
 
-    println!("Project body and status: {body:?}, {status:?}");
     assert!(body.is_object(), "Expected JSON object response");
     assert_eq!(
         status,
@@ -60,7 +59,6 @@ async fn test_location_crud_operations() {
         "comment": "Location created via API test",
         "project_id": project_id
     });
-    println!("Location data: {location_data}");
     let response = app
         .clone()
         .oneshot(
@@ -74,7 +72,6 @@ async fn test_location_crud_operations() {
         .await
         .unwrap();
 
-    println!("Response: {response:?}");
     let (status, body) = extract_response_body(response).await;
     assert_eq!(
         status,
@@ -480,7 +477,6 @@ async fn test_location_list_operations() {
         // This assertion confirms successful listing
         assert!(list_body.is_array(), "Location listing successful - Response should be an array");
         let locations = list_body.as_array().unwrap();
-        println!("Found {} locations in the system", locations.len());
 
         // Validate structure of locations in list
         for location in locations {
@@ -546,7 +542,7 @@ async fn test_location_filtering_and_sorting() {
     }
 
     if created_ids.is_empty() {
-        println!("📋 No test locations created - skipping filtering tests");
+        // No test locations created - skip filtering tests
     } else {
         // Test filtering by comment
         let filter_response = app
@@ -564,22 +560,14 @@ async fn test_location_filtering_and_sorting() {
         let (filter_status, filter_body) = extract_response_body(filter_response).await;
 
         if filter_status == StatusCode::OK {
-            println!("✅ Location filtering endpoint accessible");
             let filtered_locations = filter_body.as_array().unwrap();
-            println!(
-                "Filtered locations by comment=Project Alpha: {} results",
-                filtered_locations.len()
-            );
 
             // Check if filtering actually works (document known issue)
             let mut non_matching_count = 0;
             for location in filtered_locations {
                 if location["comment"] != "Project Alpha" {
                     non_matching_count += 1;
-                    println!(
-                        "🐛 KNOWN ISSUE: Filtering returned non-matching location: {:?}",
-                        location["comment"]
-                    );
+                    // KNOWN ISSUE: Filtering returned non-matching location
                 }
             }
 
@@ -644,7 +632,6 @@ async fn test_location_not_found() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent location"
     );
-    println!("✅ Location 404 handling working correctly");
 }
 
 #[tokio::test]

@@ -31,7 +31,6 @@ async fn test_project_crud_operations() {
         "colour": "#FF5733"
     });
 
-    println!("Attempting to create project with data: {project_data}");
 
     let response = app
         .clone()
@@ -222,10 +221,7 @@ async fn test_project_filtering_and_pagination() {
     );
 
     // KNOWN ISSUE: Pagination implementation - limit parameter is not being respected  
-    println!(
-        "📋 KNOWN ISSUE: Pagination limit not respected. Expected <= 2 items, got {} (this is expected behavior until pagination is implemented)",
-        items.len()
-    );
+    // KNOWN ISSUE: Pagination limit not respected - this is expected behavior until pagination is implemented
 
     // Test sorting
     let sort_response = app
@@ -267,7 +263,6 @@ async fn test_project_list_operations() {
         // This assertion confirms successful listing
         assert!(list_body.is_array(), "Project listing successful - Response should be an array");
         let projects = list_body.as_array().unwrap();
-        println!("Found {} projects in the system", projects.len());
 
         // Validate structure of projects in list
         for project in projects {
@@ -283,7 +278,6 @@ async fn test_project_list_operations() {
             );
         }
     } else {
-        println!("⚠️  Project listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Project listing should either succeed or fail gracefully"
@@ -347,31 +341,17 @@ async fn test_project_filtering_and_sorting() {
 
         if filter_status == StatusCode::OK {
             let filtered_projects = filter_body.as_array().unwrap();
-            println!(
-                "Filtered projects by colour=#FF0000: {} results",
-                filtered_projects.len()
-            );
 
             // Check if filtering actually works (document known issue)
             let mut non_matching_count = 0;
             for project in filtered_projects {
                 if project["colour"] != "#FF0000" {
                     non_matching_count += 1;
-                    println!(
-                        "🐛 KNOWN ISSUE: Filtering returned non-matching project: {:?}",
-                        project["colour"]
-                    );
+                    // KNOWN ISSUE: Filtering returned non-matching project
                 }
             }
 
-            if non_matching_count > 0 {
-                println!(
-                    "📋 KNOWN ISSUE: Project filtering returned {} non-matching results out of {} total",
-                    non_matching_count, filtered_projects.len()
-                );
-            } else if !filtered_projects.is_empty() {
-                println!("✅ Project filtering appears to work correctly");
-            }
+            // Check filtering behavior - may work correctly or have known issues
         }
 
         // Test filtering by note
@@ -390,9 +370,9 @@ async fn test_project_filtering_and_sorting() {
         let (note_filter_status, _) = extract_response_body(note_filter_response).await;
 
         if note_filter_status == StatusCode::OK {
-            println!("✅ Project note filtering endpoint accessible");
+            // Project note filtering endpoint accessible
         } else {
-            println!("⚠️  Project note filtering failed: Status {note_filter_status}");
+            // Project note filtering failed
         }
 
         // Test sorting by name
@@ -411,9 +391,9 @@ async fn test_project_filtering_and_sorting() {
         let (sort_status, _) = extract_response_body(sort_response).await;
 
         if sort_status == StatusCode::OK {
-            println!("✅ Project sorting endpoint accessible");
+            // Project sorting endpoint accessible
         } else {
-            println!("⚠️  Project sorting failed: Status {sort_status}");
+            // Project sorting failed
         }
     }
 }
@@ -442,7 +422,6 @@ async fn test_project_not_found() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent project"
     );
-    println!("✅ Project 404 handling working correctly");
 }
 
 #[tokio::test]
@@ -622,20 +601,13 @@ async fn test_project_pagination_and_limits() {
     let (pagination_status, pagination_body) = extract_response_body(pagination_response).await;
 
     if pagination_status == StatusCode::OK {
-        println!("   ✅ Pagination query successful");
         let projects = pagination_body.as_array().unwrap();
-        println!("   Returned {} projects with limit=3", projects.len());
-
-        if projects.len() <= 3 {
-            println!("   ✅ Limit parameter working correctly");
-        } else {
-            println!(
-                "   🐛 BUG: Limit parameter not working - got {} results",
-                projects.len()
-            );
-        }
-    } else {
-        println!("   ⚠️  Pagination query failed: {pagination_status}");
+        
+        assert!(
+            projects.len() <= 3,
+            "Pagination limit should be respected. Expected <= 3 items, got {} items",
+            projects.len()
+        );
     }
 
     // Test sorting with pagination
