@@ -401,7 +401,7 @@ async fn create_test_experiment(app: &axum::Router) -> Result<serde_json::Value,
 #[tokio::test]
 async fn test_experiment_with_phase_transitions_data() {
     let app = setup_test_app().await;
-    
+
     // Step 1: Setup experiment with tray configuration
     let experiment_id = match setup_experiment_with_tray_config(&app).await {
         Ok(id) => id,
@@ -410,16 +410,16 @@ async fn test_experiment_with_phase_transitions_data() {
             return;
         }
     };
-    
+
     // Step 2: Try creating sample and treatment data
     try_create_sample_and_treatment(&app).await;
-    
+
     // Step 3: Test time point creation
     test_time_point_creation(&app, &experiment_id).await;
-    
+
     // Step 4: Test experiment results retrieval
     test_experiment_results_retrieval(&app, &experiment_id).await;
-    
+
     println!("Test completed successfully even if some endpoints are not implemented");
 }
 
@@ -437,7 +437,7 @@ async fn setup_experiment_with_tray_config(app: &axum::Router) -> Result<String,
 
     // Assign tray configuration to experiment
     assign_tray_config_to_experiment_via_api(app, &experiment_id, &config_id).await;
-    
+
     Ok(experiment_id)
 }
 
@@ -1339,50 +1339,52 @@ async fn test_experiment_process_status_endpoint() {
 #[tokio::test]
 async fn test_excel_upload_complete_pipeline() {
     let app = setup_test_app().await;
-    
+
     println!("🚀 Starting complete Excel upload pipeline test...");
-    
-    // Step 1: Setup test environment via API 
+
+    // Step 1: Setup test environment via API
     println!("🔧 Setting up test environment via API...");
     let (experiment_id, _tray_config_id) = setup_excel_test_environment(&app).await;
-    
+
     // Step 2: Get experiment details BEFORE upload
     println!("📊 Getting experiment details before upload...");
     let experiment_before = get_experiment_details(&app, &experiment_id).await;
     validate_experiment_results_via_api(&experiment_before);
-    
+
     // Verify no data exists initially
     if let Some(results_summary) = experiment_before.get("results_summary") {
         let initial_time_points = results_summary["total_time_points"].as_u64().unwrap_or(0);
         println!("   📈 Initial time points: {initial_time_points}");
-        
+
         if initial_time_points == 0 {
             println!("   ✅ Confirmed: No time point data before upload");
         }
     }
-    
+
     // Step 3: Load and upload Excel file
     let excel_data = load_test_excel_file();
     println!("📁 Loaded merged.xlsx file: {} bytes", excel_data.len());
-    
+
     println!("📤 Uploading Excel file via API...");
     let upload_result = upload_excel_file(&app, &experiment_id, excel_data).await;
     validate_excel_upload_results(&upload_result);
-    
+
     // Step 4: Get experiment details AFTER upload and validate results
     println!("📊 Getting experiment details after upload...");
     let experiment_after = get_experiment_details(&app, &experiment_id).await;
     validate_experiment_results_via_api(&experiment_after);
-    
+
     // Step 5: Validate that data was actually processed and stored
     if let Some(results_summary) = experiment_after.get("results_summary") {
         validate_uploaded_data_exists(results_summary);
         validate_expected_data_counts(results_summary);
         validate_well_phase_transitions(results_summary);
     } else {
-        println!("⚠️ No results_summary found after upload - this may be expected if processing is async");
+        println!(
+            "⚠️ No results_summary found after upload - this may be expected if processing is async"
+        );
     }
-    
+
     println!("✅ Complete Excel upload pipeline test passed!");
 }
 
@@ -1721,7 +1723,7 @@ async fn create_test_tray_configuration(app: &axum::Router, name: &str) -> Strin
             {
                 "trays": [
                     {
-                        "name": "P2", 
+                        "name": "P2",
                         "qty_x_axis": 8,
                         "qty_y_axis": 12,
                         "well_relative_diameter": 0.6
@@ -1853,19 +1855,21 @@ async fn upload_excel_file(
     // Create proper multipart form data
     let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
     let mut body = Vec::new();
-    
+
     // Start boundary
     body.extend(format!("--{boundary}\r\n").as_bytes());
-    
+
     // File field header
     body.extend(b"Content-Disposition: form-data; name=\"file\"; filename=\"merged.xlsx\"\r\n");
-    body.extend(b"Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n");
+    body.extend(
+        b"Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n",
+    );
     body.extend(b"\r\n");
-    
+
     // File content
     body.extend(&excel_data);
     body.extend(b"\r\n");
-    
+
     // End boundary
     body.extend(format!("--{boundary}--\r\n").as_bytes());
 
@@ -1875,7 +1879,10 @@ async fn upload_excel_file(
             Request::builder()
                 .method("POST")
                 .uri(format!("/api/experiments/{experiment_id}/process-excel"))
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -1899,7 +1906,7 @@ async fn upload_excel_file(
         let body_text = String::from_utf8_lossy(&body_bytes);
         println!("❌ Excel upload failed with status: {status}");
         println!("   Response body: {body_text}");
-        
+
         serde_json::json!({
             "success": false,
             "error": format!("Upload failed with status {status}"),
@@ -1987,45 +1994,58 @@ fn validate_experiment_results_structure(results_summary: &serde_json::Value) {
 /// Validate well summaries structure
 fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
     println!("📋 Validating well summaries structure and phase transitions");
-    
+
     if let Some(summaries) = well_summaries.as_array() {
         println!("📊 Found {} well summaries", summaries.len());
-        
+
         // If no summaries, this might be before upload - just return
         if summaries.is_empty() {
             println!("📋 No well summaries found (likely before Excel upload)");
             return;
         }
-        
+
         // Core success criteria - we expect 192 wells (8x12 x 2 trays)
-        assert_eq!(summaries.len(), 192, "Should have exactly 192 well summaries (8x12 x 2 trays)");
-        
+        assert_eq!(
+            summaries.len(),
+            192,
+            "Should have exactly 192 well summaries (8x12 x 2 trays)"
+        );
+
         // Count wells by tray and validate phase transitions
         let mut p1_wells = 0;
         let mut p2_wells = 0;
         let mut wells_with_phase_changes = 0;
         let mut frozen_wells = 0;
-        
+
         for (i, summary) in summaries.iter().enumerate() {
             assert!(summary.is_object(), "well_summary[{i}] should be an object");
-            assert!(summary.get("coordinate").is_some(), "well_summary[{i}] should have coordinate");
-            assert!(summary.get("tray_name").is_some(), "well_summary[{i}] should have tray_name");
-            assert!(summary.get("final_state").is_some(), "well_summary[{i}] should have final_state");
-            
+            assert!(
+                summary.get("coordinate").is_some(),
+                "well_summary[{i}] should have coordinate"
+            );
+            assert!(
+                summary.get("tray_name").is_some(),
+                "well_summary[{i}] should have tray_name"
+            );
+            assert!(
+                summary.get("final_state").is_some(),
+                "well_summary[{i}] should have final_state"
+            );
+
             // Count by tray
             if let Some(tray_name) = summary["tray_name"].as_str() {
                 match tray_name {
                     "P1" => p1_wells += 1,
                     "P2" => p2_wells += 1,
-                    _ => panic!("Unexpected tray name: {}", tray_name),
+                    _ => panic!("Unexpected tray name: {tray_name}"),
                 }
             }
-            
+
             // Count phase transitions (wells that have phase change data)
             if summary.get("first_phase_change_time").is_some() {
                 wells_with_phase_changes += 1;
             }
-            
+
             // Count frozen wells
             if let Some(final_state) = summary["final_state"].as_str() {
                 if final_state == "frozen" {
@@ -2033,22 +2053,39 @@ fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
                 }
             }
         }
-        
+
         // Validate tray distribution
-        assert_eq!(p1_wells, 96, "Should have exactly 96 wells in tray P1 (8x12)");
-        assert_eq!(p2_wells, 96, "Should have exactly 96 wells in tray P2 (8x12)");
-        
+        assert_eq!(
+            p1_wells, 96,
+            "Should have exactly 96 wells in tray P1 (8x12)"
+        );
+        assert_eq!(
+            p2_wells, 96,
+            "Should have exactly 96 wells in tray P2 (8x12)"
+        );
+
         // Validate phase transitions - from the Excel processing output, we expect all 192 wells to freeze
-        assert_eq!(wells_with_phase_changes, 192, "All 192 wells should have phase change data (liquid→frozen)");
-        assert_eq!(frozen_wells, 192, "All 192 wells should end up in frozen state");
-        
+        assert_eq!(
+            wells_with_phase_changes, 192,
+            "All 192 wells should have phase change data (liquid→frozen)"
+        );
+        assert_eq!(
+            frozen_wells, 192,
+            "All 192 wells should end up in frozen state"
+        );
+
         println!("✅ Well summaries validation passed:");
-        println!("   - Total wells: {} (P1: {}, P2: {})", summaries.len(), p1_wells, p2_wells);
-        println!("   - Wells with phase changes: {}", wells_with_phase_changes);
-        println!("   - Frozen wells: {}", frozen_wells);
+        println!(
+            "   - Total wells: {} (P1: {}, P2: {})",
+            summaries.len(),
+            p1_wells,
+            p2_wells
+        );
+        println!("   - Wells with phase changes: {wells_with_phase_changes}");
+        println!("   - Frozen wells: {frozen_wells}");
 
         // Validate a few specific coordinates to ensure proper formatting
-        for (_i, summary) in summaries.iter().take(3).enumerate() {
+        for summary in summaries.iter().take(3) {
             if let Some(coord) = summary["coordinate"].as_str() {
                 assert!(
                     coord.len() >= 2 && coord.chars().next().unwrap().is_alphabetic(),
@@ -2078,12 +2115,12 @@ fn load_test_excel_file() -> Vec<u8> {
 /// Validate Excel upload results
 fn validate_excel_upload_results(upload_result: &serde_json::Value) {
     println!("📋 Validating Excel upload results");
-    
+
     // Check for status "completed"
     let is_successful = upload_result["status"].as_str() == Some("completed");
     assert!(
         is_successful,
-        "Upload should succeed with status 'completed'. Result: {}", upload_result
+        "Upload should succeed with status 'completed'. Result: {upload_result}"
     );
 
     // Validate expected temperature readings count
@@ -2092,14 +2129,17 @@ fn validate_excel_upload_results(upload_result: &serde_json::Value) {
             temp_readings, 6786,
             "Should create exactly 6786 temperature readings from merged.xlsx"
         );
-        println!("✅ Temperature readings count validated: {}", temp_readings);
+        println!("✅ Temperature readings count validated: {temp_readings}");
     }
-    
+
     // Validate processing time is reasonable (should be under 10 seconds)
     if let Some(processing_time) = upload_result["processing_time_ms"].as_u64() {
         assert!(processing_time > 0, "Should have positive processing time");
-        assert!(processing_time < 10_000, "Processing should complete in under 10 seconds, took {}ms", processing_time);
-        println!("✅ Processing time acceptable: {}ms", processing_time);
+        assert!(
+            processing_time < 10_000,
+            "Processing should complete in under 10 seconds, took {processing_time}ms"
+        );
+        println!("✅ Processing time acceptable: {processing_time}ms");
     }
 
     println!("📊 Excel upload validation passed: {upload_result}");
@@ -2129,11 +2169,19 @@ fn validate_experiment_results_via_api(experiment_details: &serde_json::Value) {
 fn validate_uploaded_data_exists(results_summary: &serde_json::Value) {
     let time_points = results_summary["total_time_points"].as_u64().unwrap_or(0);
     let wells_with_data = results_summary["wells_with_data"].as_u64().unwrap_or(0);
-    
-    assert!(time_points > 0, "Should have time points after upload, got {time_points}");
-    assert!(wells_with_data > 0, "Should have wells with data after upload, got {wells_with_data}");
-    
-    println!("✅ Confirmed data exists: {time_points} time points, {wells_with_data} wells with data");
+
+    assert!(
+        time_points > 0,
+        "Should have time points after upload, got {time_points}"
+    );
+    assert!(
+        wells_with_data > 0,
+        "Should have wells with data after upload, got {wells_with_data}"
+    );
+
+    println!(
+        "✅ Confirmed data exists: {time_points} time points, {wells_with_data} wells with data"
+    );
 }
 
 // Expected values from the merged.xlsx file based on previous analysis
@@ -2144,17 +2192,21 @@ const EXPECTED_TOTAL_WELLS: u64 = 192; // 96 wells per tray × 2 trays
 fn validate_expected_data_counts(results_summary: &serde_json::Value) {
     let time_points = results_summary["total_time_points"].as_u64().unwrap_or(0);
     let total_wells = results_summary["total_wells"].as_u64().unwrap_or(0);
-    
+
     if time_points == EXPECTED_TIME_POINTS {
         println!("✅ Time points match expected: {time_points}");
     } else {
-        println!("⚠️ Time points differ from expected: got {time_points}, expected {EXPECTED_TIME_POINTS}");
+        println!(
+            "⚠️ Time points differ from expected: got {time_points}, expected {EXPECTED_TIME_POINTS}"
+        );
     }
-    
+
     if total_wells == EXPECTED_TOTAL_WELLS {
         println!("✅ Total wells match expected: {total_wells}");
     } else {
-        println!("⚠️ Total wells differ from expected: got {total_wells}, expected {EXPECTED_TOTAL_WELLS}");
+        println!(
+            "⚠️ Total wells differ from expected: got {total_wells}, expected {EXPECTED_TOTAL_WELLS}"
+        );
     }
 }
 
@@ -2163,7 +2215,7 @@ fn validate_well_phase_transitions(results_summary: &serde_json::Value) {
     if let Some(well_summaries) = results_summary["well_summaries"].as_array() {
         let mut wells_with_transitions = 0;
         let mut total_transitions = 0;
-        
+
         for summary in well_summaries {
             if let Some(transitions) = summary["total_transitions"].as_u64() {
                 if transitions > 0 {
@@ -2172,11 +2224,11 @@ fn validate_well_phase_transitions(results_summary: &serde_json::Value) {
                 }
             }
         }
-        
+
         println!("📊 Phase transition summary:");
         println!("   - Wells with transitions: {wells_with_transitions}");
         println!("   - Total transitions: {total_transitions}");
-        
+
         if wells_with_transitions > 0 {
             println!("✅ Phase transitions detected in uploaded data");
         } else {

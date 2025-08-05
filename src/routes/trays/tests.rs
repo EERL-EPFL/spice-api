@@ -23,8 +23,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 #[tokio::test]
 async fn test_tray_crud_operations() {
     let app = setup_test_app().await;
-
-    // Test creating a tray
     let tray_data = json!({
         "name": format!("Test Tray CRUD {}", uuid::Uuid::new_v4()),
         "qty_x_axis": 12,
@@ -48,9 +46,6 @@ async fn test_tray_crud_operations() {
     let (status, body) = extract_response_body(response).await;
 
     if status == StatusCode::CREATED {
-        println!("✅ Tray creation successful");
-
-        // Validate response structure
         assert!(body["id"].is_string(), "Response should include ID");
         assert!(body["name"].as_str().unwrap().contains("Test Tray CRUD"));
         assert_eq!(body["qty_x_axis"], 12);
@@ -58,10 +53,8 @@ async fn test_tray_crud_operations() {
         assert_eq!(body["well_relative_diameter"], 2.5);
         assert!(body["created_at"].is_string());
         assert!(body["last_updated"].is_string());
-
         let tray_id = body["id"].as_str().unwrap();
 
-        // Test getting the tray by ID
         let get_response = app
             .clone()
             .oneshot(
@@ -76,7 +69,6 @@ async fn test_tray_crud_operations() {
 
         let (get_status, get_body) = extract_response_body(get_response).await;
         if get_status == StatusCode::OK {
-            println!("✅ Tray retrieval successful");
             assert_eq!(get_body["id"], tray_id);
             assert!(
                 get_body["name"]
@@ -84,11 +76,8 @@ async fn test_tray_crud_operations() {
                     .unwrap()
                     .contains("Test Tray CRUD")
             );
-        } else {
-            println!("⚠️  Tray retrieval failed: {get_status}");
         }
 
-        // Test updating the tray
         let update_data = json!({
             "qty_x_axis": 16,
             "well_relative_diameter": 3.0
@@ -109,13 +98,8 @@ async fn test_tray_crud_operations() {
 
         let (update_status, update_body) = extract_response_body(update_response).await;
         if update_status == StatusCode::OK {
-            println!("✅ Tray update successful");
             assert_eq!(update_body["qty_x_axis"], 16);
             assert_eq!(update_body["well_relative_diameter"], 3.0);
-        } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Tray update not implemented (405)");
-        } else {
-            println!("📋 Tray update returned: {update_status}");
         }
 
         // Test deleting the tray
@@ -406,13 +390,9 @@ async fn test_tray_not_found() {
     println!("✅ Tray 404 handling working correctly");
 }
 
-#[tokio::test]
-async fn test_tray_configuration_crud_operations() {
-    let app = setup_test_app().await;
-
-    // Test creating a tray configuration with multiple trays
+async fn create_tray_configuration() -> Result<Value, Box<dyn std::error::Error>> {
     let tray_config_data = json!({
-        "name": format!("Test Tray Config CRUD {}", uuid::Uuid::new_v4()),
+        "name": format!("Test Tray Config {}", uuid::Uuid::new_v4()),
         "experiment_default": false,
         "trays": [
             {
@@ -426,23 +406,12 @@ async fn test_tray_configuration_crud_operations() {
                         "well_relative_diameter": 2.5
                     }
                 ]
-            },
-            {
-                "order_sequence": 2,
-                "rotation_degrees": 90,
-                "trays": [
-                    {
-                        "name": "Secondary Plate",
-                        "qty_x_axis": 24,
-                        "qty_y_axis": 16,
-                        "well_relative_diameter": 1.5
-                    }
-                ]
             }
         ]
     });
 
-    let response = app
+    let response = setup_test_app()
+        .await
         .clone()
         .oneshot(
             Request::builder()
@@ -454,13 +423,8 @@ async fn test_tray_configuration_crud_operations() {
         )
         .await
         .unwrap();
-
     let (status, body) = extract_response_body(response).await;
-
     if status == StatusCode::CREATED {
-        println!("✅ Tray configuration creation successful");
-
-        // Validate response structure
         assert!(body["id"].is_string(), "Response should include ID");
         assert!(
             body["name"]
@@ -471,112 +435,91 @@ async fn test_tray_configuration_crud_operations() {
         assert_eq!(body["experiment_default"], false);
         assert!(body["created_at"].is_string());
         assert!(body["last_updated"].is_string());
-
-        // Validate trays array structure
-        if body["trays"].is_array() {
-            let trays = body["trays"].as_array().unwrap();
-            println!("   Configuration has {} tray assignments", trays.len());
-
-            if trays.len() == 2 {
-                println!("   ✅ All tray assignments preserved");
-
-                // Validate assignment structure
-                for assignment in trays {
-                    assert!(assignment["order_sequence"].is_number());
-                    assert!(assignment["rotation_degrees"].is_number());
-                    assert!(assignment["trays"].is_array());
-                }
-            }
-        }
-
-        let tray_config_id = body["id"].as_str().unwrap();
-
-        // Test getting the tray configuration by ID
-        let get_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri(format!("/api/tray_configurations/{tray_config_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (get_status, get_body) = extract_response_body(get_response).await;
-        if get_status == StatusCode::OK {
-            println!("✅ Tray configuration retrieval successful");
-            assert_eq!(get_body["id"], tray_config_id);
-
-            // Validate related data structure
-            if get_body["trays"].is_array() {
-                println!("   ✅ Trays array present and loaded");
-            }
-            if get_body["associated_experiments"].is_array() {
-                println!("   ✅ Associated experiments array present");
-            }
-        } else {
-            println!("⚠️  Tray configuration retrieval failed: {get_status}");
-        }
-
-        // Test updating the tray configuration
-        let update_data = json!({
-            "experiment_default": true
-        });
-
-        let update_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("PATCH")
-                    .uri(format!("/api/tray_configurations/{tray_config_id}"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(update_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (update_status, update_body) = extract_response_body(update_response).await;
-        if update_status == StatusCode::OK {
-            println!("✅ Tray configuration update successful");
-            assert_eq!(update_body["experiment_default"], true);
-        } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Tray configuration update not implemented (405)");
-        } else {
-            println!("📋 Tray configuration update returned: {update_status}");
-        }
-
-        // Test deleting the tray configuration
-        let delete_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("DELETE")
-                    .uri(format!("/api/tray_configurations/{tray_config_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let delete_status = delete_response.status();
-        if delete_status.is_success() {
-            println!("✅ Tray configuration delete successful");
-        } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Tray configuration delete not implemented (405)");
-        } else {
-            println!("📋 Tray configuration delete returned: {delete_status}");
-        }
+        Ok(body)
     } else {
-        println!("⚠️  Tray configuration creation failed: Status {status}, Body: {body}");
-        // Document the current behavior even if it fails
-        assert!(
-            status.is_client_error() || status.is_server_error(),
-            "Tray configuration creation should either succeed or fail gracefully"
-        );
+        Err(format!("Failed to create tray configuration: {status:?}, body: {body:?}").into())
     }
+}
+
+#[tokio::test]
+async fn test_tray_configuration_crud_operations() {
+    let app = setup_test_app().await;
+    let body = create_tray_configuration()
+        .await
+        .expect("Failed to create tray configuration for testing");
+
+    if body["trays"].is_array() {
+        let trays = body["trays"].as_array().unwrap();
+
+        if trays.len() == 2 {
+            for assignment in trays {
+                assert!(assignment["order_sequence"].is_number());
+                assert!(assignment["rotation_degrees"].is_number());
+                assert!(assignment["trays"].is_array());
+            }
+        }
+    }
+
+    let tray_config_id = body["id"].as_str().unwrap();
+
+    // Test getting the tray configuration by ID
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/tray_configurations/{tray_config_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    if get_status == StatusCode::OK {
+        assert_eq!(get_body["id"], tray_config_id);
+    }
+
+    // Test updating the tray configuration
+    let update_data = json!({
+        "experiment_default": true
+    });
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/tray_configurations/{tray_config_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (update_status, update_body) = extract_response_body(update_response).await;
+    if update_status == StatusCode::OK {
+        assert_eq!(update_body["experiment_default"], true);
+    }
+
+    // Test deleting the tray configuration
+    let delete_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/tray_configurations/{tray_config_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let delete_status = delete_response.status();
+    assert!(
+        delete_status.is_success(),
+        "Tray configuration delete failed with status: {delete_status}"
+    );
 }
 
 #[tokio::test]
@@ -797,8 +740,7 @@ async fn test_tray_dimensions_validation() {
     }
 }
 
-#[tokio::test]
-async fn test_tray_configuration_complex_structure() {
+async fn create_tray_configuration_complex_structure() -> axum::response::Response {
     let app = setup_test_app().await;
 
     // Test creating a complex tray configuration with multiple assignments and rotations
@@ -851,8 +793,7 @@ async fn test_tray_configuration_complex_structure() {
         ]
     });
 
-    let response = app
-        .clone()
+    app.clone()
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -862,7 +803,14 @@ async fn test_tray_configuration_complex_structure() {
                 .unwrap(),
         )
         .await
-        .unwrap();
+        .unwrap()
+}
+
+#[tokio::test]
+async fn test_tray_configuration_complex_structure() {
+    let app = setup_test_app().await;
+
+    let response = create_tray_configuration_complex_structure().await;
 
     let (status, body) = extract_response_body(response).await;
 
@@ -969,10 +917,6 @@ async fn test_tray_configuration_not_found() {
 async fn test_tray_workflow_comprehensive() {
     let app = setup_test_app().await;
 
-    println!("📋 TRAY COMPREHENSIVE WORKFLOW TEST");
-    println!("   Testing complete tray and tray configuration lifecycle");
-
-    // Step 1: Create individual trays
     let individual_tray_data = json!({
         "name": format!("Workflow Individual Tray {}", uuid::Uuid::new_v4()),
         "qty_x_axis": 8,
@@ -994,13 +938,7 @@ async fn test_tray_workflow_comprehensive() {
         .unwrap();
 
     let (individual_status, _individual_body) = extract_response_body(individual_response).await;
-
-    if individual_status == StatusCode::CREATED {
-        println!("   ✅ Step 1: Individual tray created successfully");
-    } else {
-        println!("   📋 Step 1: Individual tray creation returned: {individual_status}");
-    }
-
+    assert!(individual_status == StatusCode::CREATED,);
     // Step 2: Create comprehensive tray configuration
     let comprehensive_config_data = json!({
         "name": format!("Comprehensive Workflow Config {}", uuid::Uuid::new_v4()),
