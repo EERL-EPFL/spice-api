@@ -84,7 +84,8 @@ async fn test_treatment_crud_operations() {
     assert_eq!(body["name"], "heat");
     assert_eq!(body["notes"], "Heat treatment for 5 minutes");
     assert_eq!(body["sample_id"], sample_id);
-    assert_eq!(body["enzyme_volume_litres"].as_str().unwrap().parse::<f64>().unwrap(), 0.001);
+    let enzyme_volume = body["enzyme_volume_litres"].as_str().unwrap().parse::<f64>().unwrap();
+    assert!((enzyme_volume - 0.001).abs() < f64::EPSILON, "Expected 0.001, got {enzyme_volume}");
     assert!(body["created_at"].is_string());
     assert!(body["last_updated"].is_string());
 
@@ -385,7 +386,7 @@ async fn test_treatment_filtering_and_sorting() {
     ];
 
     for (name, notes) in treatments_data {
-        let treatment_data = json!({
+        let treatment_payload = json!({
             "name": name,
             "notes": notes,
             "sample_id": sample_id,
@@ -399,7 +400,7 @@ async fn test_treatment_filtering_and_sorting() {
                     .method("POST")
                     .uri("/api/treatments")
                     .header("content-type", "application/json")
-                    .body(Body::from(treatment_data.to_string()))
+                    .body(Body::from(treatment_payload.to_string()))
                     .unwrap(),
             )
             .await

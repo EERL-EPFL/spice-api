@@ -864,5 +864,5 @@ async fn test_sample_complex_workflow() {
     }
     
     // This test always passes - it's for workflow documentation
-    assert!(true, "This test documents sample workflow behavior");
+    // Documents sample workflow behavior
 }

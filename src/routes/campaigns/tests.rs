@@ -49,14 +49,8 @@ async fn create_test_project(app: &axum::Router) -> String {
     }
 }
 
-#[tokio::test]
-async fn test_location_crud_operations() {
-    let app = setup_test_app().await;
-
-    // Create a test project first (locations can be assigned to projects)
-    let project_id = create_test_project(&app).await;
-
-    // Test creating a location (campaign)
+// Helper function to create a test location
+async fn create_test_location(app: &axum::Router, project_id: &str) -> Result<(String, serde_json::Value), String> {
     let location_data = json!({
         "name": format!("Test Location CRUD {}", uuid::Uuid::new_v4()),
         "comment": "Test location for CRUD operations",
@@ -88,93 +82,115 @@ async fn test_location_crud_operations() {
         assert!(body["created_at"].is_string());
         assert!(body["last_updated"].is_string());
 
-        let location_id = body["id"].as_str().unwrap();
-
-        // Test getting the location by ID
-        let get_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri(format!("/api/locations/{location_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (get_status, get_body) = extract_response_body(get_response).await;
-        if get_status == StatusCode::OK {
-            println!("✅ Location retrieval successful");
-            assert_eq!(get_body["id"], location_id);
-            assert!(get_body["name"].as_str().unwrap().contains("Test Location CRUD"));
-            
-            // Validate related data structure
-            if get_body["experiments"].is_array() {
-                println!("   ✅ Experiments array present");
-            }
-            if get_body["samples"].is_array() {
-                println!("   ✅ Samples array present");
-            }
-        } else {
-            println!("⚠️  Location retrieval failed: {get_status}");
-        }
-
-        // Test updating the location
-        let update_data = json!({
-            "comment": "Updated comment for location"
-        });
-
-        let update_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("PATCH")
-                    .uri(format!("/api/locations/{location_id}"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(update_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (update_status, update_body) = extract_response_body(update_response).await;
-        if update_status == StatusCode::OK {
-            println!("✅ Location update successful");
-            assert_eq!(update_body["comment"], "Updated comment for location");
-        } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Location update not implemented (405)");
-        } else {
-            println!("📋 Location update returned: {update_status}");
-        }
-
-        // Test deleting the location
-        let delete_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("DELETE")
-                    .uri(format!("/api/locations/{location_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let delete_status = delete_response.status();
-        if delete_status.is_success() {
-            println!("✅ Location delete successful");
-        } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Location delete not implemented (405)");
-        } else {
-            println!("📋 Location delete returned: {delete_status}");
-        }
-        
+        let location_id = body["id"].as_str().unwrap().to_string();
+        Ok((location_id, body))
     } else {
-        println!("⚠️  Location creation failed: Status {status}, Body: {body}");
-        // Document the current behavior even if it fails
-        assert!(status.is_client_error() || status.is_server_error(),
-               "Location creation should either succeed or fail gracefully");
+        Err(format!("Location creation failed: Status {status}, Body: {body}"))
+    }
+}
+
+// Helper function to test location retrieval
+async fn test_location_retrieval(app: &axum::Router, location_id: &str) {
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/locations/{location_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    if get_status == StatusCode::OK {
+        println!("✅ Location retrieval successful");
+        assert_eq!(get_body["id"], location_id);
+        assert!(get_body["name"].as_str().unwrap().contains("Test Location CRUD"));
+        
+        // Validate related data structure
+        if get_body["experiments"].is_array() {
+            println!("   ✅ Experiments array present");
+        }
+        if get_body["samples"].is_array() {
+            println!("   ✅ Samples array present");
+        }
+    } else {
+        println!("⚠️  Location retrieval failed: {get_status}");
+    }
+}
+
+// Helper function to test location update
+async fn test_location_update(app: &axum::Router, location_id: &str) {
+    let update_data = json!({
+        "comment": "Updated comment for location"
+    });
+
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/locations/{location_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (update_status, update_body) = extract_response_body(update_response).await;
+    if update_status == StatusCode::OK {
+        println!("✅ Location update successful");
+        assert_eq!(update_body["comment"], "Updated comment for location");
+    } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
+        println!("⚠️  Location update not implemented (405)");
+    } else {
+        println!("📋 Location update returned: {update_status}");
+    }
+}
+
+// Helper function to test location deletion
+async fn test_location_deletion(app: &axum::Router, location_id: &str) {
+    let delete_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/locations/{location_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let delete_status = delete_response.status();
+    if delete_status.is_success() {
+        println!("✅ Location delete successful");
+    } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
+        println!("⚠️  Location delete not implemented (405)");
+    } else {
+        println!("📋 Location delete returned: {delete_status}");
+    }
+}
+
+#[tokio::test]
+async fn test_location_crud_operations() {
+    let app = setup_test_app().await;
+    let project_id = create_test_project(&app).await;
+
+    match create_test_location(&app, &project_id).await {
+        Ok((location_id, _body)) => {
+            test_location_retrieval(&app, &location_id).await;
+            test_location_update(&app, &location_id).await;
+            test_location_deletion(&app, &location_id).await;
+        }
+        Err(error) => {
+            println!("⚠️  {error}");
+            println!("📋 LOCATION CRUD TEST");
+            println!("   Location creation failed - checking API or setup issues");
+        }
     }
 }
 
@@ -580,5 +596,5 @@ async fn test_location_complex_queries() {
     }
     
     // This test always passes - it's for documenting query capabilities
-    assert!(true, "This test documents location query behavior");
+    // Documents location query behavior
 }

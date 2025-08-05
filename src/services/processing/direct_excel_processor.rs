@@ -87,7 +87,7 @@ impl DirectExcelProcessor {
         }
         println!("   📊 Total rows in Excel: {}", rows.len());
 
-        let headers = self.parse_headers(&rows)?; // Identify tray and well headers from first two rows, then probe/time headers
+        let headers = Self::parse_headers(&rows)?; // Identify tray and well headers from first two rows, then probe/time headers
         println!(
             "   🗺️  Found {} wells, {} temp probes",
             headers.wells.len(),
@@ -164,74 +164,46 @@ impl DirectExcelProcessor {
         })
     }
 
-    fn parse_row_data(
+    // Helper function to extract and process temperature readings
+    fn create_temperature_reading(
+        experiment_id: Uuid,
+        timestamp_with_tz: chrono::DateTime<chrono::FixedOffset>,
+        probe_values: &[Option<Decimal>],
+        image_filename: Option<String>,
+    ) -> temperature_readings::ActiveModel {
+        temperature_readings::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            experiment_id: Set(experiment_id),
+            timestamp: Set(timestamp_with_tz),
+            probe_1: Set(probe_values[0]),
+            probe_2: Set(probe_values[1]),
+            probe_3: Set(probe_values[2]),
+            probe_4: Set(probe_values[3]),
+            probe_5: Set(probe_values[4]),
+            probe_6: Set(probe_values[5]),
+            probe_7: Set(probe_values[6]),
+            probe_8: Set(probe_values[7]),
+            image_filename: Set(image_filename),
+            created_at: Set(chrono::Utc::now().fixed_offset()),
+        }
+    }
+
+    // Helper function to process phase transitions for wells
+    fn process_well_phase_transitions(
         &mut self,
         row: &[Data],
         headers: &ColumnHeaders,
         experiment_id: Uuid,
-        row_number: usize,
-    ) -> Result<(
-        Option<temperature_readings::ActiveModel>,
-        Vec<well_phase_transitions::ActiveModel>,
-    )> {
-        // Extract timestamp
-        let timestamp = self.extract_timestamp(row, headers, row_number)?;
-        let parsed_timestamp = self.parse_timestamp_to_datetime(&timestamp)?;
-        let timestamp_with_tz = Utc.from_utc_datetime(&parsed_timestamp).fixed_offset();
-
-        // Extract image filename
-        let image_filename = headers
-            .image_col
-            .and_then(|col| row.get(col))
-            .and_then(|cell| match cell {
-                Data::String(s) => Some(s.clone()),
-                _ => None,
-            });
-
-        // Create temperature reading (store every timestamp for complete temperature profile)
-        let mut temperature_reading = None;
-        let mut has_temperatures = false;
-        let mut probe_values = [None; 8];
-
-        for (probe_idx, temp_col) in headers.temp_cols.iter().enumerate() {
-            if let Some(col_idx) = temp_col {
-                if let Some(temp) = row.get(*col_idx).and_then(|cell| match cell {
-                    Data::Float(f) => Some(*f),
-                    Data::Int(i) => Some(*i as f64),
-                    _ => None,
-                }) {
-                    probe_values[probe_idx] =
-                        Some(Decimal::from_f64_retain(temp).unwrap_or_default());
-                    has_temperatures = true;
-                }
-            }
-        }
-
-        if has_temperatures {
-            temperature_reading = Some(temperature_readings::ActiveModel {
-                id: Set(Uuid::new_v4()),
-                experiment_id: Set(experiment_id),
-                timestamp: Set(timestamp_with_tz),
-                image_filename: Set(image_filename),
-                probe_1: Set(probe_values[0]),
-                probe_2: Set(probe_values[1]),
-                probe_3: Set(probe_values[2]),
-                probe_4: Set(probe_values[3]),
-                probe_5: Set(probe_values[4]),
-                probe_6: Set(probe_values[5]),
-                probe_7: Set(probe_values[6]),
-                probe_8: Set(probe_values[7]),
-                created_at: Set(Utc::now().fixed_offset()),
-            });
-        }
-
-        // Track phase changes and create transitions only when state changes
+        timestamp_with_tz: chrono::DateTime<chrono::FixedOffset>,
+        temperature_reading: Option<&temperature_readings::ActiveModel>,
+    ) -> Result<Vec<well_phase_transitions::ActiveModel>> {
         let mut phase_transitions = Vec::new();
 
         for well in &headers.wells {
             if let Some(current_phase) = row.get(well.col_idx).and_then(|cell| match cell {
-                Data::Int(i) => Some(*i as i32),
-                Data::Float(f) => Some(*f as i32),
+                Data::Int(i) => Some(i32::try_from(*i).unwrap_or(0)),
+                #[allow(clippy::cast_possible_truncation)]
+                Data::Float(f) => Some(f.round() as i32), // Convert phase state (0/1) to integer
                 _ => None,
             }) {
                 let well_key = format!("{}:{}", well.tray_name, well.well_coordinate);
@@ -242,16 +214,13 @@ impl DirectExcelProcessor {
                 if let Some(prev) = previous_phase {
                     // Only create transition record if state actually changed
                     if prev != current_phase {
-                        // We need to find the temperature_reading_id for this transition
-                        // For now, we'll create a placeholder - in a real implementation
-                        // we'd link to the actual temperature reading
-                        let temp_reading_id = temperature_reading
-                            .as_ref()
-                            .map(|tr| match &tr.id {
+                        let temp_reading_id = temperature_reading.map_or_else(
+                            Uuid::new_v4,
+                            |tr| match &tr.id {
                                 Set(id) => *id,
                                 _ => Uuid::new_v4(),
-                            })
-                            .unwrap_or_else(Uuid::new_v4);
+                            },
+                        );
 
                         // Get the actual well_id from our loaded well IDs
                         let well_id = *self
@@ -270,44 +239,105 @@ impl DirectExcelProcessor {
                             created_at: Set(Utc::now().fixed_offset()),
                         });
                     }
-                } else {
-                    // First time seeing this well - only create transition if it's not the default state (0)
-                    if current_phase != 0 {
-                        let temp_reading_id = temperature_reading
-                            .as_ref()
-                            .map(|tr| match &tr.id {
+                } else if current_phase != 0 {
+                    // Only create transition if it's not the default state (0)
+                    let temp_reading_id =
+                        temperature_reading
+                            .map_or_else(Uuid::new_v4, |tr| match &tr.id {
                                 Set(id) => *id,
                                 _ => Uuid::new_v4(),
-                            })
-                            .unwrap_or_else(Uuid::new_v4);
+                            });
 
-                        let well_id = *self
-                            .well_ids
-                            .get(&well_key)
-                            .ok_or_else(|| anyhow!("Well ID not found for {}", well_key))?;
+                    let well_id = *self
+                        .well_ids
+                        .get(&well_key)
+                        .ok_or_else(|| anyhow!("Well ID not found for {}", well_key))?;
 
-                        phase_transitions.push(well_phase_transitions::ActiveModel {
-                            id: Set(Uuid::new_v4()),
-                            well_id: Set(well_id),
-                            experiment_id: Set(experiment_id),
-                            temperature_reading_id: Set(temp_reading_id),
-                            timestamp: Set(timestamp_with_tz),
-                            previous_state: Set(0), // Assume starting state is liquid (0)
-                            new_state: Set(current_phase),
-                            created_at: Set(Utc::now().fixed_offset()),
-                        });
-                    }
+                    phase_transitions.push(well_phase_transitions::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        well_id: Set(well_id),
+                        experiment_id: Set(experiment_id),
+                        temperature_reading_id: Set(temp_reading_id),
+                        timestamp: Set(timestamp_with_tz),
+                        previous_state: Set(0), // Assume starting state is liquid (0)
+                        new_state: Set(current_phase),
+                        created_at: Set(Utc::now().fixed_offset()),
+                    });
                 }
-
-                // Update our tracking state
                 self.well_states.insert(well_key, current_phase);
             }
         }
 
+        Ok(phase_transitions)
+    }
+
+    fn parse_row_data(
+        &mut self,
+        row: &[Data],
+        headers: &ColumnHeaders,
+        experiment_id: Uuid,
+        row_number: usize,
+    ) -> Result<(
+        Option<temperature_readings::ActiveModel>,
+        Vec<well_phase_transitions::ActiveModel>,
+    )> {
+        let timestamp = Self::extract_timestamp(row, headers, row_number)?; // Extract timestamp
+        let parsed_timestamp = Self::parse_timestamp_to_datetime(&timestamp)?;
+        let timestamp_with_tz = Utc.from_utc_datetime(&parsed_timestamp).fixed_offset();
+
+        // Extract image filename
+        let image_filename = headers
+            .image_col
+            .and_then(|col| row.get(col))
+            .and_then(|cell| match cell {
+                Data::String(s) => Some(s.clone()),
+                _ => None,
+            });
+
+        // Extract temperature readings
+        let mut probe_values = [None; 8];
+        let mut has_temperatures = false;
+
+        for (probe_idx, temp_col) in headers.temp_cols.iter().enumerate() {
+            if let Some(col_idx) = temp_col {
+                if let Some(temp) = row.get(*col_idx).and_then(|cell| match cell {
+                    Data::Float(f) => Some(*f),
+                    #[allow(clippy::cast_precision_loss)]
+                    Data::Int(i) => Some(*i as f64), // Intentional precision loss for temperature conversion
+                    _ => None,
+                }) {
+                    probe_values[probe_idx] =
+                        Some(Decimal::from_f64_retain(temp).unwrap_or_default());
+                    has_temperatures = true;
+                }
+            }
+        }
+
+        // Create temperature reading if we have temperature data
+        let temperature_reading = if has_temperatures {
+            Some(Self::create_temperature_reading(
+                experiment_id,
+                timestamp_with_tz,
+                &probe_values,
+                image_filename,
+            ))
+        } else {
+            None
+        };
+
+        // Process phase transitions for all wells
+        let phase_transitions = self.process_well_phase_transitions(
+            row,
+            headers,
+            experiment_id,
+            timestamp_with_tz,
+            temperature_reading.as_ref(),
+        )?;
+
         Ok((temperature_reading, phase_transitions))
     }
 
-    fn parse_headers(&self, rows: &[&[Data]]) -> Result<ColumnHeaders> {
+    fn parse_headers(rows: &[&[Data]]) -> Result<ColumnHeaders> {
         if rows.len() < 7 {
             return Err(anyhow!(
                 "Excel file format invalid: insufficient header rows"
@@ -365,12 +395,12 @@ impl DirectExcelProcessor {
                             if let (Data::String(tray_name), Data::String(well_coordinate)) =
                                 (tray_cell, coord_cell)
                             {
-                                if self.is_valid_tray_name(tray_name)
-                                    && self.is_valid_well_coordinate(well_coordinate)
+                                if Self::is_valid_tray_name(tray_name)
+                                    && Self::is_valid_well_coordinate(well_coordinate)
                                 {
                                     // Convert well coordinate to (row, col) - A1 = (1,1), B2 = (2,2), etc.
                                     if let Ok((row, col)) =
-                                        self.parse_well_coordinate(well_coordinate)
+                                        Self::parse_well_coordinate(well_coordinate)
                                     {
                                         headers.wells.push(WellMapping {
                                             col_idx,
@@ -397,7 +427,6 @@ impl DirectExcelProcessor {
     }
 
     fn extract_timestamp(
-        &self,
         row: &[Data],
         headers: &ColumnHeaders,
         row_number: usize,
@@ -412,11 +441,11 @@ impl DirectExcelProcessor {
             .and_then(|col| row.get(col))
             .ok_or_else(|| anyhow!("Missing time column in row {}", row_number))?;
 
-        self.parse_datetime(date, time)
+        Self::parse_datetime(date, time)
             .context(format!("Failed to parse datetime in row {row_number}"))
     }
 
-    fn parse_datetime(&self, date_cell: &Data, time_cell: &Data) -> Result<String> {
+    fn parse_datetime(date_cell: &Data, time_cell: &Data) -> Result<String> {
         match (date_cell, time_cell) {
             (Data::String(date_str), Data::String(time_str)) => {
                 let combined = format!("{date_str} {time_str}");
@@ -431,14 +460,19 @@ impl DirectExcelProcessor {
             (Data::DateTime(excel_dt), _) => {
                 // Handle Excel datetime format with millisecond precision
                 let days = excel_dt.as_f64();
-                let days_since_1900 = days.floor() as i64;
+                #[allow(clippy::cast_possible_truncation)]
+                let days_since_1900 = days.floor().round() as i64;
                 let base = chrono::NaiveDate::from_ymd_opt(1900, 1, 1).unwrap();
                 let date = base + chrono::Duration::days(days_since_1900 - 2); // Excel 1900 bug
                 let time_fraction = days - days.floor();
                 let total_seconds = time_fraction * 86400.0;
-                let seconds = total_seconds.floor() as u32;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let seconds = total_seconds.floor().max(0.0) as u32;
                 let nanoseconds =
-                    ((total_seconds - total_seconds.floor()) * 1_000_000_000.0) as u32;
+                    {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        { ((total_seconds - total_seconds.floor()) * 1_000_000_000.0).max(0.0) as u32 }
+                    };
                 let time =
                     chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, nanoseconds)
                         .unwrap_or_default();
@@ -449,7 +483,7 @@ impl DirectExcelProcessor {
         }
     }
 
-    fn parse_timestamp_to_datetime(&self, timestamp: &str) -> Result<NaiveDateTime> {
+    fn parse_timestamp_to_datetime(timestamp: &str) -> Result<NaiveDateTime> {
         // Try multiple formats
         if let Ok(dt) = NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%.3f") {
             return Ok(dt);
@@ -463,7 +497,7 @@ impl DirectExcelProcessor {
         Err(anyhow!("Could not parse timestamp: {}", timestamp))
     }
 
-    fn parse_well_coordinate(&self, coordinate: &str) -> Result<(i32, i32)> {
+    fn parse_well_coordinate(coordinate: &str) -> Result<(i32, i32)> {
         let well_coord = str_to_coordinates(coordinate)
             .map_err(|e| anyhow!("Invalid well coordinate '{}': {}", coordinate, e))?;
 
@@ -471,18 +505,28 @@ impl DirectExcelProcessor {
         Ok((i32::from(well_coord.row), i32::from(well_coord.column)))
     }
 
-    fn is_valid_tray_name(&self, tray_name: &str) -> bool {
+    fn is_valid_tray_name(tray_name: &str) -> bool {
         tray_name == "P1" || tray_name == "P2"
     }
 
-    fn is_valid_well_coordinate(&self, coordinate: &str) -> bool {
+    fn is_valid_well_coordinate(coordinate: &str) -> bool {
         // Use the primary coordinate parsing function for validation
         str_to_coordinates(coordinate).is_ok()
     }
 
     /// Load well IDs for all wells in the experiment
     async fn load_well_ids(&mut self, headers: &ColumnHeaders, experiment_id: Uuid) -> Result<()> {
-        // First, get the experiment to find its tray configuration
+        let tray_configuration_id = self.get_experiment_tray_config(experiment_id).await?;
+        let tray_name_to_id = self.load_tray_mapping(tray_configuration_id).await?;
+        self.ensure_wells_exist(headers, &tray_name_to_id).await?;
+        self.map_well_ids_from_headers(headers, &tray_name_to_id).await?;
+        
+        println!("   🔗 Loaded {} well IDs", self.well_ids.len());
+        Ok(())
+    }
+
+    /// Get tray configuration ID for the experiment
+    async fn get_experiment_tray_config(&self, experiment_id: Uuid) -> Result<Uuid> {
         let experiment = experiments::Entity::find_by_id(experiment_id)
             .one(&self.db)
             .await
@@ -496,8 +540,12 @@ impl DirectExcelProcessor {
         println!(
             "   🔍 Loading wells for experiment {experiment_id} with tray config {tray_configuration_id}"
         );
+        
+        Ok(tray_configuration_id)
+    }
 
-        // Get all tray assignments for this configuration
+    /// Load mapping of tray names to tray IDs
+    async fn load_tray_mapping(&self, tray_configuration_id: Uuid) -> Result<HashMap<String, Uuid>> {
         let tray_assignments: Vec<tray_configuration_assignments::Model> =
             tray_configuration_assignments::Entity::find()
                 .filter(
@@ -508,20 +556,17 @@ impl DirectExcelProcessor {
                 .await
                 .context("Failed to query tray assignments")?;
 
-        // Get the tray IDs
         let tray_ids: Vec<Uuid> = tray_assignments
             .into_iter()
             .map(|assignment| assignment.tray_id)
             .collect();
 
-        // Get all trays
         let all_trays: Vec<trays::Model> = trays::Entity::find()
             .filter(trays::Column::Id.is_in(tray_ids))
             .all(&self.db)
             .await
             .context("Failed to query trays")?;
 
-        // Create a map of tray name -> tray_id
         let tray_name_to_id: HashMap<String, Uuid> = all_trays
             .into_iter()
             .filter_map(|tray| tray.name.map(|name| (name, tray.id)))
@@ -532,129 +577,181 @@ impl DirectExcelProcessor {
             tray_name_to_id.len(),
             tray_name_to_id.keys().collect::<Vec<_>>()
         );
+        
+        Ok(tray_name_to_id)
+    }
 
-        // Ensure wells exist for all trays, create if missing or recreate if dimensions don't match
-        for (tray_name, &tray_id) in &tray_name_to_id {
-            let existing_wells: Vec<wells::Model> = wells::Entity::find()
-                .filter(wells::Column::TrayId.eq(tray_id))
-                .all(&self.db)
-                .await
-                .context("Failed to query existing wells")?;
-
-            // Check if we need to recreate wells based on Excel requirements
-            let wells_for_tray: Vec<&WellMapping> = headers
-                .wells
-                .iter()
-                .filter(|w| w.tray_name == *tray_name)
-                .collect();
-
-            let max_row = wells_for_tray.iter().map(|w| w.row).max().unwrap_or(0);
-            let max_col = wells_for_tray.iter().map(|w| w.col).max().unwrap_or(0);
-
-            let existing_max_row = existing_wells
-                .iter()
-                .map(|w| w.row_number)
-                .max()
-                .unwrap_or(0);
-            let existing_max_col = existing_wells
-                .iter()
-                .map(|w| w.column_number)
-                .max()
-                .unwrap_or(0);
-
-            if existing_wells.is_empty() {
-                println!("   🔧 Creating wells for tray {tray_name} ({tray_id})");
-                self.create_wells_from_excel_headers(tray_id, &wells_for_tray)
-                    .await?;
-            } else if max_row > existing_max_row || max_col > existing_max_col {
-                println!(
-                    "   🔄 Recreating wells for tray {tray_name} - Excel needs row {max_row} col {max_col}, but max existing is row {existing_max_row} col {existing_max_col}"
-                );
-
-                // Delete existing wells
-                wells::Entity::delete_many()
-                    .filter(wells::Column::TrayId.eq(tray_id))
-                    .exec(&self.db)
-                    .await
-                    .context("Failed to delete existing wells")?;
-
-                // Create new wells
-                self.create_wells_from_excel_headers(tray_id, &wells_for_tray)
-                    .await?;
-            } else {
-                println!(
-                    "   ✅ Tray {} has {} wells (sufficient for Excel requirements)",
-                    tray_name,
-                    existing_wells.len()
-                );
-            }
+    /// Ensure wells exist for all trays, create or recreate as needed
+    async fn ensure_wells_exist(
+        &self,
+        headers: &ColumnHeaders,
+        tray_name_to_id: &HashMap<String, Uuid>,
+    ) -> Result<()> {
+        for (tray_name, &tray_id) in tray_name_to_id {
+            self.ensure_tray_wells_exist(headers, tray_name, tray_id).await?;
         }
+        Ok(())
+    }
 
-        // For each well in our headers, find the corresponding well_id
+    /// Ensure wells exist for a specific tray
+    async fn ensure_tray_wells_exist(
+        &self,
+        headers: &ColumnHeaders,
+        tray_name: &str,
+        tray_id: Uuid,
+    ) -> Result<()> {
+        let existing_wells: Vec<wells::Model> = wells::Entity::find()
+            .filter(wells::Column::TrayId.eq(tray_id))
+            .all(&self.db)
+            .await
+            .context("Failed to query existing wells")?;
+
+        let wells_for_tray: Vec<&WellMapping> = headers
+            .wells
+            .iter()
+            .filter(|w| w.tray_name == tray_name)
+            .collect();
+
+        let (max_row, max_col) = Self::get_required_dimensions(&wells_for_tray);
+        let (existing_max_row, existing_max_col) = Self::get_existing_dimensions(&existing_wells);
+
+        if existing_wells.is_empty() {
+            println!("   🔧 Creating wells for tray {tray_name} ({tray_id})");
+            self.create_wells_from_excel_headers(tray_id, &wells_for_tray).await?;
+        } else if max_row > existing_max_row || max_col > existing_max_col {
+            println!(
+                "   🔄 Recreating wells for tray {tray_name} - Excel needs row {max_row} col {max_col}, but max existing is row {existing_max_row} col {existing_max_col}"
+            );
+            self.recreate_wells(tray_id, &wells_for_tray).await?;
+        } else {
+            println!(
+                "   ✅ Tray {} has {} wells (sufficient for Excel requirements)",
+                tray_name,
+                existing_wells.len()
+            );
+        }
+        
+        Ok(())
+    }
+
+    /// Get required dimensions from Excel well mappings
+    fn get_required_dimensions(wells_for_tray: &[&WellMapping]) -> (i32, i32) {
+        let max_row = wells_for_tray.iter().map(|w| w.row).max().unwrap_or(0);
+        let max_col = wells_for_tray.iter().map(|w| w.col).max().unwrap_or(0);
+        (max_row, max_col)
+    }
+
+    /// Get existing dimensions from database wells
+    fn get_existing_dimensions(existing_wells: &[wells::Model]) -> (i32, i32) {
+        let existing_max_row = existing_wells
+            .iter()
+            .map(|w| w.row_number)
+            .max()
+            .unwrap_or(0);
+        let existing_max_col = existing_wells
+            .iter()
+            .map(|w| w.column_number)
+            .max()
+            .unwrap_or(0);
+        (existing_max_row, existing_max_col)
+    }
+
+    /// Recreate wells by deleting existing ones and creating new ones
+    async fn recreate_wells(&self, tray_id: Uuid, wells_for_tray: &[&WellMapping]) -> Result<()> {
+        wells::Entity::delete_many()
+            .filter(wells::Column::TrayId.eq(tray_id))
+            .exec(&self.db)
+            .await
+            .context("Failed to delete existing wells")?;
+
+        self.create_wells_from_excel_headers(tray_id, wells_for_tray).await
+    }
+
+    /// Map well IDs from headers to internal `well_ids` `HashMap`
+    async fn map_well_ids_from_headers(
+        &mut self,
+        headers: &ColumnHeaders,
+        tray_name_to_id: &HashMap<String, Uuid>,
+    ) -> Result<()> {
         for well_mapping in &headers.wells {
             if let Some(&tray_id) = tray_name_to_id.get(&well_mapping.tray_name) {
-                // Query for the well with matching tray_id, row, and column
-                if let Some(well) = wells::Entity::find()
-                    .filter(wells::Column::TrayId.eq(tray_id))
-                    .filter(wells::Column::RowNumber.eq(well_mapping.row))
-                    .filter(wells::Column::ColumnNumber.eq(well_mapping.col))
-                    .one(&self.db)
-                    .await
-                    .context("Failed to query well")?
-                {
-                    let well_key = format!(
-                        "{}:{}",
-                        well_mapping.tray_name, well_mapping.well_coordinate
-                    );
-                    self.well_ids.insert(well_key, well.id);
-                } else {
-                    // Debug: check what wells exist for this tray
-                    let existing_wells: Vec<wells::Model> = wells::Entity::find()
-                        .filter(wells::Column::TrayId.eq(tray_id))
-                        .all(&self.db)
-                        .await
-                        .context("Failed to query existing wells")?;
-
-                    println!(
-                        "   ❌ Well not found: {} (row {}, col {}) in tray {}",
-                        well_mapping.well_coordinate,
-                        well_mapping.row,
-                        well_mapping.col,
-                        well_mapping.tray_name
-                    );
-                    println!(
-                        "   🔍 Existing wells in tray {}: {} wells",
-                        well_mapping.tray_name,
-                        existing_wells.len()
-                    );
-
-                    if !existing_wells.is_empty() {
-                        println!(
-                            "   📍 Sample existing wells: {:?}",
-                            existing_wells
-                                .iter()
-                                .take(5)
-                                .map(|w| format!("row{},col{}", w.row_number, w.column_number))
-                                .collect::<Vec<_>>()
-                        );
-                    }
-
-                    return Err(anyhow!(
-                        "Well not found: {} row {} col {} in tray {}. Found {} wells in tray.",
-                        well_mapping.well_coordinate,
-                        well_mapping.row,
-                        well_mapping.col,
-                        well_mapping.tray_name,
-                        existing_wells.len()
-                    ));
-                }
+                self.find_and_store_well_id(well_mapping, tray_id).await?;
             } else {
                 return Err(anyhow!("Tray not found: {}", well_mapping.tray_name));
             }
         }
-
-        println!("   🔗 Loaded {} well IDs", self.well_ids.len());
         Ok(())
+    }
+
+    /// Find and store a single well ID
+    async fn find_and_store_well_id(
+        &mut self,
+        well_mapping: &WellMapping,
+        tray_id: Uuid,
+    ) -> Result<()> {
+        if let Some(well) = wells::Entity::find()
+            .filter(wells::Column::TrayId.eq(tray_id))
+            .filter(wells::Column::RowNumber.eq(well_mapping.row))
+            .filter(wells::Column::ColumnNumber.eq(well_mapping.col))
+            .one(&self.db)
+            .await
+            .context("Failed to query well")?
+        {
+            let well_key = format!(
+                "{}:{}",
+                well_mapping.tray_name, well_mapping.well_coordinate
+            );
+            self.well_ids.insert(well_key, well.id);
+            Ok(())
+        } else {
+            self.handle_well_not_found_error(well_mapping, tray_id).await
+        }
+    }
+
+    /// Handle error when well is not found
+    async fn handle_well_not_found_error(
+        &self,
+        well_mapping: &WellMapping,
+        tray_id: Uuid,
+    ) -> Result<()> {
+        let existing_wells: Vec<wells::Model> = wells::Entity::find()
+            .filter(wells::Column::TrayId.eq(tray_id))
+            .all(&self.db)
+            .await
+            .context("Failed to query existing wells")?;
+
+        println!(
+            "   ❌ Well not found: {} (row {}, col {}) in tray {}",
+            well_mapping.well_coordinate,
+            well_mapping.row,
+            well_mapping.col,
+            well_mapping.tray_name
+        );
+        println!(
+            "   🔍 Existing wells in tray {}: {} wells",
+            well_mapping.tray_name,
+            existing_wells.len()
+        );
+
+        if !existing_wells.is_empty() {
+            println!(
+                "   📍 Sample existing wells: {:?}",
+                existing_wells
+                    .iter()
+                    .take(5)
+                    .map(|w| format!("row{},col{}", w.row_number, w.column_number))
+                    .collect::<Vec<_>>()
+            );
+        }
+
+        Err(anyhow!(
+            "Well not found: {} row {} col {} in tray {}. Found {} wells in tray.",
+            well_mapping.well_coordinate,
+            well_mapping.row,
+            well_mapping.col,
+            well_mapping.tray_name,
+            existing_wells.len()
+        ))
     }
 
     /// Create wells based on what's actually found in the Excel headers
@@ -700,38 +797,47 @@ mod tests {
 
     #[test]
     fn test_parse_well_coordinate() {
-        let processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
+        let _processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
 
         // Test normal coordinates (row, column)
-        assert_eq!(processor.parse_well_coordinate("A1").unwrap(), (1, 1));
-        assert_eq!(processor.parse_well_coordinate("B2").unwrap(), (2, 2));
-        assert_eq!(processor.parse_well_coordinate("H12").unwrap(), (12, 8));
+        assert_eq!(
+            DirectExcelProcessor::parse_well_coordinate("A1").unwrap(),
+            (1, 1)
+        );
+        assert_eq!(
+            DirectExcelProcessor::parse_well_coordinate("B2").unwrap(),
+            (2, 2)
+        );
+        assert_eq!(
+            DirectExcelProcessor::parse_well_coordinate("H12").unwrap(),
+            (12, 8)
+        );
 
         // Test invalid coordinates
-        assert!(processor.parse_well_coordinate("1A").is_err());
-        assert!(processor.parse_well_coordinate("").is_err());
-        assert!(processor.parse_well_coordinate("a1").is_err()); // lowercase not supported by primary function
+        assert!(DirectExcelProcessor::parse_well_coordinate("1A").is_err());
+        assert!(DirectExcelProcessor::parse_well_coordinate("").is_err());
+        assert!(DirectExcelProcessor::parse_well_coordinate("a1").is_err()); // lowercase not supported by primary function
     }
 
     #[test]
     fn test_is_valid_tray_name() {
-        let processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
+        let _processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
 
-        assert!(processor.is_valid_tray_name("P1"));
-        assert!(processor.is_valid_tray_name("P2"));
-        assert!(!processor.is_valid_tray_name("P3"));
-        assert!(!processor.is_valid_tray_name(""));
+        assert!(DirectExcelProcessor::is_valid_tray_name("P1"));
+        assert!(DirectExcelProcessor::is_valid_tray_name("P2"));
+        assert!(!DirectExcelProcessor::is_valid_tray_name("P3"));
+        assert!(!DirectExcelProcessor::is_valid_tray_name(""));
     }
 
     #[test]
     fn test_is_valid_well_coordinate() {
-        let processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
+        let _processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
 
-        assert!(processor.is_valid_well_coordinate("A1"));
-        assert!(processor.is_valid_well_coordinate("H12"));
-        assert!(processor.is_valid_well_coordinate("Z1")); // Z is valid (column 26)
-        assert!(!processor.is_valid_well_coordinate("a1")); // lowercase not supported by primary function
-        assert!(!processor.is_valid_well_coordinate(""));
-        assert!(!processor.is_valid_well_coordinate("1A"));
+        assert!(DirectExcelProcessor::is_valid_well_coordinate("A1"));
+        assert!(DirectExcelProcessor::is_valid_well_coordinate("H12"));
+        assert!(DirectExcelProcessor::is_valid_well_coordinate("Z1")); // Z is valid (column 26)
+        assert!(!DirectExcelProcessor::is_valid_well_coordinate("a1")); // lowercase not supported by primary function
+        assert!(!DirectExcelProcessor::is_valid_well_coordinate(""));
+        assert!(!DirectExcelProcessor::is_valid_well_coordinate("1A"));
     }
 }

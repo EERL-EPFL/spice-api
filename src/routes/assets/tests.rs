@@ -364,7 +364,7 @@ async fn test_asset_s3_dependency_documentation() {
         .await
         .unwrap();
 
-    let (status, body) = extract_response_body(response).await;
+    let (status, _body) = extract_response_body(response).await;
     
     if status.is_success() {
         println!("   ✅ S3 appears to be configured - asset creation succeeded");
@@ -374,5 +374,5 @@ async fn test_asset_s3_dependency_documentation() {
     }
     
     // This test always passes - it's just for documentation
-    assert!(true, "This test documents S3 dependencies");
+    // Documents S3 dependencies
 }

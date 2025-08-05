@@ -56,6 +56,15 @@ impl From<Model> for Treatment {
     }
 }
 
+// Helper function to format well coordinate (reused from samples)
+fn format_well_coordinate_treatment(well: &spice_entity::wells::Model) -> String {
+    format!(
+        "{}{}",
+        char::from(b'A' + u8::try_from(well.column_number - 1).unwrap_or(0)),
+        well.row_number
+    )
+}
+
 async fn fetch_experimental_results_for_treatment(
     db: &DatabaseConnection,
     treatment_id: Uuid,
@@ -153,12 +162,7 @@ async fn fetch_experimental_results_for_treatment(
 
                 let final_state = if has_frozen_transition { "frozen".to_string() } else { "liquid".to_string() };
 
-                // Get well coordinate in A1 format
-                let well_coordinate = format!(
-                    "{}{}",
-                    char::from(b'A' + (well.column_number - 1) as u8),
-                    well.row_number
-                );
+                let well_coordinate = format_well_coordinate_treatment(&well);
 
                 // Get tray name
                 let tray = spice_entity::trays::Entity::find_by_id(well.tray_id)

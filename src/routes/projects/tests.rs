@@ -598,5 +598,5 @@ async fn test_project_pagination_and_limits() {
     }
     
     // This test always passes - it's for documenting pagination behavior
-    assert!(true, "This test documents project pagination behavior");
+    // Documents project pagination behavior
 }
