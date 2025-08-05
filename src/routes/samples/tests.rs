@@ -3,21 +3,563 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
 use tower::ServiceExt;
+use uuid::Uuid;
 
 async fn extract_response_body(response: axum::response::Response) -> (StatusCode, Value) {
     let status = response.status();
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("Failed to read response body");
-    let body: Value = serde_json::from_slice(&bytes)
-        .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
 
-    // Log error details for debugging
-    if status.is_server_error() || status.is_client_error() {
-        eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
+    let body: Value = serde_json::from_slice(&bytes).unwrap_or_else(|_| {
+        let raw_text = String::from_utf8_lossy(&bytes);
+        json!({"error": raw_text})
+    });
+    (status, body)
+}
+
+async fn create_test_project_and_location(app: &axum::Router, test_suffix: &str) -> (Uuid, Uuid) {
+    // Create a test project
+    let project_data = json!({
+        "name": format!("Test Project {}", test_suffix),
+        "note": "Test project for sample tests",
+        "colour": "#FF0000"
+    });
+
+    let project_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/projects")
+                .header("content-type", "application/json")
+                .body(Body::from(project_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (project_status, project_body) = extract_response_body(project_response).await;
+    assert_eq!(
+        project_status,
+        StatusCode::CREATED,
+        "Failed to create test project: {project_body:?}"
+    );
+    let project_id = Uuid::parse_str(project_body["id"].as_str().unwrap()).unwrap();
+
+    // Create a test location
+    let location_data = json!({
+        "name": format!("Test Location {}", test_suffix),
+        "comment": "Test location for sample tests",
+        "project_id": project_id
+    });
+
+    let location_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/locations")
+                .header("content-type", "application/json")
+                .body(Body::from(location_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (location_status, location_body) = extract_response_body(location_response).await;
+    assert_eq!(
+        location_status,
+        StatusCode::CREATED,
+        "Failed to create test location: {location_body:?}"
+    );
+    let location_id = Uuid::parse_str(location_body["id"].as_str().unwrap()).unwrap();
+
+    (project_id, location_id)
+}
+
+#[tokio::test]
+async fn test_sample_crud_operations() {
+    let app = setup_test_app().await;
+
+    // Create dependencies
+    let (_project_id, location_id) = create_test_project_and_location(&app, "CRUD").await;
+
+    // Test creating a sample with valid enum values
+    let sample_data = json!({
+        "name": "Test Sample API",
+        "type": "bulk",
+        "material_description": "Test material for API testing",
+        "extraction_procedure": "Standard extraction via API",
+        "filter_substrate": "Polycarbonate",
+        "suspension_volume_litres": 0.050,
+        "air_volume_litres": 100.0,
+        "water_volume_litres": 0.200,
+        "initial_concentration_gram_l": 0.001,
+        "well_volume_litres": 0.0001,
+        "remarks": "Created via API test suite",
+        "longitude": -74.006_000,
+        "latitude": 40.712_800,
+        "location_id": location_id,
+        "start_time": "2024-06-15T10:00:00Z",
+        "stop_time": "2024-06-15T12:00:00Z",
+        "flow_litres_per_minute": 2.0,
+        "total_volume": 240.0,
+        "treatments": [
+            {
+                "name": "heat",
+                "notes": "Heat treatment for API sample test",
+                "enzyme_volume_litres": 0.00005
+            }
+        ]
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(response).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Failed to create sample: {body:?}"
+    );
+
+    // Validate response structure
+    assert!(body["id"].is_string(), "Response should include ID");
+    assert_eq!(body["name"], "Test Sample API");
+    assert_eq!(body["type"], "bulk");
+    assert!(body["created_at"].is_string());
+    assert!(body["treatments"].is_array());
+
+    let sample_id = body["id"].as_str().unwrap();
+
+    // Test getting the sample by ID
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    assert_eq!(
+        get_status,
+        StatusCode::OK,
+        "Failed to get sample: {get_body:?}"
+    );
+    assert_eq!(get_body["id"], sample_id);
+
+    // Test getting all samples
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/samples")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (list_status, list_body) = extract_response_body(list_response).await;
+    assert_eq!(list_status, StatusCode::OK, "Failed to get samples");
+    assert!(
+        list_body.is_array(),
+        "Samples list should be a direct array"
+    );
+}
+
+#[tokio::test]
+async fn test_sample_type_validation() {
+    let app = setup_test_app().await;
+
+    // Create dependencies
+    let (_project_id, location_id) =
+        create_test_project_and_location(&app, "TYPE_VALIDATION").await;
+
+    // Test valid sample types (using correct enum values)
+    for (sample_type, expected_type) in [
+        ("bulk", "bulk"),
+        ("filter", "filter"),
+        ("procedural_blank", "procedural_blank"),
+        ("pure_water", "pure_water"),
+    ] {
+        let sample_data = json!({
+            "name": format!("Test {} Sample", expected_type),
+            "type": sample_type,
+            "material_description": "Test material for validation",
+            "location_id": location_id,
+            "treatments": []
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/samples")
+                    .header("content-type", "application/json")
+                    .body(Body::from(sample_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Valid sample type {expected_type} should be accepted. Body: {body:?}"
+        );
     }
 
-    (status, body)
+    // Test invalid sample type
+    let invalid_data = json!({
+        "name": "Invalid Sample",
+        "type": "invalid_type",
+        "material_description": "Test material",
+        "location_id": location_id,
+        "treatments": []
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(invalid_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, _body) = extract_response_body(response).await;
+    assert!(
+        status.is_client_error(),
+        "Invalid sample type should be rejected"
+    );
+}
+
+#[tokio::test]
+async fn test_sample_filtering() {
+    let app = setup_test_app().await;
+
+    // Create dependencies
+    let (_project_id, location_id) = create_test_project_and_location(&app, "FILTERING").await;
+
+    // Create test samples for filtering
+    let sample_types = [("bulk", "bulk"), ("filter", "filter")];
+    for (input_type, display_type) in sample_types {
+        let sample_data = json!({
+            "name": format!("Filter Test {} Sample", display_type),
+            "type": input_type,
+            "material_description": "Test material for filtering",
+            "location_id": location_id,
+            "treatments": []
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/samples")
+                    .header("content-type", "application/json")
+                    .body(Body::from(sample_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, _) = extract_response_body(response).await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+
+    // Test filtering by type
+    let filter_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/samples?filter[type]=bulk")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (filter_status, filter_body) = extract_response_body(filter_response).await;
+    assert_eq!(
+        filter_status,
+        StatusCode::OK,
+        "Type filtering should work: {filter_body:?}"
+    );
+
+    // Test sorting by created_at
+    let sort_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/samples?sort[created_at]=desc")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (sort_status, _) = extract_response_body(sort_response).await;
+    assert_eq!(sort_status, StatusCode::OK, "Sorting should work");
+}
+
+#[tokio::test]
+async fn test_treatment_enum_validation() {
+    let app = setup_test_app().await;
+
+    // Create dependencies
+    let (_project_id, location_id) =
+        create_test_project_and_location(&app, "TREATMENT_VALIDATION").await;
+
+    // Test valid treatment enum values
+    for treatment_name in ["none", "heat", "h2o2"] {
+        let enzyme_volume = if treatment_name == "h2o2" {
+            serde_json::Value::String("0.00005".to_string())
+        } else {
+            serde_json::Value::Null
+        };
+
+        let sample_data = json!({
+            "name": format!("Treatment Test {} Sample", treatment_name),
+            "type": "bulk",
+            "material_description": "Test material for treatment validation",
+            "location_id": location_id,
+            "treatments": [
+                {
+                    "name": treatment_name,
+                    "notes": format!("Test {} treatment", treatment_name),
+                    "enzyme_volume_litres": enzyme_volume
+                }
+            ]
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/samples")
+                    .header("content-type", "application/json")
+                    .body(Body::from(sample_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(response).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Valid treatment {treatment_name} should be accepted. Body: {body:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_create_sample_with_treatments_in_single_request() {
+    let app = setup_test_app().await;
+
+    // Create dependencies
+    let (_project_id, location_id) = create_test_project_and_location(&app, "SINGLE_REQUEST").await;
+
+    // Test creating a sample WITH treatments in a single POST request
+    let sample_data = json!({
+        "name": "Sample With Multiple Treatments",
+        "type": "bulk",
+        "material_description": "Test sample with multiple treatments",
+        "location_id": location_id,
+        "treatments": [
+            {
+                "name": "heat",
+                "notes": "Heat treatment applied",
+                "enzyme_volume_litres": 0.005
+            },
+            {
+                "name": "h2o2",
+                "notes": "Hydrogen peroxide treatment",
+                "enzyme_volume_litres": 0.003
+            }
+        ]
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(response).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Sample creation should succeed. Body: {body:?}"
+    );
+
+    // Verify the sample was created and treatments were created in the same request
+    let sample_id = body["id"].as_str().expect("Sample should have an ID");
+
+    // Get the sample and verify its treatments were created
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(get_response).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "Getting sample should succeed. Body: {body:?}"
+    );
+
+    // Verify treatments array contains both treatments
+    let treatments = body["treatments"]
+        .as_array()
+        .expect("Sample should have treatments array");
+    assert_eq!(
+        treatments.len(),
+        2,
+        "Sample should have exactly two treatments"
+    );
+
+    // Check that both treatments were created correctly
+    let treatment_names: Vec<&str> = treatments
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        treatment_names.contains(&"heat"),
+        "Should contain heat treatment"
+    );
+    assert!(
+        treatment_names.contains(&"h2o2"),
+        "Should contain h2o2 treatment"
+    );
+
+    // Verify treatment details
+    for treatment in treatments {
+        match treatment["name"].as_str().unwrap() {
+            "heat" => {
+                assert_eq!(treatment["notes"], "Heat treatment applied");
+                // Compare as strings since Decimal is serialized as string
+                assert_eq!(treatment["enzyme_volume_litres"], "0.005");
+            }
+            "h2o2" => {
+                assert_eq!(treatment["notes"], "Hydrogen peroxide treatment");
+                assert_eq!(treatment["enzyme_volume_litres"], "0.003");
+            }
+            _ => panic!("Unexpected treatment name"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_create_sample_without_treatments() {
+    let app = setup_test_app().await;
+
+    // Create dependencies
+    let (_project_id, location_id) = create_test_project_and_location(&app, "NO_TREATMENTS").await;
+
+    // Test creating a sample WITHOUT any treatments
+    let sample_data = json!({
+        "name": "Sample Without Treatments",
+        "type": "bulk",
+        "material_description": "Test sample without treatments",
+        "location_id": location_id,
+        // Note: no treatments field provided
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(response).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Sample creation should succeed. Body: {body:?}"
+    );
+
+    // Verify the sample was created without any treatments
+    let sample_id = body["id"].as_str().expect("Sample should have an ID");
+
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(get_response).await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "Getting sample should succeed. Body: {body:?}"
+    );
+
+    // Verify treatments array is empty (no auto-creation)
+    let treatments = body["treatments"]
+        .as_array()
+        .expect("Sample should have treatments array");
+    assert_eq!(
+        treatments.len(),
+        0,
+        "Sample should have no treatments when none were provided"
+    );
 }
 
 /// Helper to create a test location that samples can be assigned to
@@ -50,159 +592,6 @@ async fn create_test_location(app: &axum::Router) -> String {
 }
 
 #[tokio::test]
-async fn test_sample_crud_operations() {
-    let app = setup_test_app().await;
-
-    // Create a test location first (samples can be assigned to locations)
-    let location_id = create_test_location(&app).await;
-
-    // Test creating a sample with treatments
-    let sample_data = json!({
-        "name": format!("Test Sample CRUD {}", uuid::Uuid::new_v4()),
-        "type": "Environmental",
-        "material_description": "Test material for CRUD operations",
-        "extraction_procedure": "Standard extraction",
-        "suspension_volume_litres": 0.001,
-        "location_id": location_id,
-        "remarks": "Test sample for CRUD operations",
-        "treatments": [
-            {
-                "name": "heat",
-                "notes": "Heat treatment at 95°C for 5 minutes",
-                "enzyme_volume_litres": 0.0001
-            }
-        ]
-    });
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/samples")
-                .header("content-type", "application/json")
-                .body(Body::from(sample_data.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let (status, body) = extract_response_body(response).await;
-    
-    if status == StatusCode::CREATED {
-        println!("✅ Sample creation successful");
-        
-        // Validate response structure
-        assert!(body["id"].is_string(), "Response should include ID");
-        assert!(body["name"].as_str().unwrap().contains("Test Sample CRUD"));
-        assert_eq!(body["type"], "Environmental");
-        assert_eq!(body["material_description"], "Test material for CRUD operations");
-        assert!(body["created_at"].is_string());
-        assert!(body["last_updated"].is_string());
-
-        // Validate treatments array
-        if body["treatments"].is_array() {
-            let treatments = body["treatments"].as_array().unwrap();
-            println!("   ✅ Sample has {} treatments", treatments.len());
-            if !treatments.is_empty() {
-                assert_eq!(treatments[0]["name"], "heat");
-                println!("   ✅ Treatment data preserved");
-            }
-        }
-
-        let sample_id = body["id"].as_str().unwrap();
-
-        // Test getting the sample by ID
-        let get_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri(format!("/api/samples/{sample_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (get_status, get_body) = extract_response_body(get_response).await;
-        if get_status == StatusCode::OK {
-            println!("✅ Sample retrieval successful");
-            assert_eq!(get_body["id"], sample_id);
-            assert!(get_body["name"].as_str().unwrap().contains("Test Sample CRUD"));
-            
-            // Validate related data structure
-            if get_body["treatments"].is_array() {
-                println!("   ✅ Treatments array present");
-            }
-            if get_body["experimental_results"].is_array() {
-                println!("   ✅ Experimental results array present");
-            }
-        } else {
-            println!("⚠️  Sample retrieval failed: {get_status}");
-        }
-
-        // Test updating the sample
-        let update_data = json!({
-            "remarks": "Updated remarks for sample",
-            "suspension_volume_litres": 0.002
-        });
-
-        let update_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("PATCH")
-                    .uri(format!("/api/samples/{sample_id}"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(update_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (update_status, update_body) = extract_response_body(update_response).await;
-        if update_status == StatusCode::OK {
-            println!("✅ Sample update successful");
-            assert_eq!(update_body["remarks"], "Updated remarks for sample");
-            assert_eq!(update_body["suspension_volume_litres"], 0.002);
-        } else if update_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Sample update not implemented (405)");
-        } else {
-            println!("📋 Sample update returned: {update_status}");
-        }
-
-        // Test deleting the sample
-        let delete_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("DELETE")
-                    .uri(format!("/api/samples/{sample_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let delete_status = delete_response.status();
-        if delete_status.is_success() {
-            println!("✅ Sample delete successful");
-        } else if delete_status == StatusCode::METHOD_NOT_ALLOWED {
-            println!("⚠️  Sample delete not implemented (405)");
-        } else {
-            println!("📋 Sample delete returned: {delete_status}");
-        }
-        
-    } else {
-        println!("⚠️  Sample creation failed: Status {status}, Body: {body}");
-        // Document the current behavior even if it fails
-        assert!(status.is_client_error() || status.is_server_error(),
-               "Sample creation should either succeed or fail gracefully");
-    }
-}
-
-#[tokio::test]
 async fn test_sample_list_operations() {
     let app = setup_test_app().await;
 
@@ -220,29 +609,43 @@ async fn test_sample_list_operations() {
         .unwrap();
 
     let (list_status, list_body) = extract_response_body(list_response).await;
-    
+
     if list_status == StatusCode::OK {
         println!("✅ Sample listing successful");
         assert!(list_body.is_array(), "Samples list should be an array");
         let samples = list_body.as_array().unwrap();
         println!("Found {} samples in the system", samples.len());
-        
+
         // Validate structure of samples in list
         for sample in samples {
             assert!(sample["id"].is_string(), "Each sample should have ID");
             assert!(sample["name"].is_string(), "Each sample should have name");
             assert!(sample["type"].is_string(), "Each sample should have type");
-            assert!(sample["created_at"].is_string(), "Each sample should have created_at");
-            assert!(sample["last_updated"].is_string(), "Each sample should have last_updated");
-            
+            assert!(
+                sample["created_at"].is_string(),
+                "Each sample should have created_at"
+            );
+            assert!(
+                sample["last_updated"].is_string(),
+                "Each sample should have last_updated"
+            );
+
             // Check related data arrays
-            assert!(sample["treatments"].is_array(), "Each sample should have treatments array");
-            assert!(sample["experimental_results"].is_array(), "Each sample should have experimental_results array");
+            assert!(
+                sample["treatments"].is_array(),
+                "Each sample should have treatments array"
+            );
+            assert!(
+                sample["experimental_results"].is_array(),
+                "Each sample should have experimental_results array"
+            );
         }
     } else {
         println!("⚠️  Sample listing failed: Status {list_status}");
-        assert!(list_status.is_client_error() || list_status.is_server_error(),
-               "Sample listing should either succeed or fail gracefully");
+        assert!(
+            list_status.is_client_error() || list_status.is_server_error(),
+            "Sample listing should either succeed or fail gracefully"
+        );
     }
 }
 
@@ -270,7 +673,10 @@ async fn test_sample_validation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert!(status.is_client_error(), "Should reject incomplete sample data");
+    assert!(
+        status.is_client_error(),
+        "Should reject incomplete sample data"
+    );
     println!("✅ Sample validation working - rejected incomplete data with status {status}");
 
     // Test creating sample with invalid sample type
@@ -293,7 +699,10 @@ async fn test_sample_validation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert!(status.is_client_error(), "Should reject invalid sample type");
+    assert!(
+        status.is_client_error(),
+        "Should reject invalid sample type"
+    );
     println!("✅ Sample type validation working - status {status}");
 
     // Test creating sample with invalid volume (negative number)
@@ -334,11 +743,11 @@ async fn test_sample_filtering_and_sorting() {
     let test_samples = [
         ("Filter Test Sample A", "Environmental", "Air sampling"),
         ("Filter Test Sample B", "Control", "Control sample"),
-        ("Filter Test Sample C", "Environmental", "Water sampling")
+        ("Filter Test Sample C", "Environmental", "Water sampling"),
     ];
 
     let mut created_ids = Vec::new();
-    
+
     for (name, sample_type, description) in test_samples {
         let sample_data = json!({
             "name": format!("{} {}", name, &uuid::Uuid::new_v4().to_string()[..8]),
@@ -382,28 +791,26 @@ async fn test_sample_filtering_and_sorting() {
             .unwrap();
 
         let (filter_status, filter_body) = extract_response_body(filter_response).await;
-        
+
         if filter_status == StatusCode::OK {
             println!("✅ Sample filtering endpoint accessible");
             let filtered_samples = filter_body.as_array().unwrap();
-            println!("Filtered samples by type=Environmental: {} results", filtered_samples.len());
-            
+            println!(
+                "Filtered samples by type=Environmental: {} results",
+                filtered_samples.len()
+            );
+
             // Check if filtering actually works
             let mut filtering_works = true;
             for sample in filtered_samples {
                 if sample["type"] != "Environmental" {
                     filtering_works = false;
-                    println!("🐛 BUG: Filtering returned non-Environmental sample: {:?}", sample["type"]);
                 }
             }
-            
-            if filtering_works && !filtered_samples.is_empty() {
-                println!("✅ Sample filtering appears to work correctly");
-            } else if filtered_samples.is_empty() {
-                println!("📋 Sample filtering returned no results (may be working or broken)");
-            }
-        } else {
-            println!("⚠️  Sample filtering failed: Status {filter_status}");
+            assert!(
+                filtering_works,
+                "Filtering by type did not return expected results"
+            );
         }
 
         // Test filtering by material description
@@ -418,16 +825,13 @@ async fn test_sample_filtering_and_sorting() {
             )
             .await
             .unwrap();
-
         let (material_filter_status, _) = extract_response_body(material_filter_response).await;
-        
-        if material_filter_status == StatusCode::OK {
-            println!("✅ Sample material description filtering endpoint accessible");
-        } else {
-            println!("⚠️  Sample material description filtering failed: Status {material_filter_status}");
-        }
+        assert_eq!(
+            material_filter_status,
+            StatusCode::OK,
+            "Material description filtering should work"
+        );
 
-        // Test sorting by name
         let sort_response = app
             .clone()
             .oneshot(
@@ -441,12 +845,11 @@ async fn test_sample_filtering_and_sorting() {
             .unwrap();
 
         let (sort_status, _) = extract_response_body(sort_response).await;
-        
-        if sort_status == StatusCode::OK {
-            println!("✅ Sample sorting endpoint accessible");
-        } else {
-            println!("⚠️  Sample sorting failed: Status {sort_status}");
-        }
+        assert_eq!(
+            sort_status,
+            StatusCode::OK,
+            "Sample sorting by name should succeed"
+        );
     }
 }
 
@@ -469,7 +872,11 @@ async fn test_sample_not_found() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "Should return 404 for non-existent sample");
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "Should return 404 for non-existent sample"
+    );
     println!("✅ Sample 404 handling working correctly");
 }
 
@@ -510,7 +917,7 @@ async fn test_sample_with_treatments() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    
+
     if status == StatusCode::CREATED {
         let sample_id = body["id"].as_str().unwrap();
         println!("✅ Sample with treatments created successfully");
@@ -519,14 +926,14 @@ async fn test_sample_with_treatments() {
         if body["treatments"].is_array() {
             let treatments = body["treatments"].as_array().unwrap();
             println!("   Sample has {} treatments", treatments.len());
-            
+
             if treatments.len() == 2 {
                 println!("   ✅ Both treatments were created");
-                
+
                 // Validate treatment data
                 let heat_treatment = treatments.iter().find(|t| t["name"] == "heat");
                 let filter_treatment = treatments.iter().find(|t| t["name"] == "filteronly");
-                
+
                 if heat_treatment.is_some() && filter_treatment.is_some() {
                     println!("   ✅ Treatment data preserved correctly");
                 }
@@ -547,13 +954,13 @@ async fn test_sample_with_treatments() {
             .unwrap();
 
         let (get_status, get_body) = extract_response_body(get_response).await;
-        
+
         if get_status == StatusCode::OK {
             println!("✅ Sample with treatments retrieved successfully");
             if get_body["treatments"].is_array() {
                 let treatments = get_body["treatments"].as_array().unwrap();
                 println!("   Retrieved sample has {} treatments", treatments.len());
-                
+
                 if treatments.len() == 2 {
                     println!("   ✅ Sample-treatment relationship working correctly");
                 }
@@ -595,13 +1002,13 @@ async fn test_sample_location_assignment() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    
+
     if status == StatusCode::CREATED {
         println!("✅ Sample with location assignment created successfully");
         assert_eq!(body["location_id"], location_id);
         assert_eq!(body["latitude"], 45.5017);
         assert_eq!(body["longitude"], -73.5673);
-        
+
         // Test that the sample can be retrieved with location info
         let sample_id = body["id"].as_str().unwrap();
         let get_response = app
@@ -660,10 +1067,10 @@ async fn test_sample_volume_and_concentration_fields() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    
+
     if status == StatusCode::CREATED {
         println!("✅ Sample with volume/concentration fields created successfully");
-        
+
         // Validate all numeric fields are preserved
         assert_eq!(body["suspension_volume_litres"], 0.001);
         assert_eq!(body["air_volume_litres"], 10.0);
@@ -672,7 +1079,7 @@ async fn test_sample_volume_and_concentration_fields() {
         assert_eq!(body["well_volume_litres"], 0.0001);
         assert_eq!(body["flow_litres_per_minute"], 0.5);
         assert_eq!(body["total_volume"], 15.0);
-        
+
         println!("   ✅ All volume and concentration fields preserved correctly");
     } else {
         println!("📋 Sample with volume/concentration fields failed: Status {status}");
@@ -704,10 +1111,10 @@ async fn test_sample_experimental_results_structure() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    
+
     if status == StatusCode::CREATED {
         let sample_id = body["id"].as_str().unwrap();
-        
+
         // Get the sample and check the experimental results structure
         let get_response = app
             .clone()
@@ -722,31 +1129,37 @@ async fn test_sample_experimental_results_structure() {
             .unwrap();
 
         let (get_status, get_body) = extract_response_body(get_response).await;
-        
+
         if get_status == StatusCode::OK {
             println!("✅ Sample experimental results structure test");
-            
+
             // Check that experimental_results array is present
             if get_body["experimental_results"].is_array() {
                 let experimental_results = get_body["experimental_results"].as_array().unwrap();
-                println!("   ✅ Experimental results array present ({} items)", experimental_results.len());
-                
+                println!(
+                    "   ✅ Experimental results array present ({} items)",
+                    experimental_results.len()
+                );
+
                 // If there are experimental results, validate their structure
                 for result in experimental_results {
-                    if result["experiment_id"].is_string() &&
-                       result["experiment_name"].is_string() &&
-                       result["well_coordinate"].is_string() &&
-                       result["final_state"].is_string() {
+                    if result["experiment_id"].is_string()
+                        && result["experiment_name"].is_string()
+                        && result["well_coordinate"].is_string()
+                        && result["final_state"].is_string()
+                    {
                         println!("   ✅ Experimental result structure valid");
                     }
                 }
             } else {
                 println!("   ⚠️  Experimental results array missing or wrong type");
             }
-            
+
             println!("   📋 Experimental results loading appears to be working");
         } else {
-            println!("📋 Could not test experimental results - sample retrieval failed: {get_status}");
+            println!(
+                "📋 Could not test experimental results - sample retrieval failed: {get_status}"
+            );
         }
     } else {
         println!("📋 Skipping experimental results test - couldn't create sample");
@@ -759,11 +1172,11 @@ async fn test_sample_complex_workflow() {
 
     println!("📋 SAMPLE COMPLEX WORKFLOW TEST");
     println!("   Testing the full sample lifecycle with all features");
-    
+
     // Step 1: Create location for sample
     let location_id = create_test_location(&app).await;
     println!("   ✅ Step 1: Test location created");
-    
+
     // Step 2: Create comprehensive sample
     let sample_data = json!({
         "name": format!("Complex Workflow Sample {}", uuid::Uuid::new_v4()),
@@ -811,11 +1224,11 @@ async fn test_sample_complex_workflow() {
         .unwrap();
 
     let (create_status, create_body) = extract_response_body(create_response).await;
-    
+
     if create_status == StatusCode::CREATED {
         let sample_id = create_body["id"].as_str().unwrap();
         println!("   ✅ Step 2: Complex sample created successfully");
-        
+
         // Step 3: Verify all data was preserved
         let get_response = app
             .clone()
@@ -832,14 +1245,14 @@ async fn test_sample_complex_workflow() {
         let (get_status, get_body) = extract_response_body(get_response).await;
         if get_status == StatusCode::OK {
             println!("   ✅ Step 3: Sample data retrieval successful");
-            
+
             // Validate comprehensive data
             assert_eq!(get_body["location_id"], location_id);
             assert_eq!(get_body["latitude"], 45.5017);
             assert_eq!(get_body["longitude"], -73.5673);
             assert_eq!(get_body["start_time"], "2025-01-01T10:00:00Z");
             assert_eq!(get_body["stop_time"], "2025-01-01T12:00:00Z");
-            
+
             // Validate treatments
             if get_body["treatments"].is_array() {
                 let treatments = get_body["treatments"].as_array().unwrap();
@@ -847,22 +1260,20 @@ async fn test_sample_complex_workflow() {
                     println!("   ✅ Step 4: All treatments preserved");
                 }
             }
-            
+
             // Validate structure arrays
             if get_body["experimental_results"].is_array() {
                 println!("   ✅ Step 5: Experimental results structure present");
             }
-            
         } else {
             println!("   ⚠️  Step 3: Sample retrieval failed: {get_status}");
         }
-        
+
         println!("   📋 Complex workflow test completed successfully");
-        
     } else {
         println!("   ⚠️  Complex workflow test failed - couldn't create sample: {create_status}");
     }
-    
+
     // This test always passes - it's for workflow documentation
     // Documents sample workflow behavior
 }

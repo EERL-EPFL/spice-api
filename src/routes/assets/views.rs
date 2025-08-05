@@ -39,8 +39,3 @@ where
 
     mutating_router
 }
-
-// Tests require mocked S3 and database setup, which is not included here.
-// #[cfg(test)]
-// mod tests {
-// }
