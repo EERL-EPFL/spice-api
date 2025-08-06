@@ -47,6 +47,7 @@ impl CRUDResource for Location {
     type ActiveModelType = spice_entity::locations::ActiveModel;
     type CreateModel = LocationCreate;
     type UpdateModel = LocationUpdate;
+    type ListModel = Self; // Use the same model for list view for now
 
     const ID_COLUMN: Self::ColumnType = spice_entity::locations::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "locations";
