@@ -4649,7 +4649,11 @@ dependencies = [
 name = "spice_entity"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "chrono",
+ "crudcrate",
+ "crudcrate-derive",
+ "hyper 1.6.0",
  "sea-orm",
  "serde",
  "serde_json",
