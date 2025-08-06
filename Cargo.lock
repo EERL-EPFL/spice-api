@@ -1428,8 +1428,6 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 [[package]]
 name = "crudcrate"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cc4147882996b1fff4a0e68acee8c6db9b2da52f60e3a21ff1124f0e7b9faa5"
 dependencies = [
  "async-trait",
  "axum",
@@ -1446,8 +1444,6 @@ dependencies = [
 [[package]]
 name = "crudcrate-derive"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "336b017f1a05fde7f50eef49942369797f2c4c429a639abf4e6b04ad3f333abf"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -4652,7 +4648,6 @@ dependencies = [
  "axum",
  "chrono",
  "crudcrate",
- "crudcrate-derive",
  "hyper 1.6.0",
  "sea-orm",
  "serde",
