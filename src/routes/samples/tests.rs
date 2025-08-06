@@ -917,7 +917,10 @@ async fn test_sample_with_treatments() {
                 let filter_treatment = treatments.iter().find(|t| t["name"] == "filteronly");
 
                 assert!(heat_treatment.is_some(), "Should find heat treatment");
-                assert!(filter_treatment.is_some(), "Should find filteronly treatment");
+                assert!(
+                    filter_treatment.is_some(),
+                    "Should find filteronly treatment"
+                );
             }
         }
 
@@ -936,12 +939,11 @@ async fn test_sample_with_treatments() {
 
         let (get_status, get_body) = extract_response_body(get_response).await;
 
-        if get_status == StatusCode::OK {
-            if get_body["treatments"].is_array() {
+        if get_status == StatusCode::OK
+            && get_body["treatments"].is_array() {
                 let treatments = get_body["treatments"].as_array().unwrap();
                 assert_eq!(treatments.len(), 2, "Should retrieve both treatments");
             }
-        }
     } else {
         // Sample with treatments creation failed
     }
@@ -1110,6 +1112,18 @@ async fn test_sample_experimental_results_structure() {
                 // If there are experimental results, validate their structure
                 for result in experimental_results {
                     // Validate experimental result structure
+                    assert!(
+                        result["experiment_id"].is_string(),
+                        "Result should have experiment_id"
+                    );
+                    assert!(
+                        result["well_coordinate"].is_string(),
+                        "Result should have well_coordinate"
+                    );
+                    assert!(
+                        result["final_state"].is_string(),
+                        "Result should have final_state"
+                    );
                 }
             } else {
                 // Experimental results array missing or wrong type
@@ -1209,6 +1223,10 @@ async fn test_sample_complex_workflow() {
             if get_body["treatments"].is_array() {
                 let treatments = get_body["treatments"].as_array().unwrap();
                 // Verify all treatments are preserved
+                for treatment in treatments {
+                    assert!(treatment["id"].is_string(), "Treatment should have id");
+                    assert!(treatment["name"].is_string(), "Treatment should have name");
+                }
             }
 
             // Validate structure arrays

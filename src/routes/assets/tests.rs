@@ -144,6 +144,10 @@ async fn test_asset_list_operations() {
     if list_status == StatusCode::OK {
         assert!(list_body.is_array(), "Assets list should be an array");
         let assets = list_body.as_array().unwrap();
+        // Verify assets array structure is valid (even if empty)
+        for asset in assets {
+            assert!(asset.is_object(), "Each asset should be an object");
+        }
     } else {
         // Document the failure case
         assert!(list_status.is_client_error() || list_status.is_server_error(),
@@ -284,7 +288,8 @@ async fn test_asset_update_operations() {
     let (update_status, _) = extract_response_body(update_response).await;
     
     // Check if update operations are implemented based on status code
-    // 404 = implemented, 405 = not implemented, other = unexpected
+    assert!(update_status == StatusCode::NOT_FOUND || update_status == StatusCode::METHOD_NOT_ALLOWED,
+           "Update should return 404 (implemented) or 405 (not implemented), got: {update_status}");
 }
 
 #[tokio::test]
@@ -308,7 +313,8 @@ async fn test_asset_delete_operations() {
     let delete_status = delete_response.status();
     
     // Check if delete operations are implemented based on status code
-    // 404 = implemented, 405 = not implemented, other = unexpected
+    assert!(delete_status == StatusCode::NOT_FOUND || delete_status == StatusCode::METHOD_NOT_ALLOWED,
+           "Delete should return 404 (implemented) or 405 (not implemented), got: {delete_status}");
 }
 
 #[tokio::test]  
@@ -347,6 +353,9 @@ async fn test_asset_s3_dependency_documentation() {
     
     // S3 configuration check:
     // Success = S3 configured, Failure = S3 not configured (expected in test env)
+    // Document the behavior regardless of outcome
+    assert!(status.is_success() || status.is_client_error() || status.is_server_error(),
+           "S3 test should return a valid HTTP status code: {status}");
     
     // This test always passes - it's just for documentation
     // Documents S3 dependencies

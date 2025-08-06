@@ -383,6 +383,7 @@ async fn test_time_point_endpoint() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
+            eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -461,6 +462,7 @@ async fn test_time_point_endpoint() {
     let response_text = String::from_utf8_lossy(&body_bytes);
 
     if status != StatusCode::OK {
+        eprintln!("Request failed with status {status}: {response_text}");
     }
 
     assert_eq!(status, StatusCode::OK, "Time point creation should work");
@@ -490,6 +492,7 @@ async fn test_time_point_with_96_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
+            eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -601,6 +604,7 @@ async fn test_time_point_with_384_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
+            eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -712,6 +716,7 @@ async fn test_time_point_with_custom_tray_configuration() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
+            eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -828,6 +833,7 @@ async fn test_time_point_with_minimal_data() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
+            eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -1072,6 +1078,7 @@ async fn test_experiment_with_phase_transitions_data() {
     let experiment_id = match setup_experiment_with_tray_config(&app).await {
         Ok(id) => id,
         Err(e) => {
+            eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -1084,7 +1091,6 @@ async fn test_experiment_with_phase_transitions_data() {
 
     // Step 4: Test experiment results retrieval
     test_experiment_results_retrieval(&app, &experiment_id).await;
-
 }
 
 /// Setup experiment with tray configuration
@@ -1594,10 +1600,10 @@ async fn test_experiment_filtering_and_sorting() {
             for experiment in filtered_experiments {
                 assert_eq!(
                     experiment["device_name"], "DeviceA",
-                    "Filtering should only return DeviceA experiments, but got: {:?}", experiment["device_name"]
+                    "Filtering should only return DeviceA experiments, but got: {:?}",
+                    experiment["device_name"]
                 );
             }
-        } else {
         }
 
         // Test sorting by name
@@ -1615,9 +1621,7 @@ async fn test_experiment_filtering_and_sorting() {
 
         let (sort_status, _) = extract_response_body(sort_response).await;
 
-        if sort_status == StatusCode::OK {
-        } else {
-        }
+        if sort_status == StatusCode::OK {}
     }
 }
 
@@ -1693,12 +1697,21 @@ async fn test_experiment_excel_upload_endpoint() {
 
         let (upload_status, _upload_body) = extract_response_body(upload_response).await;
 
-        if upload_status == StatusCode::BAD_REQUEST {
-        } else if upload_status == StatusCode::UNPROCESSABLE_ENTITY {
-        } else if upload_status == StatusCode::NOT_FOUND {
-        } else {
-        }
-    } else {
+        assert_ne!(
+            upload_status,
+            StatusCode::BAD_REQUEST,
+            "Upload should not be bad request"
+        );
+        assert_ne!(
+            upload_status,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Upload should not be unprocessable entity"
+        );
+        assert_ne!(
+            upload_status,
+            StatusCode::NOT_FOUND,
+            "Upload should not be not found"
+        );
     }
 }
 
@@ -1757,9 +1770,7 @@ async fn test_experiment_results_endpoint() {
                 println!("   Results returned unknown structure: {results_body:?}");
             }
         } else if results_status == StatusCode::NOT_FOUND {
-        } else {
         }
-    } else {
     }
 }
 
@@ -1792,7 +1803,6 @@ async fn test_experiment_process_status_endpoint() {
             "✅ Process status endpoint accessible - correctly returns 404 for non-existent job"
         );
     } else if status_status == StatusCode::OK {
-    } else {
     }
 }
 
@@ -1840,7 +1850,6 @@ async fn test_excel_upload_complete_pipeline() {
             "⚠️ No results_summary found after upload - this may be expected if processing is async"
         );
     }
-
 }
 
 // Legacy DB-dependent test (commented out to fix clippy warnings)
@@ -2120,7 +2129,6 @@ async fn test_validate_specific_well_transitions() {
             ],
         ),
     ];
-
 
     for (tray, well_coord, timestamp, expected_temps) in test_cases {
         println!(
@@ -2441,9 +2449,7 @@ fn validate_experiment_results_structure(results_summary: &serde_json::Value) {
 
 /// Validate well summaries structure
 fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
-
     if let Some(summaries) = well_summaries.as_array() {
-
         // If no summaries, this might be before upload - just return
         if summaries.is_empty() {
             return;
@@ -2558,7 +2564,6 @@ fn load_test_excel_file() -> Vec<u8> {
 
 /// Validate Excel upload results
 fn validate_excel_upload_results(upload_result: &serde_json::Value) {
-
     // Check for status "completed"
     let is_successful = upload_result["status"].as_str() == Some("completed");
     assert!(
@@ -2582,7 +2587,6 @@ fn validate_excel_upload_results(upload_result: &serde_json::Value) {
             "Processing should complete in under 10 seconds, took {processing_time}ms"
         );
     }
-
 }
 
 /// Validate experiment results via API
@@ -2601,7 +2605,6 @@ fn validate_experiment_results_via_api(experiment_details: &serde_json::Value) {
         validate_experiment_results_structure(results_summary);
         validate_well_summaries_structure(&results_summary["well_summaries"]);
     }
-
 }
 
 /// Validate that uploaded data actually exists in the results
@@ -2665,8 +2668,6 @@ fn validate_well_phase_transitions(results_summary: &serde_json::Value) {
         println!("   - Wells with transitions: {wells_with_transitions}");
         println!("   - Total transitions: {total_transitions}");
 
-        if wells_with_transitions > 0 {
-        } else {
-        }
+        if wells_with_transitions > 0 {}
     }
 }

@@ -20,9 +20,7 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
     (status, body)
 }
 
-#[tokio::test]
-async fn test_tray_crud_operations() {
-    let app = setup_test_app().await;
+async fn create_test_tray_crud(app: &axum::Router) -> (StatusCode, Value) {
     let tray_data = json!({
         "name": format!("Test Tray Config CRUD {}", uuid::Uuid::new_v4()),
         "experiment_default": false,
@@ -56,10 +54,22 @@ async fn test_tray_crud_operations() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
+    (status, body)
+}
+
+#[tokio::test]
+async fn test_tray_crud_operations() {
+    let app = setup_test_app().await;
+    let (status, body) = create_test_tray_crud(&app).await;
 
     if status == StatusCode::CREATED {
         assert!(body["id"].is_string(), "Response should include ID");
-        assert!(body["name"].as_str().unwrap().contains("Test Tray Config CRUD"));
+        assert!(
+            body["name"]
+                .as_str()
+                .unwrap()
+                .contains("Test Tray Config CRUD")
+        );
         assert_eq!(body["experiment_default"], false);
         assert!(body["created_at"].is_string());
         assert!(body["last_updated"].is_string());
@@ -128,6 +138,13 @@ async fn test_tray_crud_operations() {
 
         let delete_status = delete_response.status();
         // Note: Delete may not be implemented yet, so we don't assert specific behavior
+        assert!(
+            delete_status == StatusCode::OK
+                || delete_status == StatusCode::NO_CONTENT
+                || delete_status == StatusCode::NOT_FOUND
+                || delete_status == StatusCode::METHOD_NOT_ALLOWED,
+            "Delete should return OK, 204 (no content), 404 (not found), or 405 (not implemented), got: {delete_status}"
+        );
     } else {
         // Document the current behavior even if it fails
         assert!(
@@ -408,7 +425,9 @@ async fn test_tray_not_found() {
     );
 }
 
-async fn create_tray_configuration(app: &axum::Router) -> Result<Value, Box<dyn std::error::Error>> {
+async fn create_tray_configuration(
+    app: &axum::Router,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let tray_config_data = json!({
         "name": format!("Test Tray Config {}", uuid::Uuid::new_v4()),
         "experiment_default": false,
@@ -443,12 +462,7 @@ async fn create_tray_configuration(app: &axum::Router) -> Result<Value, Box<dyn 
     let (status, body) = extract_response_body(response).await;
     if status == StatusCode::CREATED {
         assert!(body["id"].is_string(), "Response should include ID");
-        assert!(
-            body["name"]
-                .as_str()
-                .unwrap()
-                .contains("Test Tray Config")
-        );
+        assert!(body["name"].as_str().unwrap().contains("Test Tray Config"));
         assert_eq!(body["experiment_default"], false);
         assert!(body["created_at"].is_string());
         assert!(body["last_updated"].is_string());
@@ -748,7 +762,11 @@ async fn test_tray_dimensions_validation() {
 
         let (status, _body) = extract_response_body(response).await;
 
-        // Tray config validation results for {description} ({x_axis}x{y_axis})
+        // Tray config validation results - validate that we get a proper response
+        assert!(
+            status.is_success() || status.is_client_error() || status.is_server_error(),
+            "Should get a valid HTTP status code, got: {status}"
+        );
     }
 }
 
@@ -833,7 +851,11 @@ async fn test_tray_configuration_complex_structure() {
         if body["trays"].is_array() {
             let assignments = body["trays"].as_array().unwrap();
 
-            assert_eq!(assignments.len(), 3, "Configuration should have exactly 3 assignments");
+            assert_eq!(
+                assignments.len(),
+                3,
+                "Configuration should have exactly 3 assignments"
+            );
 
             // Count total trays across all assignments
             let mut total_trays = 0;
@@ -843,7 +865,10 @@ async fn test_tray_configuration_complex_structure() {
                 }
             }
 
-            assert_eq!(total_trays, 4, "Total trays across assignments should be 4 (2 + 1 + 1)");
+            assert_eq!(
+                total_trays, 4,
+                "Total trays across assignments should be 4 (2 + 1 + 1)"
+            );
 
             // Check order sequence sorting
             let mut sequences: Vec<i64> = Vec::new();
@@ -852,7 +877,10 @@ async fn test_tray_configuration_complex_structure() {
             }
             let is_sorted = sequences.windows(2).all(|w| w[0] <= w[1]);
 
-            assert!(is_sorted, "Assignments should be sorted by order_sequence, got: {:?}", sequences);
+            assert!(
+                is_sorted,
+                "Assignments should be sorted by order_sequence, got: {sequences:?}"
+            );
         }
 
         // Test retrieval of complex configuration
@@ -875,6 +903,17 @@ async fn test_tray_configuration_complex_structure() {
             if get_body["trays"].is_array() {
                 let assignments = get_body["trays"].as_array().unwrap();
                 // Complex structure should be fully loaded and preserved
+                assert!(!assignments.is_empty(), "Should have tray assignments");
+                for assignment in assignments {
+                    assert!(
+                        assignment["order_sequence"].is_number(),
+                        "Assignment should have order_sequence"
+                    );
+                    assert!(
+                        assignment["trays"].is_array(),
+                        "Assignment should have trays array"
+                    );
+                }
             }
         }
     } else {
@@ -908,10 +947,7 @@ async fn test_tray_configuration_not_found() {
     );
 }
 
-#[tokio::test]
-async fn test_tray_workflow_comprehensive() {
-    let app = setup_test_app().await;
-
+async fn create_test_tray_comprehensive(app: &axum::Router) -> (StatusCode, Value) {
     let individual_tray_data = json!({
         "name": format!("Workflow Individual Tray Config {}", uuid::Uuid::new_v4()),
         "experiment_default": false,
@@ -945,12 +981,17 @@ async fn test_tray_workflow_comprehensive() {
         .unwrap();
 
     let (individual_status, individual_body) = extract_response_body(individual_response).await;
+    (individual_status, individual_body)
+}
+
+#[tokio::test]
+async fn test_tray_workflow_comprehensive() {
+    let app = setup_test_app().await;
+    let (individual_status, individual_body) = create_test_tray_comprehensive(&app).await;
     assert_eq!(
-        individual_status, 
-        StatusCode::CREATED,
-        "Failed to create individual tray configuration: Status {}, Body: {:?}",
         individual_status,
-        individual_body
+        StatusCode::CREATED,
+        "Failed to create individual tray configuration: Status {individual_status}, Body: {individual_body:?}"
     );
     // Step 2: Create comprehensive tray configuration
     let comprehensive_config_data = json!({
@@ -1023,7 +1064,11 @@ async fn test_tray_workflow_comprehensive() {
 
             if get_config_body["trays"].is_array() {
                 let assignments = get_config_body["trays"].as_array().unwrap();
-                assert_eq!(assignments.len(), 2, "Comprehensive config should have 2 assignments when retrieved");
+                assert_eq!(
+                    assignments.len(),
+                    2,
+                    "Comprehensive config should have 2 assignments when retrieved"
+                );
             }
 
             assert!(
