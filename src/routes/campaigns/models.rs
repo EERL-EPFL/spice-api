@@ -56,23 +56,23 @@ impl CRUDResource for Location {
     const RESOURCE_NAME_SINGULAR: &'static str = "location";
     const RESOURCE_DESCRIPTION: &'static str = "This resource allows the data hierarchically beneath each area to be allocated to a specific location. This is useful for grouping data together for analysis. Locations can be assigned to projects for better organization.";
 
-    async fn get_all(
-        db: &DatabaseConnection,
-        condition: &Condition,
-        order_column: Self::ColumnType,
-        order_direction: Order,
-        offset: u64,
-        limit: u64,
-    ) -> Result<Vec<Self>, DbErr> {
-        let models = Self::EntityType::find()
-            .filter(condition.clone())
-            .order_by(order_column, order_direction)
-            .offset(offset)
-            .limit(limit)
-            .all(db)
-            .await?;
-        Ok(models.into_iter().map(Self::from).collect())
-    }
+    // async fn get_all(
+    //     db: &DatabaseConnection,
+    //     condition: &Condition,
+    //     order_column: Self::ColumnType,
+    //     order_direction: Order,
+    //     offset: u64,
+    //     limit: u64,
+    // ) -> Result<Vec<Self>, DbErr> {
+    //     let models = Self::EntityType::find()
+    //         .filter(condition.clone())
+    //         .order_by(order_column, order_direction)
+    //         .offset(offset)
+    //         .limit(limit)
+    //         .all(db)
+    //         .await?;
+    //     Ok(models.into_iter().map(Self::from).collect())
+    // }
 
     async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
         let model: Model = match Self::EntityType::find_by_id(id).one(db).await? {

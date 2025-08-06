@@ -271,13 +271,13 @@ async fn test_location_filtering_and_pagination() {
     let items = filter_body.as_array().unwrap();
     assert!(items.len() >= 3, "Should find at least 3 locations");
 
-    // Test pagination
+    // Test React-Admin pagination
     let page_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/locations?page_size=2&page=1")
+                .uri("/api/locations?range=[0,1]")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -286,14 +286,11 @@ async fn test_location_filtering_and_pagination() {
 
     let (page_status, page_body) = extract_response_body(page_response).await;
     assert_eq!(page_status, StatusCode::OK, "Failed to paginate locations");
-    let paginated_items = page_body.as_array().unwrap();
 
-    // KNOWN ISSUE: Pagination implementation - page_size parameter is not being respected
-    // For now, just verify we got some items and the structure is correct
-    assert!(!paginated_items.is_empty(), "Should return some items");
-    println!(
-        "📋 KNOWN ISSUE: Pagination limit not respected. Expected <= 2 items, got {} (this is expected behavior until pagination is implemented)",
-        paginated_items.len()
+    let paginated_items = page_body.as_array().unwrap().len();
+    assert!(
+        paginated_items == 2,
+        "Should return 2 items. returned: {paginated_items}"
     );
 }
 
@@ -325,7 +322,10 @@ async fn create_test_location(
 
     if status == StatusCode::CREATED {
         // Validate response structure - this assertion serves as success confirmation
-        assert!(body["id"].is_string(), "Location creation successful - Response should include ID");
+        assert!(
+            body["id"].is_string(),
+            "Location creation successful - Response should include ID"
+        );
         assert!(
             body["name"]
                 .as_str()
@@ -362,7 +362,10 @@ async fn test_location_retrieval(app: &axum::Router, location_id: &str) {
     let (get_status, get_body) = extract_response_body(get_response).await;
     if get_status == StatusCode::OK {
         // This assertion confirms successful retrieval
-        assert_eq!(get_body["id"], location_id, "Location retrieval successful - ID should match");
+        assert_eq!(
+            get_body["id"], location_id,
+            "Location retrieval successful - ID should match"
+        );
         assert!(
             get_body["name"]
                 .as_str()
@@ -405,7 +408,10 @@ async fn test_location_update(app: &axum::Router, location_id: &str) -> bool {
     match update_status {
         StatusCode::OK => {
             // This assertion confirms successful update
-            assert_eq!(update_body["comment"], "Updated comment for location", "Location update successful - Comment should be updated");
+            assert_eq!(
+                update_body["comment"], "Updated comment for location",
+                "Location update successful - Comment should be updated"
+            );
             true
         }
         StatusCode::METHOD_NOT_ALLOWED => {
@@ -444,7 +450,9 @@ async fn test_location_deletion(app: &axum::Router, location_id: &str) -> bool {
             false
         }
         StatusCode::NOT_FOUND => {
-            println!("📋 Location delete returned 404 (location not found) - This is expected for non-existent resources");
+            println!(
+                "📋 Location delete returned 404 (location not found) - This is expected for non-existent resources"
+            );
             false
         }
         _ => {
@@ -475,7 +483,10 @@ async fn test_location_list_operations() {
 
     if list_status == StatusCode::OK {
         // This assertion confirms successful listing
-        assert!(list_body.is_array(), "Location listing successful - Response should be an array");
+        assert!(
+            list_body.is_array(),
+            "Location listing successful - Response should be an array"
+        );
         let locations = list_body.as_array().unwrap();
 
         // Validate structure of locations in list
@@ -574,11 +585,14 @@ async fn test_location_filtering_and_sorting() {
             if non_matching_count == 0 && !filtered_locations.is_empty() {
                 println!("✅ Location filtering appears to work correctly");
             } else if filtered_locations.is_empty() {
-                println!("📋 Location filtering returned no results (may be working or not implemented)");
+                println!(
+                    "📋 Location filtering returned no results (may be working or not implemented)"
+                );
             } else {
                 println!(
                     "📋 KNOWN ISSUE: Location filtering returned {} non-matching results out of {} total",
-                    non_matching_count, filtered_locations.len()
+                    non_matching_count,
+                    filtered_locations.len()
                 );
             }
         } else {
@@ -856,7 +870,7 @@ async fn test_location_complete_lifecycle() {
             // Use the unused update helper function
             let _update_success = test_location_update(&app, &location_id).await;
 
-            // Use the unused deletion helper function  
+            // Use the unused deletion helper function
             let _delete_success = test_location_deletion(&app, &location_id).await;
 
             println!("✅ Complete location lifecycle test passed using helper functions");
