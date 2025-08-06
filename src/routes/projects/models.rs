@@ -1,4 +1,4 @@
-use super::locations::Location;
+use crate::routes::locations::models::Location;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use sea_orm::entity::prelude::*;
@@ -36,11 +36,11 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::locations::Entity")]
+    #[sea_orm(has_many = "crate::routes::locations::models::Entity")]
     Locations,
 }
 
-impl Related<super::locations::Entity> for Entity {
+impl Related<crate::routes::locations::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Locations.def()
     }
@@ -54,8 +54,8 @@ async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Project, DbErr> {
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Project not found".to_string()))?;
 
-    let locations: Vec<super::locations::Location> = model
-        .find_related(super::locations::Entity)
+    let locations: Vec<crate::routes::locations::models::Location> = model
+        .find_related(crate::routes::locations::models::Entity)
         .all(db)
         .await?
         .into_iter()

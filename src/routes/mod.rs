@@ -1,11 +1,10 @@
-mod assets;
-mod campaigns;
-mod experiments;
-mod locations;
-mod projects;
-mod samples;
+pub mod assets;
+pub mod experiments;
+pub mod locations;
+pub mod projects;
+pub mod samples;
 pub mod trays;
-mod treatments;
+pub mod treatments;
 
 use crate::common::state::AppState;
 use crate::config::Config;

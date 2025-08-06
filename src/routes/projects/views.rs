@@ -1,8 +1,8 @@
+pub use super::models::{Project, router as crudrouter};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::CRUDResource;
-pub use spice_entity::projects::{Project, router as crudrouter};
 use utoipa_axum::router::OpenApiRouter;
 
 pub fn router(state: &AppState) -> OpenApiRouter {

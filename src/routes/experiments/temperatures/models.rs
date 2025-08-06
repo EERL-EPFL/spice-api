@@ -25,24 +25,24 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::experiments::Entity",
+        belongs_to = "crate::routes::experiments::models::Entity",
         from = "Column::ExperimentId",
-        to = "super::experiments::Column::Id",
+        to = "crate::routes::experiments::models::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
     Experiments,
-    #[sea_orm(has_many = "super::well_phase_transitions::Entity")]
+    #[sea_orm(has_many = "crate::routes::experiments::phase_transitions::models::Entity")]
     WellPhaseTransitions,
 }
 
-impl Related<super::experiments::Entity> for Entity {
+impl Related<crate::routes::experiments::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Experiments.def()
     }
 }
 
-impl Related<super::well_phase_transitions::Entity> for Entity {
+impl Related<crate::routes::experiments::phase_transitions::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::WellPhaseTransitions.def()
     }

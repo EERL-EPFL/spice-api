@@ -19,30 +19,30 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::tray_configurations::Entity",
+        belongs_to = "crate::routes::trays::configurations::models::Entity",
         from = "Column::TrayConfigurationId",
-        to = "super::tray_configurations::Column::Id",
+        to = "crate::routes::trays::configurations::models::Column::Id",
         on_update = "NoAction",
         on_delete = "NoAction"
     )]
     TrayConfigurations,
     #[sea_orm(
-        belongs_to = "super::trays::Entity",
+        belongs_to = "crate::routes::trays::models::Entity",
         from = "Column::TrayId",
-        to = "super::trays::Column::Id",
+        to = "crate::routes::trays::models::Column::Id",
         on_update = "NoAction",
         on_delete = "NoAction"
     )]
     Trays,
 }
 
-impl Related<super::tray_configurations::Entity> for Entity {
+impl Related<crate::routes::trays::configurations::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TrayConfigurations.def()
     }
 }
 
-impl Related<super::trays::Entity> for Entity {
+impl Related<crate::routes::trays::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Trays.def()
     }

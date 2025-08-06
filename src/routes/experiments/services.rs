@@ -1,12 +1,18 @@
-use super::models::{
+use super::models_old::{
     ExperimentResultsSummary, LocationInfo, RegionInput, SampleInfo, TemperatureProbeValues,
     TrayInfo, TreatmentInfo, WellSummary,
 };
 use crate::routes::trays::services::{WellCoordinate, coordinates_to_str};
+use crate::routes::{
+    experiments::models as experiments,
+    experiments::phase_transitions::models as well_phase_transitions,
+    experiments::temperatures::models as temperature_readings,
+    trays::configuration_assignments::models as tray_configuration_assignments,
+    trays::regions::models as regions, trays::wells::models as wells,
+};
 use chrono::Utc;
 use rust_decimal::Decimal;
 use sea_orm::{ActiveValue, ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
-use spice_entity::{experiments, tray_configuration_assignments};
 use uuid::Uuid;
 
 // Generate experiment results summary
@@ -15,8 +21,6 @@ pub(super) async fn build_results_summary(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsSummary>, DbErr> {
-    use spice_entity::{regions, temperature_readings, well_phase_transitions, wells};
-
     // Get all temperature readings for this experiment to determine time span
     let temp_readings_data = temperature_readings::Entity::find()
         .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
@@ -77,14 +81,14 @@ pub(super) async fn build_results_summary(
     let trays_data = if tray_ids.is_empty() {
         vec![]
     } else {
-        spice_entity::trays::Entity::find()
-            .filter(spice_entity::trays::Column::Id.is_in(tray_ids))
+        crate::routes::trays::models::Entity::find()
+            .filter(crate::routes::trays::models::Column::Id.is_in(tray_ids))
             .all(db)
             .await?
     };
 
     // Create tray lookup map by ID
-    let tray_map: std::collections::HashMap<Uuid, &spice_entity::trays::Model> =
+    let tray_map: std::collections::HashMap<Uuid, &crate::routes::trays::models::Model> =
         trays_data.iter().map(|t| (t.id, t)).collect();
 
     // Count wells by final state
@@ -146,7 +150,10 @@ pub(super) async fn build_results_summary(
 
     let mut treatment_map = std::collections::HashMap::new();
     if !treatment_ids.is_empty() {
-        use spice_entity::{locations, samples, treatments};
+        use crate::routes::{
+            locations::models as locations, samples::models as samples,
+            treatments::models as treatments,
+        };
 
         let treatments_data = treatments::Entity::find()
             .filter(treatments::Column::Id.is_in(treatment_ids))
@@ -375,13 +382,13 @@ pub(super) fn create_region_active_models(
     experiment_id: Uuid,
     regions: Vec<RegionInput>,
     _db: &impl ConnectionTrait,
-) -> Vec<spice_entity::regions::ActiveModel> {
+) -> Vec<crate::routes::trays::regions::models::ActiveModel> {
     let mut active_models = Vec::new();
 
     for region in regions {
         let dilution_factor = region.dilution.as_ref().and_then(|s| s.parse::<i32>().ok());
 
-        let active_model = spice_entity::regions::ActiveModel {
+        let active_model = crate::routes::trays::regions::models::ActiveModel {
             id: ActiveValue::Set(Uuid::new_v4()),
             experiment_id: ActiveValue::Set(experiment_id),
             treatment_id: ActiveValue::Set(region.treatment_id),
@@ -409,21 +416,22 @@ pub(super) async fn fetch_treatment_info(
     treatment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<TreatmentInfo>, DbErr> {
-    let treatment = spice_entity::treatments::Entity::find_by_id(treatment_id)
+    let treatment = crate::routes::treatments::models::Entity::find_by_id(treatment_id)
         .one(db)
         .await?;
 
     if let Some(treatment) = treatment {
         let sample_info = if let Some(sample_id) = treatment.sample_id {
-            let sample = spice_entity::samples::Entity::find_by_id(sample_id)
+            let sample = crate::routes::samples::models::Entity::find_by_id(sample_id)
                 .one(db)
                 .await?;
 
             if let Some(sample) = sample {
                 let location_info = if let Some(location_id) = sample.location_id {
-                    let location = spice_entity::locations::Entity::find_by_id(location_id)
-                        .one(db)
-                        .await?;
+                    let location =
+                        crate::routes::locations::models::Entity::find_by_id(location_id)
+                            .one(db)
+                            .await?;
 
                     location.map(|l| LocationInfo {
                         id: l.id,
@@ -463,7 +471,11 @@ pub(super) async fn fetch_tray_info_by_sequence(
     tray_sequence_id: i32,
     db: &impl ConnectionTrait,
 ) -> Result<Option<TrayInfo>, DbErr> {
-    use spice_entity::{experiments, tray_configuration_assignments, trays};
+    use crate::routes::{
+        experiments::models as experiments,
+        trays::configuration_assignments::models as tray_configuration_assignments,
+        trays::models as trays,
+    };
 
     // Get the experiment to find its tray configuration
     let experiment = experiments::Entity::find_by_id(experiment_id)
@@ -500,7 +512,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
 
 // Convert region model back to RegionInput for response
 pub(super) async fn region_model_to_input_with_treatment(
-    region: spice_entity::regions::Model,
+    region: crate::routes::trays::regions::models::Model,
     db: &impl ConnectionTrait,
 ) -> Result<RegionInput, DbErr> {
     let treatment_info = if let Some(treatment_id) = region.treatment_id {

@@ -1,4 +1,4 @@
-use super::models::{Experiment, ExperimentCreate, ExperimentUpdate};
+use super::models_old::{Experiment, ExperimentCreate, ExperimentUpdate};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use crate::external::s3::{download_assets, get_client};
@@ -9,8 +9,8 @@ use axum::{extract::Multipart, response::Response, routing::get};
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
 use sea_orm::ActiveValue::Set;
-use sea_orm::entity::prelude::*;
 use sea_orm::ConnectionTrait;
+use sea_orm::entity::prelude::*;
 use serde::Serialize;
 use spice_entity::s3_assets;
 use std::convert::TryInto;
@@ -88,7 +88,7 @@ pub async fn upload_file(
     mut infile: Multipart,
 ) -> Result<Json<UploadResponse>, (StatusCode, String)> {
     // Check if the experiment exists
-    if spice_entity::experiments::Entity::find_by_id(experiment_id)
+    if super::models::Entity::find_by_id(experiment_id)
         .one(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?

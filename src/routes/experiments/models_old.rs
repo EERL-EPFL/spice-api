@@ -1,6 +1,8 @@
 use super::services::{
     build_results_summary, create_region_active_models, region_model_to_input_with_treatment,
 };
+use crate::routes::experiments::models::Model;
+use crate::routes::treatments::models::TreatmentName;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
@@ -10,8 +12,6 @@ use sea_orm::{
     QuerySelect, TransactionTrait, entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use spice_entity::experiments::Model;
-use spice_entity::sea_orm_active_enums::TreatmentName;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -127,8 +127,8 @@ struct TrayRegions {
     pub last_updated: DateTime<Utc>,
 }
 
-impl From<spice_entity::regions::Model> for TrayRegions {
-    fn from(region: spice_entity::regions::Model) -> Self {
+impl From<crate::routes::trays::regions::models::Model> for TrayRegions {
+    fn from(region: crate::routes::trays::regions::models::Model) -> Self {
         Self {
             id: region.id,
             experiment_id: region.experiment_id,
@@ -148,7 +148,7 @@ impl From<spice_entity::regions::Model> for TrayRegions {
 }
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "spice_entity::experiments::ActiveModel"]
+#[active_model = "crate::routes::experiments::models::ActiveModel"]
 pub struct Experiment {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
@@ -198,14 +198,14 @@ impl From<Model> for Experiment {
 
 #[async_trait]
 impl CRUDResource for Experiment {
-    type EntityType = spice_entity::experiments::Entity;
-    type ColumnType = spice_entity::experiments::Column;
-    type ActiveModelType = spice_entity::experiments::ActiveModel;
+    type EntityType = crate::routes::experiments::models::Entity;
+    type ColumnType = crate::routes::experiments::models::Column;
+    type ActiveModelType = crate::routes::experiments::models::ActiveModel;
     type CreateModel = ExperimentCreate;
     type UpdateModel = ExperimentUpdate;
     type ListModel = Self; // Use the same model for list view for now
 
-    const ID_COLUMN: Self::ColumnType = spice_entity::experiments::Column::Id;
+    const ID_COLUMN: Self::ColumnType = crate::routes::experiments::models::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "experiments";
     const RESOURCE_NAME_SINGULAR: &'static str = "experiment";
     const RESOURCE_DESCRIPTION: &'static str =
@@ -222,12 +222,12 @@ impl CRUDResource for Experiment {
                 )))?;
 
         let s3_assets = model
-            .find_related(spice_entity::s3_assets::Entity)
+            .find_related(crate::routes::assets::models::Entity)
             .all(db)
             .await?;
 
         let regions = model
-            .find_related(spice_entity::regions::Entity)
+            .find_related(crate::routes::trays::regions::models::Entity)
             .all(db)
             .await?;
 
@@ -295,8 +295,8 @@ impl CRUDResource for Experiment {
         // Handle regions update - delete existing regions and create new ones
         if !regions.is_empty() {
             // Delete existing regions for this experiment
-            spice_entity::regions::Entity::delete_many()
-                .filter(spice_entity::regions::Column::ExperimentId.eq(id))
+            crate::routes::trays::regions::models::Entity::delete_many()
+                .filter(crate::routes::trays::regions::models::Column::ExperimentId.eq(id))
                 .exec(&txn)
                 .await?;
 
@@ -334,12 +334,12 @@ impl CRUDResource for Experiment {
 
         for model in models {
             let s3_assets = model
-                .find_related(spice_entity::s3_assets::Entity)
+                .find_related(crate::routes::assets::models::Entity)
                 .all(db)
                 .await?;
 
             let regions = model
-                .find_related(spice_entity::regions::Entity)
+                .find_related(crate::routes::trays::regions::models::Entity)
                 .all(db)
                 .await?;
 

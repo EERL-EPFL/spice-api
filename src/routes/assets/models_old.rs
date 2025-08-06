@@ -1,4 +1,5 @@
 use crate::external::s3::delete_from_s3;
+use crate::routes::assets::models::Model as S3Assets;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
@@ -7,12 +8,11 @@ use sea_orm::{
     entity::prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use spice_entity::s3_assets::Model as S3Assets;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "spice_entity::s3_assets::ActiveModel"]
+#[active_model = "crate::routes::assets::models::ActiveModel"]
 pub struct Asset {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     id: Uuid,
@@ -52,14 +52,14 @@ impl From<S3Assets> for Asset {
 
 #[async_trait]
 impl CRUDResource for Asset {
-    type EntityType = spice_entity::s3_assets::Entity;
-    type ColumnType = spice_entity::s3_assets::Column;
-    type ActiveModelType = spice_entity::s3_assets::ActiveModel;
+    type EntityType = crate::routes::assets::models::Entity;
+    type ColumnType = crate::routes::assets::models::Column;
+    type ActiveModelType = crate::routes::assets::models::ActiveModel;
     type CreateModel = AssetCreate;
     type UpdateModel = AssetUpdate;
     type ListModel = Self; // Use the same model for list view for now
 
-    const ID_COLUMN: Self::ColumnType = spice_entity::s3_assets::Column::Id;
+    const ID_COLUMN: Self::ColumnType = crate::routes::assets::models::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "assets";
     const RESOURCE_NAME_SINGULAR: &'static str = "asset";
     const RESOURCE_DESCRIPTION: &'static str = "This resource represents assets stored in S3, including metadata such as file size, type, and upload details.";

@@ -1,4 +1,4 @@
-use crate::routes::experiments::models::Experiment;
+use crate::routes::experiments::models_old::Experiment;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
@@ -250,8 +250,8 @@ impl CRUDResource for TrayConfiguration {
             }
         };
 
-        let experiments: Vec<Experiment> = match spice_entity::experiments::Entity::find()
-            .filter(spice_entity::experiments::Column::TrayConfigurationId.eq(id))
+        let experiments: Vec<Experiment> = match crate::routes::experiments::models::Entity::find()
+            .filter(crate::routes::experiments::models::Column::TrayConfigurationId.eq(id))
             .all(db)
             .await
         {

@@ -1,10 +1,10 @@
 use crate::config::Config;
+use crate::routes::assets::models::Model as S3Assets;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::{Client as S3Client, config::Region};
 use axum::http::StatusCode;
 use futures::stream::{self, StreamExt};
-use spice_entity::s3_assets::Model as S3Assets;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;

@@ -1,7 +1,7 @@
+use crate::routes::treatments::models::TreatmentName;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use spice_entity::sea_orm_active_enums::TreatmentName;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -20,7 +20,6 @@ pub struct WellState {
     pub value: i32,
 }
 
-
 /// Common treatment information used across entities
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TreatmentInfo {
@@ -30,8 +29,8 @@ pub struct TreatmentInfo {
     pub enzyme_volume_litres: Option<Decimal>,
 }
 
-impl From<spice_entity::treatments::Model> for TreatmentInfo {
-    fn from(model: spice_entity::treatments::Model) -> Self {
+impl From<crate::routes::treatments::models::Model> for TreatmentInfo {
+    fn from(model: crate::routes::treatments::models::Model) -> Self {
         Self {
             id: model.id,
             name: model.name,

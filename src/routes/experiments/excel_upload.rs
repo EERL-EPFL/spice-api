@@ -34,7 +34,7 @@ pub async fn process_excel_upload(
     let db = &app_state.db;
 
     // Verify experiment exists
-    let experiment = spice_entity::experiments::Entity::find_by_id(experiment_id)
+    let experiment = crate::routes::experiments::models::Entity::find_by_id(experiment_id)
         .one(db)
         .await
         .map_err(|e| {

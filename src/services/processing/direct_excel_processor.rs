@@ -1,14 +1,20 @@
 use crate::routes::trays::services::str_to_coordinates;
+use crate::routes::{
+    experiments::{
+        models as experiments, phase_transitions::models as well_phase_transitions,
+        temperatures::models as temperature_readings,
+    },
+    trays::{
+        configuration_assignments::models as tray_configuration_assignments, models as trays,
+        wells::models as wells,
+    },
+};
 use anyhow::{Context, Result, anyhow};
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
-use spice_entity::{
-    experiments, temperature_readings, tray_configuration_assignments, trays,
-    well_phase_transitions, wells,
-};
 use std::collections::HashMap;
 use std::io::Cursor;
 use uuid::Uuid;
@@ -214,13 +220,11 @@ impl DirectExcelProcessor {
                 if let Some(prev) = previous_phase {
                     // Only create transition record if state actually changed
                     if prev != current_phase {
-                        let temp_reading_id = temperature_reading.map_or_else(
-                            Uuid::new_v4,
-                            |tr| match &tr.id {
+                        let temp_reading_id =
+                            temperature_reading.map_or_else(Uuid::new_v4, |tr| match &tr.id {
                                 Set(id) => *id,
                                 _ => Uuid::new_v4(),
-                            },
-                        );
+                            });
 
                         // Get the actual well_id from our loaded well IDs
                         let well_id = *self
@@ -242,11 +246,10 @@ impl DirectExcelProcessor {
                 } else if current_phase != 0 {
                     // Only create transition if it's not the default state (0)
                     let temp_reading_id =
-                        temperature_reading
-                            .map_or_else(Uuid::new_v4, |tr| match &tr.id {
-                                Set(id) => *id,
-                                _ => Uuid::new_v4(),
-                            });
+                        temperature_reading.map_or_else(Uuid::new_v4, |tr| match &tr.id {
+                            Set(id) => *id,
+                            _ => Uuid::new_v4(),
+                        });
 
                     let well_id = *self
                         .well_ids
@@ -468,11 +471,12 @@ impl DirectExcelProcessor {
                 let total_seconds = time_fraction * 86400.0;
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 let seconds = total_seconds.floor().max(0.0) as u32;
-                let nanoseconds =
+                let nanoseconds = {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                     {
-                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                        { ((total_seconds - total_seconds.floor()) * 1_000_000_000.0).max(0.0) as u32 }
-                    };
+                        ((total_seconds - total_seconds.floor()) * 1_000_000_000.0).max(0.0) as u32
+                    }
+                };
                 let time =
                     chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, nanoseconds)
                         .unwrap_or_default();
@@ -519,8 +523,9 @@ impl DirectExcelProcessor {
         let tray_configuration_id = self.get_experiment_tray_config(experiment_id).await?;
         let tray_name_to_id = self.load_tray_mapping(tray_configuration_id).await?;
         self.ensure_wells_exist(headers, &tray_name_to_id).await?;
-        self.map_well_ids_from_headers(headers, &tray_name_to_id).await?;
-        
+        self.map_well_ids_from_headers(headers, &tray_name_to_id)
+            .await?;
+
         println!("   🔗 Loaded {} well IDs", self.well_ids.len());
         Ok(())
     }
@@ -540,12 +545,15 @@ impl DirectExcelProcessor {
         println!(
             "   🔍 Loading wells for experiment {experiment_id} with tray config {tray_configuration_id}"
         );
-        
+
         Ok(tray_configuration_id)
     }
 
     /// Load mapping of tray names to tray IDs
-    async fn load_tray_mapping(&self, tray_configuration_id: Uuid) -> Result<HashMap<String, Uuid>> {
+    async fn load_tray_mapping(
+        &self,
+        tray_configuration_id: Uuid,
+    ) -> Result<HashMap<String, Uuid>> {
         let tray_assignments: Vec<tray_configuration_assignments::Model> =
             tray_configuration_assignments::Entity::find()
                 .filter(
@@ -577,7 +585,7 @@ impl DirectExcelProcessor {
             tray_name_to_id.len(),
             tray_name_to_id.keys().collect::<Vec<_>>()
         );
-        
+
         Ok(tray_name_to_id)
     }
 
@@ -588,7 +596,8 @@ impl DirectExcelProcessor {
         tray_name_to_id: &HashMap<String, Uuid>,
     ) -> Result<()> {
         for (tray_name, &tray_id) in tray_name_to_id {
-            self.ensure_tray_wells_exist(headers, tray_name, tray_id).await?;
+            self.ensure_tray_wells_exist(headers, tray_name, tray_id)
+                .await?;
         }
         Ok(())
     }
@@ -617,7 +626,8 @@ impl DirectExcelProcessor {
 
         if existing_wells.is_empty() {
             println!("   🔧 Creating wells for tray {tray_name} ({tray_id})");
-            self.create_wells_from_excel_headers(tray_id, &wells_for_tray).await?;
+            self.create_wells_from_excel_headers(tray_id, &wells_for_tray)
+                .await?;
         } else if max_row > existing_max_row || max_col > existing_max_col {
             println!(
                 "   🔄 Recreating wells for tray {tray_name} - Excel needs row {max_row} col {max_col}, but max existing is row {existing_max_row} col {existing_max_col}"
@@ -630,7 +640,7 @@ impl DirectExcelProcessor {
                 existing_wells.len()
             );
         }
-        
+
         Ok(())
     }
 
@@ -664,7 +674,8 @@ impl DirectExcelProcessor {
             .await
             .context("Failed to delete existing wells")?;
 
-        self.create_wells_from_excel_headers(tray_id, wells_for_tray).await
+        self.create_wells_from_excel_headers(tray_id, wells_for_tray)
+            .await
     }
 
     /// Map well IDs from headers to internal `well_ids` `HashMap`
@@ -704,7 +715,8 @@ impl DirectExcelProcessor {
             self.well_ids.insert(well_key, well.id);
             Ok(())
         } else {
-            self.handle_well_not_found_error(well_mapping, tray_id).await
+            self.handle_well_not_found_error(well_mapping, tray_id)
+                .await
         }
     }
 

@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
-use sea_orm::{ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect, entity::prelude::*};
+use sea_orm::{
+    ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
+    entity::prelude::*,
+};
 use serde::{Deserialize, Serialize};
 use spice_entity::locations::Model;
 use utoipa::ToSchema;
@@ -20,9 +23,9 @@ pub struct Location {
     name: String,
     project_id: Option<Uuid>,
     #[crudcrate(non_db_attr = true, default = vec![])]
-    experiments: Vec<crate::routes::experiments::models::Experiment>,
+    experiments: Vec<crate::routes::experiments::models_old::Experiment>,
     #[crudcrate(non_db_attr = true, default = vec![])]
-    samples: Vec<crate::routes::samples::models::Sample>,
+    samples: Vec<crate::routes::samples::models_old::Sample>,
 }
 
 impl From<Model> for Location {
@@ -88,14 +91,14 @@ impl CRUDResource for Location {
             .all(db)
             .await?;
 
-        let mut sample_objs: Vec<crate::routes::samples::models::Sample> = vec![];
+        let mut sample_objs: Vec<crate::routes::samples::models_old::Sample> = vec![];
         for sample in samples {
             let treatments = sample
-                .find_related(spice_entity::treatments::Entity)
+                .find_related(crate::routes::treatments::models::Entity)
                 .all(db)
                 .await?;
 
-            let mut sample_obj: crate::routes::samples::models::Sample = sample.into();
+            let mut sample_obj: crate::routes::samples::models_old::Sample = sample.into();
             sample_obj.treatments = treatments
                 .into_iter()
                 .map(std::convert::Into::into)
@@ -115,23 +118,23 @@ impl CRUDResource for Location {
             .collect();
         println!("Treatment IDs: {:?}", treatment_ids);
         // Then find all regions that have these treatments
-        let regions = spice_entity::regions::Entity::find()
-            .filter(spice_entity::regions::Column::TreatmentId.is_in(treatment_ids))
+        let regions = crate::routes::trays::regions::models::Entity::find()
+            .filter(crate::routes::trays::regions::models::Column::TreatmentId.is_in(treatment_ids))
             .all(db)
             .await?;
         println!("Regions found: {:?}", regions.len());
 
         // Now find all experiments related to these regions (experiment id is in region)
-        let experiments = spice_entity::experiments::Entity::find()
+        let experiments = crate::routes::experiments::models::Entity::find()
             .filter(
-                spice_entity::experiments::Column::Id
+                crate::routes::experiments::models::Column::Id
                     .is_in(regions.iter().map(|r| r.experiment_id).collect::<Vec<_>>()),
             )
             .all(db)
             .await?;
 
         // Convert experiments to the appropriate model
-        let experiments: Vec<crate::routes::experiments::models::Experiment> = experiments
+        let experiments: Vec<crate::routes::experiments::models_old::Experiment> = experiments
             .into_iter()
             .map(std::convert::Into::into)
             .collect();

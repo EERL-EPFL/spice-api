@@ -1938,7 +1938,7 @@ async fn test_excel_upload_and_validate_results_legacy() {
         .expect("Failed to create P2 tray assignment");
 
     // Create test experiment with tray configuration
-    let experiment = spice_entity::experiments::ActiveModel {
+    let experiment = crate::routes::experiments::models::ActiveModel {
         id: sea_orm::ActiveValue::Set(Uuid::new_v4()),
         name: sea_orm::ActiveValue::Set("Test Experiment".to_string()),
         username: sea_orm::ActiveValue::Set(Some("test_user".to_string())),
@@ -1953,7 +1953,7 @@ async fn test_excel_upload_and_validate_results_legacy() {
         last_updated: sea_orm::ActiveValue::Set(chrono::Utc::now().into()),
     };
 
-    let experiment = spice_entity::experiments::Entity::insert(experiment)
+    let experiment = crate::routes::experiments::models::Entity::insert(experiment)
         .exec(&db)
         .await
         .expect("Failed to create test experiment");
@@ -2009,7 +2009,7 @@ async fn test_excel_upload_and_validate_results_legacy() {
             println!("   🔍 Checking data was stored correctly...");
 
             // Check temperature_readings table (where data is actually stored)
-            let temp_readings_count = spice_entity::temperature_readings::Entity::find()
+            let temp_readings_count = crate::routes::experiments::temperatures::models::Entity::find()
                 .count(&db)
                 .await
                 .expect("Failed to count temperature_readings");
@@ -2042,15 +2042,15 @@ async fn test_excel_upload_and_validate_results_legacy() {
                 .count(&db)
                 .await
                 .expect("Failed to count samples");
-            let treatments_count = spice_entity::treatments::Entity::find()
+            let treatments_count = crate::routes::treatments::models::Entity::find()
                 .count(&db)
                 .await
                 .expect("Failed to count treatments");
-            let regions_count = spice_entity::regions::Entity::find()
+            let regions_count = crate::routes::trays::regions::models::Entity::find()
                 .count(&db)
                 .await
                 .expect("Failed to count regions");
-            let s3_assets_count = spice_entity::s3_assets::Entity::find()
+            let s3_assets_count = crate::routes::assets::models::Entity::find()
                 .count(&db)
                 .await
                 .expect("Failed to count s3_assets");

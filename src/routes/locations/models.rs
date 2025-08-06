@@ -34,24 +34,24 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::projects::models::Entity",
+        belongs_to = "crate::routes::projects::models::Entity",
         from = "Column::ProjectId",
-        to = "super::projects::models::Column::Id",
+        to = "crate::routes::projects::models::Column::Id",
         on_update = "NoAction",
         on_delete = "SetNull"
     )]
     Projects,
-    #[sea_orm(has_many = "super::projects::models::Entity")]
+    #[sea_orm(has_many = "crate::routes::samples::models::Entity")]
     Samples,
 }
 
-impl Related<super::projects::models::Entity> for Entity {
+impl Related<crate::routes::projects::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Projects.def()
     }
 }
 
-impl Related<super::projects::models::Entity> for Entity {
+impl Related<crate::routes::samples::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Samples.def()
     }

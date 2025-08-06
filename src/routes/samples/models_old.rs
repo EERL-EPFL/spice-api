@@ -20,8 +20,8 @@ pub struct SampleTreatment {
     pub enzyme_volume_litres: Option<Decimal>,
 }
 
-impl From<spice_entity::treatments::Model> for SampleTreatment {
-    fn from(model: spice_entity::treatments::Model) -> Self {
+impl From<crate::routes::treatments::models::Model> for SampleTreatment {
+    fn from(model: crate::routes::treatments::models::Model) -> Self {
         Self {
             id: model.id,
             name: model.name,
@@ -171,7 +171,7 @@ impl From<Model> for Sample {
 // Helper function to fetch wells within region coordinates
 async fn fetch_wells_in_region(
     db: &DatabaseConnection,
-    region: &spice_entity::regions::Model,
+    region: &crate::routes::trays::regions::models::Model,
 ) -> Result<Vec<spice_entity::wells::Model>, DbErr> {
     if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
         region.row_min,
@@ -198,20 +198,17 @@ async fn fetch_wells_in_region(
 async fn calculate_freezing_metrics(
     db: &DatabaseConnection,
     well_id: Uuid,
-    experiment: &spice_entity::experiments::Model,
+    experiment: &crate::routes::experiments::models::Model,
 ) -> Result<(Option<i64>, Option<Decimal>), DbErr> {
     let phase_transitions = spice_entity::well_phase_transitions::Entity::find()
         .filter(
             spice_entity::well_phase_transitions::Column::WellId
                 .eq(well_id)
-                .and(
-                    spice_entity::well_phase_transitions::Column::ExperimentId
-                        .eq(experiment.id),
-                )
+                .and(spice_entity::well_phase_transitions::Column::ExperimentId.eq(experiment.id))
                 .and(spice_entity::well_phase_transitions::Column::PreviousState.eq(0))
                 .and(spice_entity::well_phase_transitions::Column::NewState.eq(1)),
         )
-        .find_with_related(spice_entity::temperature_readings::Entity)
+        .find_with_related(crate::routes::experiments::temperatures::models::Entity)
         .all(db)
         .await?;
 
@@ -243,10 +240,7 @@ async fn calculate_freezing_metrics(
             if valid_temps.is_empty() {
                 None
             } else {
-                Some(
-                    valid_temps.iter().sum::<Decimal>()
-                        / Decimal::from(valid_temps.len()),
-                )
+                Some(valid_temps.iter().sum::<Decimal>() / Decimal::from(valid_temps.len()))
             }
         } else {
             None
@@ -268,10 +262,7 @@ async fn determine_final_state(
         .filter(
             spice_entity::well_phase_transitions::Column::WellId
                 .eq(well_id)
-                .and(
-                    spice_entity::well_phase_transitions::Column::ExperimentId
-                        .eq(experiment_id),
-                )
+                .and(spice_entity::well_phase_transitions::Column::ExperimentId.eq(experiment_id))
                 .and(spice_entity::well_phase_transitions::Column::NewState.eq(1)),
         )
         .one(db)
@@ -299,8 +290,8 @@ async fn fetch_experimental_results_for_sample(
     sample_id: Uuid,
 ) -> Result<Vec<ExperimentalResult>, DbErr> {
     // Find all treatments that use this sample
-    let treatments = spice_entity::treatments::Entity::find()
-        .filter(spice_entity::treatments::Column::SampleId.eq(sample_id))
+    let treatments = crate::routes::treatments::models::Entity::find()
+        .filter(crate::routes::treatments::models::Column::SampleId.eq(sample_id))
         .all(db)
         .await?;
 
@@ -311,9 +302,11 @@ async fn fetch_experimental_results_for_sample(
     let treatment_ids: Vec<Uuid> = treatments.iter().map(|t| t.id).collect();
 
     // Find all regions that use these treatments
-    let regions = spice_entity::regions::Entity::find()
-        .filter(spice_entity::regions::Column::TreatmentId.is_in(treatment_ids.clone()))
-        .find_with_related(spice_entity::experiments::Entity)
+    let regions = crate::routes::trays::regions::models::Entity::find()
+        .filter(
+            crate::routes::trays::regions::models::Column::TreatmentId.is_in(treatment_ids.clone()),
+        )
+        .find_with_related(crate::routes::experiments::models::Entity)
         .all(db)
         .await?;
 
@@ -325,7 +318,7 @@ async fn fetch_experimental_results_for_sample(
             let wells = fetch_wells_in_region(db, &region).await?;
 
             for well in wells {
-                let (freezing_time_seconds, freezing_temperature_avg) = 
+                let (freezing_time_seconds, freezing_temperature_avg) =
                     calculate_freezing_metrics(db, well.id, &experiment).await?;
 
                 let final_state = determine_final_state(db, well.id, experiment.id).await?;
@@ -394,12 +387,12 @@ impl CRUDResource for Sample {
             .await?;
 
         let treatments_vec = models
-            .load_many(spice_entity::treatments::Entity, db)
+            .load_many(crate::routes::treatments::models::Entity, db)
             .await?;
 
         let mut models: Vec<Self> = models.into_iter().map(Self::from).collect();
         for (i, model) in models.iter_mut().enumerate() {
-            // treatments_vec[i] is Vec<spice_entity::treatments::Model>
+            // treatments_vec[i] is Vec<crate::routes::treatments::models::Model>
             model.treatments = treatments_vec[i]
                 .iter()
                 .cloned()
@@ -427,7 +420,7 @@ impl CRUDResource for Sample {
                 )))?;
 
         let treatments = model
-            .find_related(spice_entity::treatments::Entity)
+            .find_related(crate::routes::treatments::models::Entity)
             .all(db)
             .await?;
 
@@ -467,8 +460,8 @@ impl CRUDResource for Sample {
         // Update treatments if provided
         if let Some(treatments) = treatments {
             // Fetch existing treatments for this sample
-            let existing_treatments = spice_entity::treatments::Entity::find()
-                .filter(spice_entity::treatments::Column::SampleId.eq(id))
+            let existing_treatments = crate::routes::treatments::models::Entity::find()
+                .filter(crate::routes::treatments::models::Column::SampleId.eq(id))
                 .all(db)
                 .await?;
 
@@ -485,7 +478,7 @@ impl CRUDResource for Sample {
 
                 if let Some(existing) = existing_map.get(&treatment.id) {
                     // Update existing treatment if any field changed
-                    let mut active_treatment: spice_entity::treatments::ActiveModel =
+                    let mut active_treatment: crate::routes::treatments::models::ActiveModel =
                         existing.clone().into();
                     active_treatment.name = Set(treatment.name.clone());
                     active_treatment.notes = Set(treatment.notes.clone());
@@ -495,7 +488,7 @@ impl CRUDResource for Sample {
                     let _ = active_treatment.update(db).await?;
                 } else {
                     // Insert new treatment
-                    let active_treatment = spice_entity::treatments::ActiveModel {
+                    let active_treatment = crate::routes::treatments::models::ActiveModel {
                         id: Set(treatment.id),
                         sample_id: Set(Some(id)),
                         name: Set(treatment.name.clone()),
@@ -510,7 +503,7 @@ impl CRUDResource for Sample {
             // Remove treatments that are no longer present
             for existing_id in existing_map.keys() {
                 if !incoming_ids.contains(existing_id) {
-                    let _ = spice_entity::treatments::Entity::delete_by_id(*existing_id)
+                    let _ = crate::routes::treatments::models::Entity::delete_by_id(*existing_id)
                         .exec(db)
                         .await?;
                 }
@@ -540,7 +533,7 @@ impl CRUDResource for Sample {
         // Insert treatments if provided
         if let Some(treatments) = treatments {
             for treatment in treatments {
-                let active_treatment = spice_entity::treatments::ActiveModel {
+                let active_treatment = crate::routes::treatments::models::ActiveModel {
                     id: ActiveValue::Set(uuid::Uuid::new_v4()),
                     sample_id: ActiveValue::Set(Some(sample_id)),
                     name: ActiveValue::Set(treatment.name),

@@ -16,19 +16,19 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::experiments::Entity")]
+    #[sea_orm(has_many = "crate::routes::experiments::models::Entity")]
     Experiments,
-    #[sea_orm(has_many = "super::tray_configuration_assignments::Entity")]
+    #[sea_orm(has_many = "crate::routes::trays::configuration_assignments::models::Entity")]
     TrayConfigurationAssignments,
 }
 
-impl Related<super::experiments::Entity> for Entity {
+impl Related<crate::routes::experiments::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Experiments.def()
     }
 }
 
-impl Related<super::tray_configuration_assignments::Entity> for Entity {
+impl Related<crate::routes::trays::configuration_assignments::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TrayConfigurationAssignments.def()
     }

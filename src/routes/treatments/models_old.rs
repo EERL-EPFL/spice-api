@@ -1,11 +1,11 @@
+use crate::routes::treatments::models::Model;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel};
 use rust_decimal::Decimal;
-use sea_orm::{ActiveValue, entity::prelude::*, DatabaseConnection, DbErr, EntityTrait};
+use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait, entity::prelude::*};
 use serde::{Deserialize, Serialize};
 use spice_entity::sea_orm_active_enums::TreatmentName;
-use spice_entity::treatments::Model;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ pub struct ExperimentalResult {
 }
 
 #[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "spice_entity::treatments::ActiveModel"]
+#[active_model = "crate::routes::treatments::models::ActiveModel"]
 pub struct Treatment {
     #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
@@ -70,9 +70,9 @@ async fn fetch_experimental_results_for_treatment(
     treatment_id: Uuid,
 ) -> Result<Vec<ExperimentalResult>, DbErr> {
     // Find all regions that use this treatment
-    let regions = spice_entity::regions::Entity::find()
-        .filter(spice_entity::regions::Column::TreatmentId.eq(treatment_id))
-        .find_with_related(spice_entity::experiments::Entity)
+    let regions = crate::routes::trays::regions::models::Entity::find()
+        .filter(crate::routes::trays::regions::models::Column::TreatmentId.eq(treatment_id))
+        .find_with_related(crate::routes::experiments::models::Entity)
         .all(db)
         .await?;
 
@@ -81,15 +81,19 @@ async fn fetch_experimental_results_for_treatment(
     for (region, experiments) in regions {
         for experiment in experiments {
             // Find wells that fall within this region's coordinates
-            let wells = if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = 
-                (region.row_min, region.row_max, region.col_min, region.col_max) {
+            let wells = if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
+                region.row_min,
+                region.row_max,
+                region.col_min,
+                region.col_max,
+            ) {
                 spice_entity::wells::Entity::find()
                     .filter(
                         spice_entity::wells::Column::RowNumber
                             .gte(row_min + 1) // Convert 0-based to 1-based
                             .and(spice_entity::wells::Column::RowNumber.lte(row_max + 1))
                             .and(spice_entity::wells::Column::ColumnNumber.gte(col_min + 1))
-                            .and(spice_entity::wells::Column::ColumnNumber.lte(col_max + 1))
+                            .and(spice_entity::wells::Column::ColumnNumber.lte(col_max + 1)),
                     )
                     .all(db)
                     .await?
@@ -104,63 +108,81 @@ async fn fetch_experimental_results_for_treatment(
                     .filter(
                         spice_entity::well_phase_transitions::Column::WellId
                             .eq(well.id)
-                            .and(spice_entity::well_phase_transitions::Column::ExperimentId.eq(experiment.id))
+                            .and(
+                                spice_entity::well_phase_transitions::Column::ExperimentId
+                                    .eq(experiment.id),
+                            )
                             .and(spice_entity::well_phase_transitions::Column::PreviousState.eq(0))
-                            .and(spice_entity::well_phase_transitions::Column::NewState.eq(1))
+                            .and(spice_entity::well_phase_transitions::Column::NewState.eq(1)),
                     )
-                    .find_with_related(spice_entity::temperature_readings::Entity)
+                    .find_with_related(crate::routes::experiments::temperatures::models::Entity)
                     .all(db)
                     .await?;
 
                 // Get the first freezing transition and its temperature data
-                let (freezing_time_seconds, freezing_temperature_avg) = if let Some((_transition, temp_readings)) = phase_transitions.first() {
-                    let freezing_time = if let Some(temp_reading) = temp_readings.first() {
-                        if let Some(experiment_start) = experiment.performed_at {
-                            let transition_time = temp_reading.timestamp;
-                            Some((transition_time - experiment_start).num_seconds())
+                let (freezing_time_seconds, freezing_temperature_avg) =
+                    if let Some((_transition, temp_readings)) = phase_transitions.first() {
+                        let freezing_time = if let Some(temp_reading) = temp_readings.first() {
+                            if let Some(experiment_start) = experiment.performed_at {
+                                let transition_time = temp_reading.timestamp;
+                                Some((transition_time - experiment_start).num_seconds())
+                            } else {
+                                None
+                            }
                         } else {
                             None
-                        }
-                    } else {
-                        None
-                    };
+                        };
 
-                    let avg_temp = if let Some(temp_reading) = temp_readings.first() {
-                        // Calculate average of all 8 temperature probes
-                        let temps = vec![
-                            temp_reading.probe_1, temp_reading.probe_2,
-                            temp_reading.probe_3, temp_reading.probe_4,
-                            temp_reading.probe_5, temp_reading.probe_6,
-                            temp_reading.probe_7, temp_reading.probe_8,
-                        ];
-                        let valid_temps: Vec<Decimal> = temps.into_iter().flatten().collect();
-                        if valid_temps.is_empty() {
-                            None
+                        let avg_temp = if let Some(temp_reading) = temp_readings.first() {
+                            // Calculate average of all 8 temperature probes
+                            let temps = vec![
+                                temp_reading.probe_1,
+                                temp_reading.probe_2,
+                                temp_reading.probe_3,
+                                temp_reading.probe_4,
+                                temp_reading.probe_5,
+                                temp_reading.probe_6,
+                                temp_reading.probe_7,
+                                temp_reading.probe_8,
+                            ];
+                            let valid_temps: Vec<Decimal> = temps.into_iter().flatten().collect();
+                            if valid_temps.is_empty() {
+                                None
+                            } else {
+                                Some(
+                                    valid_temps.iter().sum::<Decimal>()
+                                        / Decimal::from(valid_temps.len()),
+                                )
+                            }
                         } else {
-                            Some(valid_temps.iter().sum::<Decimal>() / Decimal::from(valid_temps.len()))
-                        }
-                    } else {
-                        None
-                    };
+                            None
+                        };
 
-                    (freezing_time, avg_temp)
-                } else {
-                    (None, None)
-                };
+                        (freezing_time, avg_temp)
+                    } else {
+                        (None, None)
+                    };
 
                 // Determine final state - check if there are any frozen transitions
                 let has_frozen_transition = spice_entity::well_phase_transitions::Entity::find()
                     .filter(
                         spice_entity::well_phase_transitions::Column::WellId
                             .eq(well.id)
-                            .and(spice_entity::well_phase_transitions::Column::ExperimentId.eq(experiment.id))
-                            .and(spice_entity::well_phase_transitions::Column::NewState.eq(1))
+                            .and(
+                                spice_entity::well_phase_transitions::Column::ExperimentId
+                                    .eq(experiment.id),
+                            )
+                            .and(spice_entity::well_phase_transitions::Column::NewState.eq(1)),
                     )
                     .one(db)
                     .await?
                     .is_some();
 
-                let final_state = if has_frozen_transition { "frozen".to_string() } else { "liquid".to_string() };
+                let final_state = if has_frozen_transition {
+                    "frozen".to_string()
+                } else {
+                    "liquid".to_string()
+                };
 
                 let well_coordinate = format_well_coordinate_treatment(&well);
 
@@ -191,14 +213,14 @@ async fn fetch_experimental_results_for_treatment(
 
 #[async_trait]
 impl CRUDResource for Treatment {
-    type EntityType = spice_entity::treatments::Entity;
-    type ColumnType = spice_entity::treatments::Column;
-    type ActiveModelType = spice_entity::treatments::ActiveModel;
+    type EntityType = crate::routes::treatments::models::Entity;
+    type ColumnType = crate::routes::treatments::models::Column;
+    type ActiveModelType = crate::routes::treatments::models::ActiveModel;
     type CreateModel = TreatmentCreate;
     type UpdateModel = TreatmentUpdate;
     type ListModel = Self; // Use the same model for list view for now
 
-    const ID_COLUMN: Self::ColumnType = spice_entity::treatments::Column::Id;
+    const ID_COLUMN: Self::ColumnType = crate::routes::treatments::models::Column::Id;
     const RESOURCE_NAME_PLURAL: &'static str = "treatments";
     const RESOURCE_NAME_SINGULAR: &'static str = "treatment";
     const RESOURCE_DESCRIPTION: &'static str =
@@ -236,5 +258,4 @@ impl CRUDResource for Treatment {
 
         Ok(model)
     }
-
 }

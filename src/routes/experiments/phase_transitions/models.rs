@@ -19,44 +19,44 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::experiments::Entity",
+        belongs_to = "crate::routes::experiments::models::Entity",
         from = "Column::ExperimentId",
-        to = "super::experiments::Column::Id",
+        to = "crate::routes::experiments::models::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
     Experiments,
     #[sea_orm(
-        belongs_to = "super::temperature_readings::Entity",
+        belongs_to = "crate::routes::experiments::temperatures::models::Entity",
         from = "Column::TemperatureReadingId",
-        to = "super::temperature_readings::Column::Id",
+        to = "crate::routes::experiments::temperatures::models::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
     TemperatureReadings,
     #[sea_orm(
-        belongs_to = "super::wells::Entity",
+        belongs_to = "crate::routes::trays::wells::models::Entity",
         from = "Column::WellId",
-        to = "super::wells::Column::Id",
+        to = "crate::routes::trays::wells::models::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
     Wells,
 }
 
-impl Related<super::experiments::Entity> for Entity {
+impl Related<crate::routes::experiments::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Experiments.def()
     }
 }
 
-impl Related<super::temperature_readings::Entity> for Entity {
+impl Related<crate::routes::experiments::temperatures::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TemperatureReadings.def()
     }
 }
 
-impl Related<super::wells::Entity> for Entity {
+impl Related<crate::routes::trays::wells::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Wells.def()
     }
