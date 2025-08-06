@@ -10,6 +10,7 @@ use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
 use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
+use sea_orm::ConnectionTrait;
 use serde::Serialize;
 use spice_entity::s3_assets;
 use std::convert::TryInto;

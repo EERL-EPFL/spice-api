@@ -4,8 +4,8 @@ use crate::common::state::AppState;
 use axum::{extract::Extension, response::IntoResponse};
 use axum_keycloak_auth::{PassthroughMode, decode::KeycloakToken, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
+use sea_orm::ConnectionTrait;
 use utoipa_axum::{router::OpenApiRouter, routes};
-
 crud_handlers!(Location, LocationUpdate, LocationCreate);
 
 pub fn router(state: &AppState) -> OpenApiRouter

@@ -378,14 +378,14 @@ impl CRUDResource for Sample {
 
     async fn get_all(
         db: &DatabaseConnection,
-        condition: Condition,
+        condition: &Condition,
         order_column: Self::ColumnType,
         order_direction: Order,
         offset: u64,
         limit: u64,
     ) -> Result<Vec<Self>, DbErr> {
         let models = Self::EntityType::find()
-            .filter(condition)
+            .filter(condition.clone())
             .order_by(order_column, order_direction)
             .offset(offset)
             .limit(limit)
@@ -460,7 +460,7 @@ impl CRUDResource for Sample {
             )))?
             .into();
 
-        let updated_model = update_data.merge_into_activemodel(existing);
+        let updated_model = update_data.merge_into_activemodel(existing)?;
         let _updated = updated_model.update(db).await?;
 
         // Update treatments if provided

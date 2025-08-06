@@ -1,6 +1,6 @@
 [package]
 name = "spice-api"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "API for managing SPICE lab data in the EERL lab"
 license = "MIT"
@@ -23,7 +23,7 @@ axum-keycloak-auth = "0.8.3"
 base64 = "0.22.1"
 byteorder = "1.5.0"
 chrono = { version = "0.4.41", features = ["serde"] }
-crudcrate = "0.3.3"
+crudcrate = "0.4.1"
 # crudcrate = { path = "../crudcrate" }
 dotenvy = "0.15.7"
 futures = "0.3.31"
@@ -33,15 +33,16 @@ hyper = "1.6.0"
 migration = { path = "migration" }
 # multipart = "0.18.0"
 rand = "0.9.1"
-sea-orm = { version = "1.1.13", features = [
+sea-orm = { version = "1.1.14", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
     "macros",
     "with-uuid",
     "with-chrono",
     "with-json",
+    "with-rust_decimal",
 ], default-features = false }
-sea-orm-migration = "1.1.13"
+sea-orm-migration = "1.1.14"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.137"
 serde_with = "3.14.0"
@@ -70,7 +71,7 @@ openssl = "0.10.73"
 async-std = { version = "1.13", features = ["attributes"] }
 reqwest = { version = "0.12.22", features = ["json", "rustls-tls"] }
 rstest = "0.25.0"
-sea-orm = { version = "1.1.8", features = [
+sea-orm = { version = "1.1.14", features = [
     "sqlx-postgres",
     "sqlx-sqlite",
     "runtime-tokio-rustls",
@@ -78,6 +79,7 @@ sea-orm = { version = "1.1.8", features = [
     "with-uuid",
     "with-chrono",
     "with-json",
+    "with-rust_decimal",
 ], default-features = false }
 tokio-test = "0.4"
 tower = { version = "0.5.2", features = ["util"] }

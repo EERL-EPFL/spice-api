@@ -89,7 +89,7 @@ impl CRUDResource for Tray {
                 Self::RESOURCE_NAME_SINGULAR
             )))?
             .into();
-        let updated_model = update_data.merge_into_activemodel(existing);
+        let updated_model = update_data.merge_into_activemodel(existing)?;
         let model = updated_model.update(db).await?;
         Ok(model.into())
     }
@@ -363,7 +363,9 @@ impl CRUDResource for TrayConfiguration {
                 Self::RESOURCE_NAME_PLURAL
             )))?
             .into();
-        let updated_model = update_data.clone().merge_into_activemodel(existing);
+
+        let trays = update_data.trays.clone();
+        let updated_model = update_data.merge_into_activemodel(existing)?;
         let _ = updated_model.update(&txn).await?;
 
         // First, get all existing tray IDs for this configuration to clean them up later
@@ -393,7 +395,7 @@ impl CRUDResource for TrayConfiguration {
         }
 
         // Insert new assignments and trays
-        for assignment in update_data.trays {
+        for assignment in trays {
             for tray in assignment.trays {
                 let tray_active = spice_entity::trays::ActiveModel {
                     id: Set(Uuid::new_v4()),

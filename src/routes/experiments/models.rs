@@ -287,12 +287,12 @@ impl CRUDResource for Experiment {
                 Self::RESOURCE_NAME_PLURAL
             )))?
             .into();
-
-        let updated_model = update_data.clone().merge_into_activemodel(existing);
+        let regions = update_data.regions.clone();
+        let updated_model = update_data.merge_into_activemodel(existing)?;
         let _updated = updated_model.update(&txn).await?;
 
         // Handle regions update - delete existing regions and create new ones
-        if !update_data.regions.is_empty() {
+        if !regions.is_empty() {
             // Delete existing regions for this experiment
             spice_entity::regions::Entity::delete_many()
                 .filter(spice_entity::regions::Column::ExperimentId.eq(id))
@@ -300,7 +300,7 @@ impl CRUDResource for Experiment {
                 .await?;
 
             // Create new regions
-            let region_models = create_region_active_models(id, update_data.regions.clone(), &txn);
+            let region_models = create_region_active_models(id, regions, &txn);
 
             for region_model in region_models {
                 region_model.insert(&txn).await?;
@@ -315,14 +315,14 @@ impl CRUDResource for Experiment {
 
     async fn get_all(
         db: &DatabaseConnection,
-        condition: Condition,
+        condition: &Condition,
         order_column: Self::ColumnType,
         order_direction: Order,
         offset: u64,
         limit: u64,
     ) -> Result<Vec<Self>, DbErr> {
         let models = Self::EntityType::find()
-            .filter(condition)
+            .filter(condition.clone())
             .order_by(order_column, order_direction)
             .offset(offset)
             .limit(limit)

@@ -3,6 +3,7 @@ use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::{CRUDResource, crud_handlers};
+use sea_orm::ConnectionTrait;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
 // Generate CRUD handlers for TrayConfiguration (this will be for /api/tray-configurations endpoint)
