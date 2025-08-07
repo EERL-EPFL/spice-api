@@ -39,7 +39,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     #[crudcrate(sortable, filterable, fulltext)]
     pub notes: Option<String>,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, list_model = false)]
     pub sample_id: Option<Uuid>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,

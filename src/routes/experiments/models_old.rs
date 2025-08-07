@@ -66,8 +66,22 @@ pub struct WellSummary {
     pub tray_name: Option<String>,
     pub dilution_factor: Option<i32>,
     // Full objects with UUIDs for UI linking
-    pub treatment: Option<TreatmentInfo>,
-    // pub sample: Option<SampleInfo>,
+    pub treatment: Option<crate::routes::treatments::models::Treatment>,
+    pub sample: Option<crate::routes::samples::models::Sample>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SampleResultsSummary {
+    pub sample: crate::routes::samples::models::Sample,
+    pub treatments: Vec<TreatmentResultsSummary>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TreatmentResultsSummary {
+    pub treatment: crate::routes::treatments::models::Treatment,
+    pub wells: Vec<WellSummary>,
+    pub wells_frozen: usize,
+    pub wells_liquid: usize,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -79,6 +93,8 @@ pub struct ExperimentResultsSummary {
     pub total_time_points: usize,
     pub first_timestamp: Option<DateTime<Utc>>,
     pub last_timestamp: Option<DateTime<Utc>>,
+    pub sample_results: Vec<SampleResultsSummary>,
+    // Keep original format for backwards compatibility
     pub well_summaries: Vec<WellSummary>,
 }
 
@@ -105,7 +121,8 @@ pub struct RegionInput {
     pub treatment_id: Option<Uuid>,
     pub is_background_key: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub treatment: Option<TreatmentInfo>,
+    pub treatment: Option<crate::routes::treatments::models::Treatment>,
+    pub sample: Option<crate::routes::samples::models::Sample>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tray: Option<TrayInfo>,
 }

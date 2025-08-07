@@ -1260,8 +1260,10 @@ async fn create_experiment_get_results_summary() -> Result<serde_json::Value, St
         .await
         .unwrap();
     let experiment_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+    println!("Full experiment response: {}", serde_json::to_string_pretty(&experiment_response).unwrap());
     let results_summary = &experiment_response["results_summary"];
     if !results_summary.is_object() {
+        println!("Results summary is: {:?}", results_summary);
         return Err("Results summary is not an object".to_string());
     }
     Ok(results_summary.clone())
