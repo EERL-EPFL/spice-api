@@ -1,24 +1,47 @@
+use chrono::{DateTime, Utc};
+use crudcrate::{CRUDResource, EntityToModels};
+use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
+use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "experiments")]
+#[crudcrate(
+    generate_router,
+    api_struct = "Experiment",
+    name_singular = "experiment",
+    name_plural = "experiments",
+    description = "Experiments track ice nucleation testing sessions with associated data and results."
+)]
 pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
+    pub id: Uuid,
     #[sea_orm(column_type = "Text", unique)]
+    #[crudcrate(sortable, filterable, fulltext)]
     pub name: String,
     #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable, fulltext)]
     pub username: Option<String>,
-    pub performed_at: Option<DateTimeWithTimeZone>,
+    #[crudcrate(sortable, filterable)]
+    pub performed_at: Option<DateTime<Utc>>,
+    #[crudcrate(sortable, filterable)]
     pub temperature_ramp: Option<Decimal>,
+    #[crudcrate(sortable, filterable)]
     pub temperature_start: Option<Decimal>,
+    #[crudcrate(sortable, filterable)]
     pub temperature_end: Option<Decimal>,
+    #[crudcrate(filterable)]
     pub is_calibration: bool,
     #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable, fulltext)]
     pub remarks: Option<String>,
+    #[crudcrate(sortable, filterable)]
     pub tray_configuration_id: Option<Uuid>,
-    pub created_at: DateTimeWithTimeZone,
-    pub last_updated: DateTimeWithTimeZone,
-    #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub last_updated: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

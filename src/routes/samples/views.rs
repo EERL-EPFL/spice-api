@@ -1,25 +1,15 @@
-use super::models::{Sample, SampleCreateCustom, SampleUpdate};
+pub use super::models::{Sample, router as crudrouter};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
-use crudcrate::{CRUDResource, crud_handlers};
-use sea_orm::ConnectionTrait;
-use utoipa_axum::{router::OpenApiRouter, routes};
-
-crud_handlers!(Sample, SampleUpdate, SampleCreateCustom);
+use crudcrate::CRUDResource;
+use utoipa_axum::router::OpenApiRouter;
 
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Sample: CRUDResource,
 {
-    let mut mutating_router = OpenApiRouter::new()
-        .routes(routes!(get_one_handler))
-        .routes(routes!(get_all_handler))
-        .routes(routes!(create_one_handler))
-        .routes(routes!(update_one_handler))
-        .routes(routes!(delete_one_handler))
-        .routes(routes!(delete_many_handler))
-        .with_state(state.db.clone());
+    let mut mutating_router = crudrouter(&state.db.clone());
 
     if let Some(instance) = state.keycloak_auth_instance.clone() {
         mutating_router = mutating_router.layer(
