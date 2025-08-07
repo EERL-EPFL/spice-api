@@ -63,12 +63,12 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .merge(crate::common::views::router(&app_state)) // Root routes
         .nest("/api", locations::views::router(&app_state))
         .nest("/api", projects::views::router(&app_state))
-        .nest("/api/experiments", experiments::views::router(&app_state))
+        .nest("/api", experiments::views::router(&app_state))
         // .nest("/api", phase_changes::router(&app_state))
-        .nest("/api/samples", samples::views::router(&app_state))
-        .nest("/api/assets", assets::views::router(&app_state))
-        .nest("/api/trays", trays::views::router(&app_state))
-        .nest("/api/treatments", treatments::views::router(&app_state))
+        .nest("/api", samples::views::router(&app_state))
+        .nest("/api", assets::views::router(&app_state))
+        .nest("/api", trays::views::router(&app_state))
+        .nest("/api", treatments::views::router(&app_state))
         // .nest(
         //     "/api",
         //     freezing_results::views::freezing_results_routes().with_state(app_state.clone()),

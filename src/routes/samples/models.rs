@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, DatabaseConnection, EntityTrait, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
     entity::prelude::*,
 };
 use uuid::Uuid;
@@ -71,10 +71,10 @@ pub struct ExperimentalResult {
     name_singular = "sample",
     name_plural = "samples",
     description = "This resource manages samples associated with experiments.",
-    // fn_get_one = get_one_sample,
-    // fn_get_all = get_all_samples,
-    // fn_create = create_sample,
-    // fn_update = update_sample,
+    fn_get_one = get_one_sample,
+    fn_create = create_sample,
+    fn_update = update_sample,
+    fn_get_all = get_all_samples,
 )]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -416,9 +416,9 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
 
 async fn get_all_samples(
     db: &DatabaseConnection,
-    condition: &sea_orm::Condition,
+    condition: &Condition,
     order_column: Column,
-    order_direction: sea_orm::Order,
+    order_direction: Order,
     offset: u64,
     limit: u64,
 ) -> Result<Vec<Sample>, DbErr> {
@@ -451,7 +451,7 @@ async fn get_all_samples(
 
 async fn create_sample(
     db: &DatabaseConnection,
-    create_data: SampleCreateCustom,
+    create_data: SampleCreate,
 ) -> Result<Sample, DbErr> {
     // Extract treatments if present
     let treatments = if create_data.treatments.is_empty() {
