@@ -173,14 +173,14 @@ impl DirectExcelProcessor {
     // Helper function to extract and process temperature readings
     fn create_temperature_reading(
         experiment_id: Uuid,
-        timestamp_with_tz: chrono::DateTime<chrono::FixedOffset>,
+        timestamp_utc: chrono::DateTime<chrono::Utc>,
         probe_values: &[Option<Decimal>],
         image_filename: Option<String>,
     ) -> temperature_readings::ActiveModel {
         temperature_readings::ActiveModel {
             id: Set(Uuid::new_v4()),
             experiment_id: Set(experiment_id),
-            timestamp: Set(timestamp_with_tz),
+            timestamp: Set(timestamp_utc),
             probe_1: Set(probe_values[0]),
             probe_2: Set(probe_values[1]),
             probe_3: Set(probe_values[2]),
@@ -190,7 +190,7 @@ impl DirectExcelProcessor {
             probe_7: Set(probe_values[6]),
             probe_8: Set(probe_values[7]),
             image_filename: Set(image_filename),
-            created_at: Set(chrono::Utc::now().fixed_offset()),
+            created_at: Set(chrono::Utc::now()),
         }
     }
 
@@ -200,7 +200,7 @@ impl DirectExcelProcessor {
         row: &[Data],
         headers: &ColumnHeaders,
         experiment_id: Uuid,
-        timestamp_with_tz: chrono::DateTime<chrono::FixedOffset>,
+        timestamp_utc: chrono::DateTime<chrono::Utc>,
         temperature_reading: Option<&temperature_readings::ActiveModel>,
     ) -> Result<Vec<well_phase_transitions::ActiveModel>> {
         let mut phase_transitions = Vec::new();
@@ -237,10 +237,10 @@ impl DirectExcelProcessor {
                             well_id: Set(well_id),
                             experiment_id: Set(experiment_id),
                             temperature_reading_id: Set(temp_reading_id),
-                            timestamp: Set(timestamp_with_tz),
+                            timestamp: Set(timestamp_utc),
                             previous_state: Set(prev),
                             new_state: Set(current_phase),
-                            created_at: Set(Utc::now().fixed_offset()),
+                            created_at: Set(Utc::now()),
                         });
                     }
                 } else if current_phase != 0 {
@@ -261,10 +261,10 @@ impl DirectExcelProcessor {
                         well_id: Set(well_id),
                         experiment_id: Set(experiment_id),
                         temperature_reading_id: Set(temp_reading_id),
-                        timestamp: Set(timestamp_with_tz),
+                        timestamp: Set(timestamp_utc),
                         previous_state: Set(0), // Assume starting state is liquid (0)
                         new_state: Set(current_phase),
-                        created_at: Set(Utc::now().fixed_offset()),
+                        created_at: Set(Utc::now()),
                     });
                 }
                 self.well_states.insert(well_key, current_phase);
@@ -286,7 +286,7 @@ impl DirectExcelProcessor {
     )> {
         let timestamp = Self::extract_timestamp(row, headers, row_number)?; // Extract timestamp
         let parsed_timestamp = Self::parse_timestamp_to_datetime(&timestamp)?;
-        let timestamp_with_tz = Utc.from_utc_datetime(&parsed_timestamp).fixed_offset();
+        let timestamp_utc = Utc.from_utc_datetime(&parsed_timestamp);
 
         // Extract image filename
         let image_filename = headers
@@ -320,7 +320,7 @@ impl DirectExcelProcessor {
         let temperature_reading = if has_temperatures {
             Some(Self::create_temperature_reading(
                 experiment_id,
-                timestamp_with_tz,
+                timestamp_utc,
                 &probe_values,
                 image_filename,
             ))
@@ -333,7 +333,7 @@ impl DirectExcelProcessor {
             row,
             headers,
             experiment_id,
-            timestamp_with_tz,
+            timestamp_utc,
             temperature_reading.as_ref(),
         )?;
 
