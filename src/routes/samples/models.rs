@@ -47,8 +47,8 @@ pub struct ExperimentalResult {
     name_plural = "samples",
     description = "This resource manages samples associated with experiments.",
     fn_get_one = get_one_sample,
-    fn_create = create_sample,
-    fn_update = update_sample,
+    fn_create = create_sample_with_treatments,
+    fn_update = update_sample_with_treatments,
     fn_get_all = get_all_samples,
 )]
 pub struct Model {
@@ -342,7 +342,9 @@ async fn fetch_experimental_results_for_sample(
     Ok(experimental_results)
 }
 
-// Custom crudcrate functions
+// Custom functions that handle treatments while leveraging crudcrate for base operations
+
+// Simple get_one that loads treatments
 async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbErr> {
     let model = Entity::find_by_id(id)
         .one(db)
@@ -354,23 +356,23 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
         .all(db)
         .await?;
 
-    let experimental_results = fetch_experimental_results_for_sample(db, id).await?;
-
     let mut sample: Sample = model.into();
     sample.treatments = treatments
         .into_iter()
         .map(|t| crate::routes::treatments::models::Treatment::from(t))
         .collect();
-    sample.experimental_results = experimental_results;
-
+    
+    // Note: experimental_results can be loaded on-demand if needed
+    
     Ok(sample)
 }
 
+// Simple get_all that loads treatments
 async fn get_all_samples(
     db: &DatabaseConnection,
-    condition: &Condition,
+    condition: &sea_orm::Condition,
     order_column: Column,
-    order_direction: Order,
+    order_direction: sea_orm::Order,
     offset: u64,
     limit: u64,
 ) -> Result<Vec<SampleList>, DbErr> {
@@ -393,90 +395,77 @@ async fn get_all_samples(
             .cloned()
             .map(crate::routes::treatments::models::Treatment::from)
             .collect();
-
-        // Note: Not fetching experimental_results for list view for performance
-        // Full experimental results are only loaded in get_one_sample
     }
 
-    // Convert to SampleList models
+    // Convert to SampleList for response
     Ok(samples.into_iter().map(SampleList::from).collect())
 }
 
-async fn create_sample(
+async fn create_sample_with_treatments(
     db: &DatabaseConnection,
     create_data: SampleCreate,
 ) -> Result<Sample, DbErr> {
-    // Extract treatments if present
-    let treatments = if create_data.treatments.is_empty() {
+    // Extract treatments before creating sample
+    let treatments_to_create = if create_data.treatments.is_empty() {
         None
     } else {
         Some(create_data.treatments.clone())
     };
 
-    let active_model = ActiveModel {
-        id: ActiveValue::Set(Uuid::new_v4()),
-        name: ActiveValue::Set(create_data.name),
-        r#type: ActiveValue::Set(create_data.r#type),
-        material_description: ActiveValue::Set(create_data.material_description),
-        extraction_procedure: ActiveValue::Set(create_data.extraction_procedure),
-        filter_substrate: ActiveValue::Set(create_data.filter_substrate),
-        suspension_volume_litres: ActiveValue::Set(create_data.suspension_volume_litres),
-        air_volume_litres: ActiveValue::Set(create_data.air_volume_litres),
-        water_volume_litres: ActiveValue::Set(create_data.water_volume_litres),
-        initial_concentration_gram_l: ActiveValue::Set(create_data.initial_concentration_gram_l),
-        well_volume_litres: ActiveValue::Set(create_data.well_volume_litres),
-        remarks: ActiveValue::Set(create_data.remarks),
-        created_at: ActiveValue::Set(chrono::Utc::now().into()),
-        last_updated: ActiveValue::Set(chrono::Utc::now().into()),
-        location_id: ActiveValue::Set(create_data.location_id),
-        latitude: ActiveValue::Set(create_data.latitude),
-        longitude: ActiveValue::Set(create_data.longitude),
-        start_time: ActiveValue::Set(create_data.start_time.map(std::convert::Into::into)),
-        stop_time: ActiveValue::Set(create_data.stop_time.map(std::convert::Into::into)),
-        flow_litres_per_minute: ActiveValue::Set(create_data.flow_litres_per_minute),
-        total_volume: ActiveValue::Set(create_data.total_volume),
-    };
-
+    // Use the auto-generated default create logic by creating ActiveModel directly
+    let active_model: ActiveModel = create_data.into();
     let inserted = active_model.insert(db).await?;
     let sample_id = inserted.id;
 
-    // Insert treatments if provided
-    if let Some(treatments) = treatments {
-        for treatment in treatments {
-            let active_treatment = crate::routes::treatments::models::ActiveModel {
-                id: ActiveValue::Set(Uuid::new_v4()),
-                sample_id: ActiveValue::Set(Some(sample_id)),
-                name: ActiveValue::Set(treatment.name),
-                notes: ActiveValue::Set(treatment.notes),
-                enzyme_volume_litres: ActiveValue::Set(treatment.enzyme_volume_litres),
-                created_at: ActiveValue::Set(chrono::Utc::now()),
-                last_updated: ActiveValue::Set(chrono::Utc::now()),
-            };
-            let _ = active_treatment.insert(db).await?;
+    // Create treatments using CRUDResource methods
+    if let Some(treatments) = treatments_to_create {
+        for treatment_create in treatments {
+            let mut treatment_with_sample = treatment_create;
+            treatment_with_sample.sample_id = Some(sample_id);
+            let _ = crate::routes::treatments::models::Treatment::create(db, treatment_with_sample).await?;
         }
     }
 
-    // Reload with treatments
-    get_one_sample(db, sample_id).await
+    // Return the created sample with treatments loaded
+    Sample::get_one(db, sample_id).await
 }
 
-async fn update_sample(
+async fn update_sample_with_treatments(
     db: &DatabaseConnection,
     id: Uuid,
     update_data: SampleUpdate,
 ) -> Result<Sample, DbErr> {
-    // Note: This is a simplified version. The full implementation would handle
-    // treatment updates similar to the old models_old.rs implementation
-    let existing = Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Sample not found".to_string()))?;
+    // Extract treatments before updating sample
+    let treatments_to_recreate = if update_data.treatments.is_empty() {
+        None
+    } else {
+        Some(update_data.treatments.clone())
+    };
 
-    let mut active_model: ActiveModel = existing.into();
+    // Use the auto-generated default update logic 
+    let sample = Sample::update(db, id, update_data).await?;
 
-    // Update fields from update_data
-    // This would need proper implementation based on the SampleUpdate struct
+    // Handle treatments if provided (delete and recreate approach)
+    if let Some(treatments) = treatments_to_recreate {
+        // Delete existing treatments
+        let _ = crate::routes::treatments::models::Entity::delete_many()
+            .filter(crate::routes::treatments::models::Column::SampleId.eq(id))
+            .exec(db)
+            .await?;
 
-    let updated = active_model.update(db).await?;
-    get_one_sample(db, updated.id).await
+        // Create new treatments
+        for treatment_update in treatments {
+            let treatment_create = crate::routes::treatments::models::TreatmentCreate {
+                name: treatment_update.name.unwrap_or_default().unwrap_or(crate::routes::treatments::models::TreatmentName::None),
+                notes: treatment_update.notes.unwrap_or_default(),
+                enzyme_volume_litres: treatment_update.enzyme_volume_litres.unwrap_or_default(),
+                sample_id: Some(id),
+                experimental_results: vec![],
+            };
+            let _ = crate::routes::treatments::models::Treatment::create(db, treatment_create).await?;
+        }
+    }
+
+    // Return the updated sample with treatments loaded
+    Sample::get_one(db, id).await
 }
