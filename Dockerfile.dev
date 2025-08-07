@@ -6,6 +6,5 @@ WORKDIR /app
 COPY Cargo.lock Cargo.toml bacon.toml /app/
 COPY ./migration/ /app/migration/
 COPY ./src/ /app/src/
-COPY ./entity /app/entity/
 
 ENTRYPOINT ["bacon", "--headless", "run"]

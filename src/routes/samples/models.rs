@@ -23,33 +23,6 @@ pub enum SampleType {
     PureWater,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct SampleTreatment {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<Uuid>,
-    pub name: crate::routes::treatments::models::TreatmentName,
-    pub notes: Option<String>,
-    pub enzyme_volume_litres: Option<Decimal>,
-}
-
-impl From<crate::routes::treatments::models::Model> for SampleTreatment {
-    fn from(model: crate::routes::treatments::models::Model) -> Self {
-        Self {
-            id: Some(model.id),
-            name: model.name,
-            notes: model.notes,
-            enzyme_volume_litres: model.enzyme_volume_litres,
-        }
-    }
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct SampleTreatmentCreate {
-    pub name: crate::routes::treatments::models::TreatmentName,
-    pub notes: Option<String>,
-    pub enzyme_volume_litres: Option<Decimal>,
-}
-
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ExperimentalResult {
     pub experiment_id: Uuid,
@@ -132,8 +105,8 @@ pub struct Model {
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![], list_model = false)]
-    pub treatments: Vec<SampleTreatment>,
+    #[crudcrate(non_db_attr = true, default = vec![], use_target_models)]
+    pub treatments: Vec<crate::routes::treatments::models::Treatment>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model = false)]
     pub experimental_results: Vec<ExperimentalResult>,
@@ -166,31 +139,6 @@ impl Related<crate::routes::treatments::models::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-
-// Custom create structure to handle treatments
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct SampleCreateCustom {
-    pub name: String,
-    pub r#type: SampleType,
-    pub material_description: Option<String>,
-    pub extraction_procedure: Option<String>,
-    pub filter_substrate: Option<String>,
-    pub suspension_volume_litres: Option<Decimal>,
-    pub air_volume_litres: Option<Decimal>,
-    pub water_volume_litres: Option<Decimal>,
-    pub initial_concentration_gram_l: Option<Decimal>,
-    pub well_volume_litres: Option<Decimal>,
-    pub remarks: Option<String>,
-    pub location_id: Option<Uuid>,
-    pub latitude: Option<Decimal>,
-    pub longitude: Option<Decimal>,
-    pub start_time: Option<DateTime<Utc>>,
-    pub stop_time: Option<DateTime<Utc>>,
-    pub flow_litres_per_minute: Option<Decimal>,
-    pub total_volume: Option<Decimal>,
-    #[serde(default)]
-    pub treatments: Vec<SampleTreatmentCreate>,
-}
 
 // Helper function to fetch wells within region coordinates
 async fn fetch_wells_in_region(
@@ -409,7 +357,10 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
     let experimental_results = fetch_experimental_results_for_sample(db, id).await?;
 
     let mut sample: Sample = model.into();
-    sample.treatments = treatments.into_iter().map(SampleTreatment::from).collect();
+    sample.treatments = treatments
+        .into_iter()
+        .map(|t| crate::routes::treatments::models::Treatment::from(t))
+        .collect();
     sample.experimental_results = experimental_results;
 
     Ok(sample)
@@ -422,7 +373,7 @@ async fn get_all_samples(
     order_direction: Order,
     offset: u64,
     limit: u64,
-) -> Result<Vec<Sample>, DbErr> {
+) -> Result<Vec<SampleList>, DbErr> {
     let models = Entity::find()
         .filter(condition.clone())
         .order_by(order_column, order_direction)
@@ -440,14 +391,15 @@ async fn get_all_samples(
         sample.treatments = treatments_vec[i]
             .iter()
             .cloned()
-            .map(SampleTreatment::from)
+            .map(crate::routes::treatments::models::Treatment::from)
             .collect();
 
-        // Fetch experimental results for each sample
-        sample.experimental_results = fetch_experimental_results_for_sample(db, sample.id).await?;
+        // Note: Not fetching experimental_results for list view for performance
+        // Full experimental results are only loaded in get_one_sample
     }
 
-    Ok(samples)
+    // Convert to SampleList models
+    Ok(samples.into_iter().map(SampleList::from).collect())
 }
 
 async fn create_sample(
@@ -491,14 +443,14 @@ async fn create_sample(
     // Insert treatments if provided
     if let Some(treatments) = treatments {
         for treatment in treatments {
-            let treatment_id = treatment.id.unwrap_or_else(Uuid::new_v4);
             let active_treatment = crate::routes::treatments::models::ActiveModel {
-                id: ActiveValue::Set(treatment_id),
+                id: ActiveValue::Set(Uuid::new_v4()),
                 sample_id: ActiveValue::Set(Some(sample_id)),
                 name: ActiveValue::Set(treatment.name),
                 notes: ActiveValue::Set(treatment.notes),
                 enzyme_volume_litres: ActiveValue::Set(treatment.enzyme_volume_litres),
-                ..Default::default()
+                created_at: ActiveValue::Set(chrono::Utc::now()),
+                last_updated: ActiveValue::Set(chrono::Utc::now()),
             };
             let _ = active_treatment.insert(db).await?;
         }

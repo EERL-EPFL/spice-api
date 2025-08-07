@@ -49,7 +49,7 @@ pub struct Model {
     #[crudcrate(sortable, filterable)]
     pub enzyme_volume_litres: Option<Decimal>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![], list_model = false)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model = false, create_model = false, update_model = false)]
     pub experimental_results: Vec<ExperimentalResult>,
 }
 

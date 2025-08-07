@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct TreatmentInfo {
     pub id: Uuid,
     pub name: TreatmentName,
@@ -24,20 +24,20 @@ pub struct TreatmentInfo {
     pub sample: Option<SampleInfo>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct SampleInfo {
     pub id: Uuid,
     pub name: String,
     pub location: Option<LocationInfo>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct LocationInfo {
     pub id: Uuid,
     pub name: String,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 pub struct TemperatureProbeValues {
     pub probe_1: Option<Decimal>,
     pub probe_2: Option<Decimal>,
@@ -50,7 +50,7 @@ pub struct TemperatureProbeValues {
     pub average: Option<Decimal>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct WellSummary {
     pub row: i32,
     pub col: i32,
@@ -70,7 +70,7 @@ pub struct WellSummary {
     // pub sample: Option<SampleInfo>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ExperimentResultsSummary {
     pub total_wells: usize,
     pub wells_with_data: usize,
@@ -82,7 +82,7 @@ pub struct ExperimentResultsSummary {
     pub well_summaries: Vec<WellSummary>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct TrayInfo {
     pub id: Uuid,
     pub name: Option<String>,
@@ -92,7 +92,7 @@ pub struct TrayInfo {
     pub well_relative_diameter: Option<String>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct RegionInput {
     pub name: Option<String>,
     pub tray_sequence_id: Option<i32>, // Renamed from tray_id for clarity

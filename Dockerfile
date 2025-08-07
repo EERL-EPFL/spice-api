@@ -1,11 +1,14 @@
-FROM rust:1.85.0 AS chef
-WORKDIR /app
+FROM rust:1.88.0-slim AS chef
+
+# Fix potential vulnerabilities
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN cargo install cargo-chef --locked
+WORKDIR /app
 
 FROM chef AS planner
 COPY ./src/ /app/src/
 COPY ./migration/ /app/migration/
-COPY ./entity/ /app/entity/
 COPY Cargo.lock Cargo.toml /app/
 RUN cargo chef prepare --recipe-path recipe.json
 
@@ -17,15 +20,14 @@ RUN cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY ./src /app/src
 COPY ./migration/ /app/migration/
-COPY ./entity/ /app/entity/
 COPY Cargo.lock Cargo.toml /app/
 
 RUN cargo build --release --bin spice-api
 
-# We do not need the Rust toolchain to run the binary!
 FROM debian:bookworm-slim AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Fix potential vulnerabilities
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /app/target/release/spice-api /usr/local/bin
