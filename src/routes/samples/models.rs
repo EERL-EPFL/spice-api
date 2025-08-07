@@ -83,9 +83,9 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     #[crudcrate(sortable, filterable, fulltext)]
     pub name: String,
-    #[sea_orm(column_name = "type")]
+    // #[sea_orm(column_name = "type")]
     #[crudcrate(sortable, filterable)]
-    pub sample_type: SampleType,
+    pub r#type: SampleType,
     #[crudcrate(sortable)]
     pub start_time: Option<DateTime<Utc>>,
     #[crudcrate(sortable)]
@@ -170,7 +170,7 @@ impl ActiveModelBehavior for ActiveModel {}
 #[derive(ToSchema, Serialize, Deserialize, Clone)]
 pub struct SampleCreateCustom {
     pub name: String,
-    pub sample_type: SampleType,
+    pub r#type: SampleType,
     pub material_description: Option<String>,
     pub extraction_procedure: Option<String>,
     pub filter_substrate: Option<String>,
@@ -463,7 +463,7 @@ async fn create_sample(
     let active_model = ActiveModel {
         id: ActiveValue::Set(Uuid::new_v4()),
         name: ActiveValue::Set(create_data.name),
-        sample_type: ActiveValue::Set(create_data.sample_type),
+        r#type: ActiveValue::Set(create_data.r#type),
         material_description: ActiveValue::Set(create_data.material_description),
         extraction_procedure: ActiveValue::Set(create_data.extraction_procedure),
         filter_substrate: ActiveValue::Set(create_data.filter_substrate),
