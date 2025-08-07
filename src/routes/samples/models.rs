@@ -11,6 +11,7 @@ use uuid::Uuid;
     Debug, Clone, PartialEq, Eq, EnumIter, DeriveActiveEnum, ToSchema, Serialize, Deserialize,
 )]
 #[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "sample_type")]
+#[serde(rename_all = "snake_case")]
 pub enum SampleType {
     #[sea_orm(string_value = "bulk")]
     Bulk,
@@ -24,7 +25,8 @@ pub enum SampleType {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct SampleTreatment {
-    pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<Uuid>,
     pub name: crate::routes::treatments::models::TreatmentName,
     pub notes: Option<String>,
     pub enzyme_volume_litres: Option<Decimal>,
@@ -33,7 +35,7 @@ pub struct SampleTreatment {
 impl From<crate::routes::treatments::models::Model> for SampleTreatment {
     fn from(model: crate::routes::treatments::models::Model) -> Self {
         Self {
-            id: model.id,
+            id: Some(model.id),
             name: model.name,
             notes: model.notes,
             enzyme_volume_litres: model.enzyme_volume_litres,
@@ -83,7 +85,6 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     #[crudcrate(sortable, filterable, fulltext)]
     pub name: String,
-    // #[sea_orm(column_name = "type")]
     #[crudcrate(sortable, filterable)]
     pub r#type: SampleType,
     #[crudcrate(sortable)]
@@ -490,8 +491,9 @@ async fn create_sample(
     // Insert treatments if provided
     if let Some(treatments) = treatments {
         for treatment in treatments {
+            let treatment_id = treatment.id.unwrap_or_else(Uuid::new_v4);
             let active_treatment = crate::routes::treatments::models::ActiveModel {
-                id: ActiveValue::Set(Uuid::new_v4()),
+                id: ActiveValue::Set(treatment_id),
                 sample_id: ActiveValue::Set(Some(sample_id)),
                 name: ActiveValue::Set(treatment.name),
                 notes: ActiveValue::Set(treatment.notes),
