@@ -47,7 +47,7 @@ where
     mutating_router
 }
 
-/// Separate router for Excel upload endpoint (uses regular Axum Router, not OpenApiRouter)
+/// Separate router for Excel upload endpoint (uses regular Axum Router, not `OpenApiRouter`)
 pub fn excel_upload_router() -> Router<AppState> {
     use axum::extract::DefaultBodyLimit;
     
@@ -59,7 +59,7 @@ pub fn excel_upload_router() -> Router<AppState> {
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit to match main router
 }
 
-/// Separate router for asset upload/download endpoints (uses regular Axum Router, not OpenApiRouter)
+/// Separate router for asset upload/download endpoints (uses regular Axum Router, not `OpenApiRouter`)
 pub fn asset_router() -> Router<AppState> {
     use axum::extract::DefaultBodyLimit;
     

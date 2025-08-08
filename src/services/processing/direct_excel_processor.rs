@@ -770,8 +770,8 @@ impl DirectExcelProcessor {
                 tray_id: Set(tray_id),
                 row_number: Set(well_mapping.row),
                 column_number: Set(well_mapping.col),
-                created_at: Set(Utc::now().into()),
-                last_updated: Set(Utc::now().into()),
+                created_at: Set(Utc::now()),
+                last_updated: Set(Utc::now()),
             };
             wells_data.push(well);
         }

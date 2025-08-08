@@ -375,7 +375,7 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
     let mut sample: Sample = model.into();
     sample.treatments = treatments
         .into_iter()
-        .map(|t| crate::routes::treatments::models::Treatment::from(t))
+        .map(crate::routes::treatments::models::Treatment::from)
         .collect();
 
     // Note: experimental_results functionality is not implemented yet.

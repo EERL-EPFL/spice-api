@@ -343,8 +343,7 @@ pub(super) async fn build_results_summary(
         let (treatment, sample) = region
             .and_then(|r| r.treatment_id)
             .and_then(|treatment_id| treatment_map.get(&treatment_id))
-            .map(|(t, s)| (Some(t.clone()), s.clone()))
-            .unwrap_or((None, None));
+            .map_or((None, None), |(t, s)| (Some(t.clone()), s.clone()));
 
         // Get tray information
         let tray_info = tray_map.get(&well.tray_id);
@@ -372,7 +371,7 @@ pub(super) async fn build_results_summary(
         let treatment_id = treatment.as_ref().map(|t| t.id);
         sample_treatment_wells
             .entry((sample_id, treatment_id))
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(well_summary);
     }
 
@@ -382,7 +381,7 @@ pub(super) async fn build_results_summary(
         std::collections::HashMap::new();
 
     // Group wells by sample
-    for ((sample_id, _), _wells) in &sample_treatment_wells {
+    for (sample_id, _) in sample_treatment_wells.keys() {
         if let Some(sample_id) = sample_id {
             if let Some((_, sample)) = treatment_map
                 .values()
@@ -471,8 +470,8 @@ pub(super) fn create_region_active_models(
             row_max: ActiveValue::Set(region.row_max),
             dilution_factor: ActiveValue::Set(dilution_factor),
             is_background_key: ActiveValue::Set(region.is_background_key.unwrap_or(false)),
-            created_at: ActiveValue::Set(chrono::Utc::now().into()),
-            last_updated: ActiveValue::Set(chrono::Utc::now().into()),
+            created_at: ActiveValue::Set(chrono::Utc::now()),
+            last_updated: ActiveValue::Set(chrono::Utc::now()),
         };
 
         active_models.push(active_model);
@@ -506,7 +505,7 @@ pub(super) async fn fetch_treatment_info(
         };
 
         let treatment_api: crate::routes::treatments::models::Treatment = treatment.clone().into();
-        let sample_api = sample.map(|s| s.into());
+        let sample_api = sample.map(std::convert::Into::into);
         Ok(Some((treatment_api, sample_api)))
     } else {
         Ok(None)
@@ -567,8 +566,7 @@ pub(super) async fn region_model_to_input_with_treatment(
     let (treatment, sample) = if let Some(treatment_id) = region.treatment_id {
         fetch_treatment_info(treatment_id, db)
             .await?
-            .map(|(t, s)| (Some(t), s))
-            .unwrap_or((None, None))
+            .map_or((None, None), |(t, s)| (Some(t), s))
     } else {
         (None, None)
     };

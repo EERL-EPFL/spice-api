@@ -108,9 +108,7 @@ pub async fn get_one_tray_configuration(
     let model: Model = match Entity::find_by_id(id).one(db).await? {
         Some(model) => model,
         None => {
-            return Err(DbErr::RecordNotFound(format!(
-                "tray_configuration not found"
-            )));
+            return Err(DbErr::RecordNotFound("tray_configuration not found".to_string()));
         }
     };
 

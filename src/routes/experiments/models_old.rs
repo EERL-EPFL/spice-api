@@ -158,8 +158,8 @@ impl From<crate::routes::tray_configurations::regions::models::Model> for TrayRe
             col_max: region.col_max,
             row_max: region.row_max,
             dilution_factor: region.dilution_factor,
-            created_at: region.created_at.into(),
-            last_updated: region.last_updated.into(),
+            created_at: region.created_at,
+            last_updated: region.last_updated,
         }
     }
 }
@@ -199,8 +199,8 @@ impl From<Model> for Experiment {
             tray_configuration_id: model.tray_configuration_id,
             username: model.username,
             performed_at: model.performed_at.map(|dt| dt.with_timezone(&Utc)),
-            created_at: model.created_at.into(),
-            last_updated: model.last_updated.into(),
+            created_at: model.created_at,
+            last_updated: model.last_updated,
             temperature_ramp: model.temperature_ramp,
             temperature_start: model.temperature_start,
             temperature_end: model.temperature_end,

@@ -1246,7 +1246,7 @@ async fn create_experiment_get_results_summary() -> Result<serde_json::Value, St
     );
     let results_summary = &experiment_response["results_summary"];
     if !results_summary.is_object() {
-        println!("Results summary is: {:?}", results_summary);
+        println!("Results summary is: {results_summary:?}");
         return Err("Results summary is not an object".to_string());
     }
     Ok(results_summary.clone())
@@ -2060,7 +2060,7 @@ async fn test_asset_upload_duplicate_file() {
         .unwrap();
 
     let status = second_response.status();
-    println!("📤 Second upload status: {}", status);
+    println!("📤 Second upload status: {status}");
     let body_bytes = axum::body::to_bytes(second_response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -2112,7 +2112,7 @@ async fn test_asset_upload_invalid_experiment() {
         .unwrap();
 
     let status = response.status();
-    println!("📤 Invalid experiment upload status: {}", status);
+    println!("📤 Invalid experiment upload status: {status}");
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -2146,8 +2146,7 @@ async fn test_asset_upload_no_file() {
     // Create multipart body with no file field
     let boundary = "test_boundary_nofile";
     let multipart_body = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"other_field\"\r\n\r\nsome value\r\n--{boundary}--\r\n",
-        boundary = boundary
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"other_field\"\r\n\r\nsome value\r\n--{boundary}--\r\n"
     );
 
     let response = app
@@ -2166,7 +2165,7 @@ async fn test_asset_upload_no_file() {
         .unwrap();
 
     let status = response.status();
-    println!("📤 No file upload status: {}", status);
+    println!("📤 No file upload status: {status}");
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -3401,8 +3400,7 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
     });
 
     println!(
-        "🏗️ Creating tray configuration '{}' with embedded P1/P2 trays: {}",
-        name, tray_config_data
+        "🏗️ Creating tray configuration '{name}' with embedded P1/P2 trays: {tray_config_data}"
     );
 
     let response = app
@@ -3426,18 +3424,17 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
 
     if status != StatusCode::CREATED {
         println!("❌ Failed to create tray config");
-        println!("   Status: {}", status);
-        println!("   Request payload: {}", tray_config_data);
-        println!("   Response body: {}", body_str);
+        println!("   Status: {status}");
+        println!("   Request payload: {tray_config_data}");
+        println!("   Response body: {body_str}");
 
         // Try to parse the error message from JSON
         if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&body_str) {
-            println!("   Parsed error: {:?}", error_json);
+            println!("   Parsed error: {error_json:?}");
         }
 
         panic!(
-            "Failed to create tray config. Status: {}, Body: {}",
-            status, body_str
+            "Failed to create tray config. Status: {status}, Body: {body_str}"
         );
     }
 
@@ -3455,7 +3452,7 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
     let mut body = Vec::new();
 
     // Construct multipart body according to RFC 7578
-    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(
         b"Content-Disposition: form-data; name=\"file\"; filename=\"merged.xlsx\"\r\n",
     );
@@ -3465,7 +3462,7 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(&excel_data);
     body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
     println!("   📤 Multipart body size: {} bytes", body.len());
 
@@ -3477,7 +3474,7 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
                 .uri(format!("/api/experiments/{experiment_id}/process-excel"))
                 .header(
                     "content-type",
-                    format!("multipart/form-data; boundary={}", boundary),
+                    format!("multipart/form-data; boundary={boundary}"),
                 )
                 .body(Body::from(body))
                 .unwrap(),
@@ -3538,20 +3535,20 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
 
     if exp_status != StatusCode::OK && exp_status != StatusCode::CREATED {
         println!("❌ Failed to create experiment");
-        println!("   Status: {}", exp_status);
-        println!("   Request payload: {}", experiment_payload);
-        println!("   Response body: {}", exp_body_str);
+        println!("   Status: {exp_status}");
+        println!("   Request payload: {experiment_payload}");
+        println!("   Response body: {exp_body_str}");
     }
 
     assert_eq!(exp_status, 201);
     let experiment: Value = serde_json::from_str(&exp_body_str).unwrap();
     let experiment_id = experiment["id"].as_str().unwrap();
 
-    println!("✅ Created experiment: {}", experiment_id);
+    println!("✅ Created experiment: {experiment_id}");
 
     // Step 2: Upload Excel file and process
     let upload_result = upload_excel_file(&app, experiment_id).await;
-    println!("📤 Excel upload result: {:?}", upload_result);
+    println!("📤 Excel upload result: {upload_result:?}");
 
     assert!(
         upload_result["body"]
@@ -3566,7 +3563,7 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
         .oneshot(
             axum::http::Request::builder()
                 .method(axum::http::Method::GET)
-                .uri(&format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -3604,30 +3601,26 @@ fn validate_experiment_totals(results_summary: &Value) {
     let total_time_points = results_summary["total_time_points"].as_u64().unwrap_or(0);
 
     assert_eq!(
-        total_wells, EXPECTED_TOTAL_WELLS as u64,
-        "Total wells should be {}, got {}",
-        EXPECTED_TOTAL_WELLS, total_wells
+        total_wells, { EXPECTED_TOTAL_WELLS },
+        "Total wells should be {EXPECTED_TOTAL_WELLS}, got {total_wells}"
     );
     assert_eq!(
-        wells_with_data, EXPECTED_TOTAL_WELLS as u64,
-        "Wells with data should be {}, got {}",
-        EXPECTED_TOTAL_WELLS, wells_with_data
+        wells_with_data, { EXPECTED_TOTAL_WELLS },
+        "Wells with data should be {EXPECTED_TOTAL_WELLS}, got {wells_with_data}"
     );
     assert_eq!(
-        wells_frozen, EXPECTED_TOTAL_WELLS as u64,
-        "All wells should be frozen, got {}",
-        wells_frozen
+        wells_frozen, { EXPECTED_TOTAL_WELLS },
+        "All wells should be frozen, got {wells_frozen}"
     );
     assert_eq!(
-        total_time_points, EXPECTED_TOTAL_TIME_POINTS as u64,
-        "Time points should be {}, got {}",
-        EXPECTED_TOTAL_TIME_POINTS, total_time_points
+        total_time_points, { EXPECTED_TOTAL_TIME_POINTS },
+        "Time points should be {EXPECTED_TOTAL_TIME_POINTS}, got {total_time_points}"
     );
 
-    println!("   ✅ Total wells: {} ✓", total_wells);
-    println!("   ✅ Wells with data: {} ✓", wells_with_data);
-    println!("   ✅ Wells frozen: {} ✓", wells_frozen);
-    println!("   ✅ Time points: {} ✓", total_time_points);
+    println!("   ✅ Total wells: {total_wells} ✓");
+    println!("   ✅ Wells with data: {wells_with_data} ✓");
+    println!("   ✅ Wells frozen: {wells_frozen} ✓");
+    println!("   ✅ Time points: {total_time_points} ✓");
 }
 
 fn validate_specific_well_transitions(experiment: &Value) {
@@ -3642,7 +3635,7 @@ fn validate_specific_well_transitions(experiment: &Value) {
     for well in well_summaries {
         let tray_name = well["tray_name"].as_str().unwrap_or("unknown");
         let coordinate = well["coordinate"].as_str().unwrap_or("unknown");
-        let key = format!("{}_{}", tray_name, coordinate);
+        let key = format!("{tray_name}_{coordinate}");
         well_lookup.insert(key, well);
     }
 
@@ -3653,23 +3646,22 @@ fn validate_specific_well_transitions(experiment: &Value) {
         let key = format!("{}_{}", expected.tray, expected.coordinate);
         let well = well_lookup
             .get(&key)
-            .unwrap_or_else(|| panic!("Could not find well {}", key));
+            .unwrap_or_else(|| panic!("Could not find well {key}"));
 
         // Validate well has a freeze time
         let freeze_time = well["first_phase_change_time"]
             .as_str()
-            .unwrap_or_else(|| panic!("Well {} should have first_phase_change_time", key));
+            .unwrap_or_else(|| panic!("Well {key} should have first_phase_change_time"));
 
         // Validate final state is frozen
         let final_state = well["final_state"].as_str().unwrap_or("unknown");
-        assert_eq!(final_state, "frozen", "Well {} should be frozen", key);
+        assert_eq!(final_state, "frozen", "Well {key} should be frozen");
 
         // Validate temperature probes exist
         let temp_probes = &well["first_phase_change_temperature_probes"];
         assert!(
             temp_probes.is_object(),
-            "Well {} should have temperature probe data",
-            key
+            "Well {key} should have temperature probe data"
         );
 
         // Parse both timestamps and compare with tolerance for millisecond differences
@@ -3700,7 +3692,7 @@ fn validate_specific_well_transitions(experiment: &Value) {
         let probe1_temp = temp_probes["probe_1"]
             .as_str()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or_else(|| panic!("Well {} should have probe_1 temperature", key));
+            .unwrap_or_else(|| panic!("Well {key} should have probe_1 temperature"));
 
         // Allow tolerance for difference between averaged (CSV analysis) and single probe (API) temperatures
         // Since CSV analysis used 8-probe averages but API uses individual probe readings
@@ -3715,8 +3707,7 @@ fn validate_specific_well_transitions(experiment: &Value) {
         );
 
         println!(
-            "   ✅ Well {}: froze at {}, temp={}°C ✓",
-            key, freeze_time, probe1_temp
+            "   ✅ Well {key}: froze at {freeze_time}, temp={probe1_temp}°C ✓"
         );
     }
 
@@ -3759,17 +3750,15 @@ fn validate_experiment_timing(results_summary: &Value) {
     // Validate experiment start time matches expected
     assert!(
         first_timestamp.contains("2025-03-20"),
-        "Experiment should start on 2025-03-20, got {}",
-        first_timestamp
+        "Experiment should start on 2025-03-20, got {first_timestamp}"
     );
     assert!(
         first_timestamp.contains("15:13"),
-        "Experiment should start around 15:13, got {}",
-        first_timestamp
+        "Experiment should start around 15:13, got {first_timestamp}"
     );
 
-    println!("   ✅ Experiment start: {} ✓", first_timestamp);
-    println!("   ✅ Experiment end: {} ✓", last_timestamp);
+    println!("   ✅ Experiment start: {first_timestamp} ✓");
+    println!("   ✅ Experiment end: {last_timestamp} ✓");
 
     // Calculate duration (should be about 1 hour 6 minutes based on CSV)
     // This is a rough validation - exact timing depends on processing
@@ -3820,7 +3809,7 @@ async fn test_well_coordinate_mapping_accuracy() {
         .oneshot(
             axum::http::Request::builder()
                 .method(axum::http::Method::GET)
-                .uri(&format!("/api/experiments/{}", experiment_id))
+                .uri(format!("/api/experiments/{experiment_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -3849,35 +3838,32 @@ async fn test_well_coordinate_mapping_accuracy() {
         match tray_name {
             "P1" => p1_wells += 1,
             "P2" => p2_wells += 1,
-            _ => panic!("Unexpected tray name: {}", tray_name),
+            _ => panic!("Unexpected tray name: {tray_name}"),
         }
 
         // Validate coordinate format (A1-H12)
         assert!(
             coordinate.len() >= 2 && coordinate.len() <= 3,
-            "Coordinate {} should be 2-3 characters",
-            coordinate
+            "Coordinate {coordinate} should be 2-3 characters"
         );
         assert!(
             coordinate.chars().next().unwrap().is_ascii_uppercase(),
-            "Coordinate {} should start with A-H",
-            coordinate
+            "Coordinate {coordinate} should start with A-H"
         );
 
         // Add to set to check for duplicates within tray
-        let full_coord = format!("{}_{}", tray_name, coordinate);
+        let full_coord = format!("{tray_name}_{coordinate}");
         assert!(
             coordinate_set.insert(full_coord.clone()),
-            "Duplicate coordinate found: {}",
-            full_coord
+            "Duplicate coordinate found: {full_coord}"
         );
     }
 
-    assert_eq!(p1_wells, 96, "Should have 96 P1 wells, got {}", p1_wells);
-    assert_eq!(p2_wells, 96, "Should have 96 P2 wells, got {}", p2_wells);
+    assert_eq!(p1_wells, 96, "Should have 96 P1 wells, got {p1_wells}");
+    assert_eq!(p2_wells, 96, "Should have 96 P2 wells, got {p2_wells}");
 
-    println!("   ✅ P1 wells: {} ✓", p1_wells);
-    println!("   ✅ P2 wells: {} ✓", p2_wells);
+    println!("   ✅ P1 wells: {p1_wells} ✓");
+    println!("   ✅ P2 wells: {p2_wells} ✓");
     println!("   ✅ Unique coordinates: {} ✓", coordinate_set.len());
     println!("   🗺️  Well coordinate mapping validated successfully");
 }

@@ -120,7 +120,7 @@ async fn get_one_experiment(db: &DatabaseConnection, id: Uuid) -> Result<Experim
     let model = Entity::find_by_id(id)
         .one(db)
         .await?
-        .ok_or(DbErr::RecordNotFound(format!("Experiment not found")))?;
+        .ok_or(DbErr::RecordNotFound("Experiment not found".to_string()))?;
 
     let s3_assets = model
         .find_related(crate::routes::assets::models::Entity)
@@ -187,7 +187,7 @@ async fn update_experiment(
     let existing: ActiveModel = Entity::find_by_id(id)
         .one(&txn)
         .await?
-        .ok_or(DbErr::RecordNotFound(format!("Experiment not found")))?
+        .ok_or(DbErr::RecordNotFound("Experiment not found".to_string()))?
         .into();
     let regions = update_data.regions.clone();
     let updated_model =
@@ -264,5 +264,5 @@ async fn get_all_experiments(
     }
 
     // Convert to ExperimentList
-    Ok(experiments.into_iter().map(|e| e.into()).collect())
+    Ok(experiments.into_iter().map(std::convert::Into::into).collect())
 }
