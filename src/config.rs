@@ -86,7 +86,7 @@ pub mod test_helpers {
     use crate::routes::build_router;
     use axum::Router;
     use migration::{Migrator, MigratorTrait};
-    use sea_orm::{Database, DatabaseConnection};
+    use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 
     pub fn init_test_env() {
         // No need for Once since each test gets its own database
@@ -110,6 +110,11 @@ pub mod test_helpers {
         if let Err(e) = db.ping().await {
             panic!("SQLite database connection failed: {e:?}");
         }
+
+        // Enable foreign key constraints for SQLite (they are disabled by default)
+        db.execute_unprepared("PRAGMA foreign_keys = ON")
+            .await
+            .expect("Failed to enable SQLite foreign key constraints");
 
         // Run migrations to create all tables
         Migrator::up(&db, None)

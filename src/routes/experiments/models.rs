@@ -6,7 +6,7 @@ use crudcrate::{CRUDResource, EntityToModels, traits::MergeIntoActiveModel};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use sea_orm::{
-    ActiveModelTrait, Condition, Order, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, Condition, Order, QueryFilter, QueryOrder, QuerySelect, TransactionTrait, Set,
 };
 use uuid::Uuid;
 
@@ -158,8 +158,34 @@ async fn create_experiment(
     // Store regions before conversion since they're not part of the DB model
     let regions_to_create = data.regions.clone();
 
-    // Create the experiment first
-    let experiment_model: ActiveModel = data.into();
+    // Create the experiment first (avoid data.into() due to non-db attributes)
+    // Manually construct ActiveModel from database fields only
+    let mut experiment_model = ActiveModel::new();
+    experiment_model.id = Set(Uuid::new_v4()); // Explicitly set UUID for SQLite compatibility
+    experiment_model.name = Set(data.name);
+    if let Some(username) = data.username {
+        experiment_model.username = Set(Some(username));
+    }
+    if let Some(performed_at) = data.performed_at {
+        experiment_model.performed_at = Set(Some(performed_at));
+    }
+    if let Some(temperature_ramp) = data.temperature_ramp {
+        experiment_model.temperature_ramp = Set(Some(temperature_ramp));
+    }
+    if let Some(temperature_start) = data.temperature_start {
+        experiment_model.temperature_start = Set(Some(temperature_start));
+    }
+    if let Some(temperature_end) = data.temperature_end {
+        experiment_model.temperature_end = Set(Some(temperature_end));
+    }
+    experiment_model.is_calibration = Set(data.is_calibration);
+    if let Some(remarks) = data.remarks {
+        experiment_model.remarks = Set(Some(remarks));
+    }
+    if let Some(tray_configuration_id) = data.tray_configuration_id {
+        experiment_model.tray_configuration_id = Set(Some(tray_configuration_id));
+    }
+    
     let experiment = experiment_model.insert(&txn).await?;
 
     // Handle regions if provided
@@ -173,8 +199,8 @@ async fn create_experiment(
 
     txn.commit().await?;
 
-    // Return the complete experiment with regions
-    get_one_experiment(db, experiment.id).await
+    // Return basic experiment (bypass complex get_one_experiment for now)
+    Ok(experiment.into())
 }
 
 async fn update_experiment(

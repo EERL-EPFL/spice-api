@@ -51,7 +51,7 @@ impl MigrationTrait for Migration {
         let mut projects_table = Table::create()
             .table(Projects::Table)
             .if_not_exists()
-            .col(ColumnDef::new(Projects::Name).string().not_null())
+            .col(ColumnDef::new(Projects::Name).string().not_null().unique_key())
             .col(ColumnDef::new(Projects::Note).text())
             .col(ColumnDef::new(Projects::Colour).string())
             .col(ColumnDef::new(Projects::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
@@ -83,7 +83,7 @@ impl MigrationTrait for Migration {
         let mut locations_table = Table::create()
             .table(Locations::Table)
             .if_not_exists()
-            .col(ColumnDef::new(Locations::Name).string().not_null())
+            .col(ColumnDef::new(Locations::Name).string().not_null().unique_key())
             .col(ColumnDef::new(Locations::Comment).text())
             .col(ColumnDef::new(Locations::ProjectId).uuid())
             .col(ColumnDef::new(Locations::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
@@ -251,7 +251,7 @@ impl MigrationTrait for Migration {
         let mut tray_configurations_table = Table::create()
             .table(TrayConfigurations::Table)
             .if_not_exists()
-            .col(ColumnDef::new(TrayConfigurations::Name).text())
+            .col(ColumnDef::new(TrayConfigurations::Name).text().unique_key())
             .col(ColumnDef::new(TrayConfigurations::ExperimentDefault).boolean().not_null())
             .col(ColumnDef::new(TrayConfigurations::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
             .col(ColumnDef::new(TrayConfigurations::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
@@ -282,15 +282,15 @@ impl MigrationTrait for Migration {
         let mut experiments_table = Table::create()
             .table(Experiments::Table)
             .if_not_exists()
-            .col(ColumnDef::new(Experiments::Name).text().not_null())
-            .col(ColumnDef::new(Experiments::Username).text())
-            .col(ColumnDef::new(Experiments::PerformedAt).timestamp_with_time_zone())
-            .col(ColumnDef::new(Experiments::TemperatureRamp).decimal())
-            .col(ColumnDef::new(Experiments::TemperatureStart).decimal())
-            .col(ColumnDef::new(Experiments::TemperatureEnd).decimal())
+            .col(ColumnDef::new(Experiments::Name).text().not_null().unique_key())
+            .col(ColumnDef::new(Experiments::Username).text().null())
+            .col(ColumnDef::new(Experiments::PerformedAt).timestamp_with_time_zone().null())
+            .col(ColumnDef::new(Experiments::TemperatureRamp).decimal().null())
+            .col(ColumnDef::new(Experiments::TemperatureStart).decimal().null())
+            .col(ColumnDef::new(Experiments::TemperatureEnd).decimal().null())
             .col(ColumnDef::new(Experiments::IsCalibration).boolean().not_null().default(false))
-            .col(ColumnDef::new(Experiments::Remarks).text())
-            .col(ColumnDef::new(Experiments::TrayConfigurationId).uuid())
+            .col(ColumnDef::new(Experiments::Remarks).text().null())
+            .col(ColumnDef::new(Experiments::TrayConfigurationId).uuid().null())
             .col(ColumnDef::new(Experiments::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
             .col(ColumnDef::new(Experiments::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
             .foreign_key(
@@ -342,9 +342,11 @@ impl MigrationTrait for Migration {
                     .name("fk_tray_assignment_to_configuration")
                     .from(Trays::Table, Trays::TrayConfigurationId)
                     .to(TrayConfigurations::Table, TrayConfigurations::Id)
-                    .on_delete(ForeignKeyAction::NoAction)
+                    .on_delete(ForeignKeyAction::Cascade)
                     .on_update(ForeignKeyAction::NoAction),
             )
+            // Add composite unique constraint for SQLite compatibility
+            .index(Index::create().name("trays_config_sequence_unique").col(Trays::TrayConfigurationId).col(Trays::OrderSequence).unique())
             .to_owned();
 
         // Note: trays table does not have UUID primary key, it uses composite key or no explicit primary key in the SQL
@@ -472,7 +474,7 @@ impl MigrationTrait for Migration {
             .if_not_exists()
             .col(ColumnDef::new(S3Assets::ExperimentId).uuid())
             .col(ColumnDef::new(S3Assets::OriginalFilename).text().not_null())
-            .col(ColumnDef::new(S3Assets::S3Key).text().not_null())
+            .col(ColumnDef::new(S3Assets::S3Key).text().not_null().unique_key())
             .col(ColumnDef::new(S3Assets::SizeBytes).big_integer())
             .col(ColumnDef::new(S3Assets::UploadedBy).text())
             .col(ColumnDef::new(S3Assets::UploadedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
@@ -519,14 +521,14 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(TemperatureReadings::ExperimentId).uuid().not_null())
             .col(ColumnDef::new(TemperatureReadings::Timestamp).timestamp_with_time_zone().not_null())
             .col(ColumnDef::new(TemperatureReadings::ImageFilename).text())
-            .col(ColumnDef::new(TemperatureReadings::Probe1).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe2).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe3).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe4).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe5).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe6).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe7).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe8).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_1).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_2).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_3).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_4).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_5).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_6).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_7).decimal())
+            .col(ColumnDef::new(TemperatureReadings::Probe_8).decimal())
             .col(ColumnDef::new(TemperatureReadings::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
             .foreign_key(
                 ForeignKey::create()
@@ -617,75 +619,9 @@ impl MigrationTrait for Migration {
 
         manager.create_table(well_phase_transitions_table).await?;
 
-        // Add unique indexes (which PostgreSQL will create as constraints)
-        manager
-            .create_index(
-                Index::create()
-                    .name("projects_name_key")
-                    .table(Projects::Table)
-                    .col(Projects::Name)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
+        // Note: All unique constraints now added during table creation for SQLite compatibility
 
-        manager
-            .create_index(
-                Index::create()
-                    .name("locations_name_key")
-                    .table(Locations::Table)
-                    .col(Locations::Name)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("experiments_name_key")
-                    .table(Experiments::Table)
-                    .col(Experiments::Name)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("s3_assets_s3_key_key")
-                    .table(S3Assets::Table)
-                    .col(S3Assets::S3Key)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        // Create indexes
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("name_uniqueness")
-                    .table(TrayConfigurations::Table)
-                    .col(TrayConfigurations::Name)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .name("no_duplicate_sequences")
-                    .table(Trays::Table)
-                    .col(Trays::TrayConfigurationId)
-                    .col(Trays::OrderSequence)
-                    .unique()
-                    .to_owned(),
-            )
-            .await?;
+        // All unique constraints moved to table creation for SQLite compatibility
 
         // Create non-unique indexes for performance
         manager
@@ -986,14 +922,14 @@ enum TemperatureReadings {
     ExperimentId,
     Timestamp,
     ImageFilename,
-    Probe1,
-    Probe2,
-    Probe3,
-    Probe4,
-    Probe5,
-    Probe6,
-    Probe7,
-    Probe8,
+    Probe_1,
+    Probe_2,
+    Probe_3,
+    Probe_4,
+    Probe_5,
+    Probe_6,
+    Probe_7,
+    Probe_8,
     CreatedAt,
 }
 

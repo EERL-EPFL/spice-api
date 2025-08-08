@@ -284,10 +284,12 @@ async fn test_experiment_crud_operations() {
         .await
         .unwrap();
 
-    assert!(
-        response.status().is_success(),
-        "Failed to create experiment"
-    );
+    let status = response.status();
+    if !status.is_success() {
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8_lossy(&bytes);
+        panic!("Failed to create experiment. Status: {}, Body: {}", status, body);
+    }
 
     // Test getting all experiments
     let response = app
