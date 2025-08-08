@@ -6,4 +6,6 @@ pub mod services;
 pub mod temperatures;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod comprehensive_validation_tests;
 pub mod views;
