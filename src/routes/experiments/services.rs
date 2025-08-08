@@ -8,8 +8,7 @@ use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
-    tray_configurations::regions::models as regions,
-    tray_configurations::trays::models as trays,
+    tray_configurations::regions::models as regions, tray_configurations::trays::models as trays,
     tray_configurations::wells::models as wells,
 };
 use chrono::Utc;
@@ -116,9 +115,7 @@ pub(super) async fn build_results_summary(
         if let Some(exp) = experiment {
             if let Some(tray_config_id) = exp.tray_configuration_id {
                 let tray_list = trays::Entity::find()
-                    .filter(
-                        trays::Column::TrayConfigurationId.eq(tray_config_id),
-                    )
+                    .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
                     .all(db)
                     .await?;
 
@@ -383,13 +380,11 @@ pub(super) async fn build_results_summary(
     // Group wells by sample
     for (sample_id, _) in sample_treatment_wells.keys() {
         if let Some(sample_id) = sample_id {
-            if let Some((_, sample)) = treatment_map
+            if let Some((_, Some(sample))) = treatment_map
                 .values()
                 .find(|(_, s)| s.as_ref().map(|s| s.id) == Some(*sample_id))
             {
-                if let Some(sample) = sample {
-                    samples_map.insert(sample.id, sample.clone());
-                }
+                samples_map.insert(sample.id, sample.clone());
             }
         }
     }
@@ -519,8 +514,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
     db: &impl ConnectionTrait,
 ) -> Result<Option<TrayInfo>, DbErr> {
     use crate::routes::{
-        experiments::models as experiments,
-        tray_configurations::trays::models as trays,
+        experiments::models as experiments, tray_configurations::trays::models as trays,
     };
 
     // Get the experiment to find its tray configuration
@@ -533,9 +527,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
             // Find the tray with the matching sequence ID
             // Note: After schema simplification, all tray data is in the trays table
             let tray = trays::Entity::find()
-                .filter(
-                    trays::Column::TrayConfigurationId.eq(tray_config_id),
-                )
+                .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
                 .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
                 .one(db)
                 .await?;
@@ -547,9 +539,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
                     sequence_id: tray.order_sequence,
                     qty_x_axis: tray.qty_x_axis,
                     qty_y_axis: tray.qty_y_axis,
-                    well_relative_diameter: tray
-                        .well_relative_diameter
-                        .map(|d| d.to_string()),
+                    well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
                 }));
             }
         }

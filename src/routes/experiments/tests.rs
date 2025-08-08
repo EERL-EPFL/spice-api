@@ -1,10 +1,9 @@
 use crate::config::test_helpers::setup_test_app;
-// Coordinate conversion functions - kept for potential future use
-// use crate::routes::tray_configurations::services::{coordinates_to_str, str_to_coordinates};
 use axum::Router;
 use axum::body::Body;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
+use chrono::{DateTime, NaiveDateTime};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -580,10 +579,6 @@ async fn test_time_point_with_96_well_plates() {
         StatusCode::OK,
         "96-well time point creation should work"
     );
-
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -679,10 +674,6 @@ async fn test_time_point_with_384_well_plates() {
         StatusCode::OK,
         "384-well time point creation should work"
     );
-
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -1724,17 +1715,6 @@ async fn test_experiment_process_status_endpoint() {
     } else if status_status == StatusCode::OK {
     }
 }
-
-// Removed unused create_test_tray_configuration function
-
-// Removed unused create_test_experiment_with_tray_config function
-
-/// Test if multipart parsing works with a minimal file
-// Removed unused test_multipart_basic function
-
-// Removed unused get_experiment_details function
-
-// Removed unused setup_excel_test_environment function
 
 /// Validate experiment results structure
 fn validate_experiment_results_structure(results_summary: &serde_json::Value) {
@@ -3433,9 +3413,7 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
             println!("   Parsed error: {error_json:?}");
         }
 
-        panic!(
-            "Failed to create tray config. Status: {status}, Body: {body_str}"
-        );
+        panic!("Failed to create tray config. Status: {status}, Body: {body_str}");
     }
 
     body_str
@@ -3601,19 +3579,23 @@ fn validate_experiment_totals(results_summary: &Value) {
     let total_time_points = results_summary["total_time_points"].as_u64().unwrap_or(0);
 
     assert_eq!(
-        total_wells, { EXPECTED_TOTAL_WELLS },
+        total_wells,
+        { EXPECTED_TOTAL_WELLS },
         "Total wells should be {EXPECTED_TOTAL_WELLS}, got {total_wells}"
     );
     assert_eq!(
-        wells_with_data, { EXPECTED_TOTAL_WELLS },
+        wells_with_data,
+        { EXPECTED_TOTAL_WELLS },
         "Wells with data should be {EXPECTED_TOTAL_WELLS}, got {wells_with_data}"
     );
     assert_eq!(
-        wells_frozen, { EXPECTED_TOTAL_WELLS },
+        wells_frozen,
+        { EXPECTED_TOTAL_WELLS },
         "All wells should be frozen, got {wells_frozen}"
     );
     assert_eq!(
-        total_time_points, { EXPECTED_TOTAL_TIME_POINTS },
+        total_time_points,
+        { EXPECTED_TOTAL_TIME_POINTS },
         "Time points should be {EXPECTED_TOTAL_TIME_POINTS}, got {total_time_points}"
     );
 
@@ -3664,9 +3646,6 @@ fn validate_specific_well_transitions(experiment: &Value) {
             "Well {key} should have temperature probe data"
         );
 
-        // Parse both timestamps and compare with tolerance for millisecond differences
-        use chrono::{DateTime, NaiveDateTime};
-
         // Parse API timestamp (ISO 8601 format)
         let api_time = DateTime::parse_from_rfc3339(freeze_time)
             .expect("Failed to parse API timestamp")
@@ -3705,27 +3684,6 @@ fn validate_specific_well_transitions(experiment: &Value) {
             probe1_temp,
             temp_diff
         );
-
-        println!(
-            "   ✅ Well {key}: froze at {freeze_time}, temp={probe1_temp}°C ✓"
-        );
-    }
-
-    println!(
-        "   🎯 Validated {} specific transitions",
-        EXPECTED_TRANSITIONS.len()
-    );
-
-    // Report validation coverage
-    println!("   📊 Validation Coverage:");
-    println!(
-        "      🔸 Total wells validated: {}/192 ({:.1}%)",
-        EXPECTED_TRANSITIONS.len(),
-        (EXPECTED_TRANSITIONS.len() as f64 / 192.0) * 100.0
-    );
-
-    if EXPECTED_TRANSITIONS.len() == 192 {
-        println!("      🎉 COMPLETE COVERAGE: All 192 wells validated!");
     }
 }
 

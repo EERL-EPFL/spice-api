@@ -108,7 +108,9 @@ pub async fn get_one_tray_configuration(
     let model: Model = match Entity::find_by_id(id).one(db).await? {
         Some(model) => model,
         None => {
-            return Err(DbErr::RecordNotFound("tray_configuration not found".to_string()));
+            return Err(DbErr::RecordNotFound(
+                "tray_configuration not found".to_string(),
+            ));
         }
     };
 
@@ -209,7 +211,6 @@ pub async fn create_tray_configuration(
         experiment_default: Set(data.experiment_default),
         created_at: Set(chrono::Utc::now()),
         last_updated: Set(chrono::Utc::now()),
-        ..Default::default()
     };
     active_model.insert(&txn).await?;
 
