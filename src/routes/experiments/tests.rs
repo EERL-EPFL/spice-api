@@ -2218,26 +2218,32 @@ async fn create_test_tray_configuration(app: &axum::Router, name: &str) -> Strin
     body["id"].as_str().unwrap().to_string()
 }
 
-/// Create a tray via API
-async fn create_test_tray(app: &axum::Router, name: &str, x_axis: i32, y_axis: i32) -> String {
-    let tray_data = json!({
+/// Create a tray configuration with embedded trays (post-flattening structure)
+async fn create_test_tray_config_with_trays(app: &axum::Router, name: &str) -> String {
+    let tray_config_data = json!({
         "name": name,
         "experiment_default": false,
         "trays": [
             {
-                "trays": [
-                    {
-                        "name": "P1",
-                        "qty_x_axis": x_axis,
-                        "qty_y_axis": y_axis,
-                        "well_relative_diameter": 0.6
-                    }
-                ],
+                "name": "P1",
+                "qty_x_axis": 12,
+                "qty_y_axis": 8,
+                "well_relative_diameter": 0.6,
                 "rotation_degrees": 0,
                 "order_sequence": 1
+            },
+            {
+                "name": "P2", 
+                "qty_x_axis": 12,
+                "qty_y_axis": 8,
+                "well_relative_diameter": 0.6,
+                "rotation_degrees": 0,
+                "order_sequence": 2
             }
         ]
     });
+
+    println!("🏗️ Creating tray configuration '{}' with embedded P1/P2 trays: {}", name, tray_config_data);
 
     let response = app
         .clone()
@@ -2246,19 +2252,24 @@ async fn create_test_tray(app: &axum::Router, name: &str, x_axis: i32, y_axis: i
                 .method("POST")
                 .uri("/api/trays")
                 .header("content-type", "application/json")
-                .body(Body::from(tray_data.to_string()))
+                .body(Body::from(tray_config_data.to_string()))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::CREATED);
-    let body: serde_json::Value = serde_json::from_slice(
-        &axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let status = response.status();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body_text = String::from_utf8_lossy(&body_bytes);
+    
+    if status != StatusCode::CREATED {
+        println!("❌ Failed to create tray config '{}'. Status: {}, Response: {}", name, status, body_text);
+    }
+    
+    assert_eq!(status, StatusCode::CREATED);
+    let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     body["id"].as_str().unwrap().to_string()
 }
@@ -2305,43 +2316,83 @@ async fn create_test_experiment_with_tray_config(
     body["id"].as_str().unwrap().to_string()
 }
 
-/// Upload Excel file via API with proper multipart support
-async fn upload_excel_file(
-    app: &axum::Router,
-    experiment_id: &str,
-    excel_data: Vec<u8>,
-) -> serde_json::Value {
-    // Create proper multipart form data
-    let boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW";
+/// Test if multipart parsing works with a minimal file
+async fn test_multipart_basic(app: &axum::Router, experiment_id: &str) -> serde_json::Value {
+    // Create minimal test data
+    let test_data = b"test content";
+    let boundary = "----test-boundary-123";
     let mut body = Vec::new();
-
-    // Start boundary
-    body.extend(format!("--{boundary}\r\n").as_bytes());
-
-    // File field header
-    body.extend(b"Content-Disposition: form-data; name=\"file\"; filename=\"merged.xlsx\"\r\n");
-    body.extend(
-        b"Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n",
-    );
-    body.extend(b"\r\n");
-
-    // File content
-    body.extend(&excel_data);
-    body.extend(b"\r\n");
-
-    // End boundary
-    body.extend(format!("--{boundary}--\r\n").as_bytes());
-
+    
+    // Minimal multipart
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"test.xlsx\"\r\n");
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(test_data);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    
+    println!("   🧪 Testing basic multipart with {} bytes", body.len());
+    
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri(format!("/api/experiments/{experiment_id}/process-excel"))
-                .header(
-                    "content-type",
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
+                .header("content-type", format!("multipart/form-data; boundary={}", boundary))
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    
+    let body_text = String::from_utf8_lossy(&body_bytes);
+    println!("   🧪 Basic multipart test - Status: {status}, Response: {body_text}");
+    
+    serde_json::json!({
+        "status_code": status.as_u16(),
+        "body": body_text
+    })
+}
+
+/// Upload Excel file via API with proper multipart support
+async fn upload_excel_file(
+    app: &axum::Router,
+    experiment_id: &str,
+    excel_data: Vec<u8>,
+) -> serde_json::Value {
+    // First test if basic multipart works at all
+    let basic_test = test_multipart_basic(app, experiment_id).await;
+    println!("   🧪 Basic multipart test result: {}", basic_test);
+    
+    // Create a properly formatted multipart body with correct boundaries and headers
+    let boundary = "----formdata-test-boundary-123456789";
+    let mut body = Vec::new();
+    
+    // Construct multipart body according to RFC 7578
+    body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"merged.xlsx\"\r\n");
+    body.extend_from_slice(b"Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n");
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(&excel_data);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{}--\r\n", boundary).as_bytes());
+    
+    println!("   📤 Multipart body size: {} bytes", body.len());
+    println!("   📤 Content-Type: multipart/form-data; boundary={}", boundary);
+    
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/experiments/{experiment_id}/process-excel"))
+                .header("content-type", format!("multipart/form-data; boundary={}", boundary))
                 .body(Body::from(body))
                 .unwrap(),
         )
@@ -2363,7 +2414,7 @@ async fn upload_excel_file(
         })
     } else {
         let body_text = String::from_utf8_lossy(&body_bytes);
-        println!("   Response body: {body_text}");
+        println!("   ❌ Response body: {body_text}");
 
         serde_json::json!({
             "success": false,
@@ -2400,15 +2451,8 @@ async fn get_experiment_details(app: &axum::Router, experiment_id: &str) -> serd
 
 /// Setup complete test environment with trays and configuration
 async fn setup_excel_test_environment(app: &axum::Router) -> (String, String) {
-    // Create tray configuration
-    let tray_config_id = create_test_tray_configuration(app, "Test Tray Config").await;
-
-    // Create P1 and P2 trays
-    let _tray_p1_id = create_test_tray(app, "P1", 12, 8).await;
-    let _tray_p2_id = create_test_tray(app, "P2", 12, 8).await;
-
-    // TODO: Create tray configuration assignments via API
-    // This would require implementing tray assignment endpoints first
+    // Create tray configuration with embedded P1 and P2 trays
+    let tray_config_id = create_test_tray_config_with_trays(app, "Test Tray Config with P1/P2").await;
 
     // Create experiment
     let experiment_id =
@@ -2656,20 +2700,31 @@ fn validate_expected_data_counts(results_summary: &serde_json::Value) {
 fn validate_well_phase_transitions(results_summary: &serde_json::Value) {
     if let Some(well_summaries) = results_summary["well_summaries"].as_array() {
         let mut wells_with_transitions = 0;
-        let mut total_transitions = 0;
-
+        let mut frozen_wells = 0;
+        
         for summary in well_summaries {
-            if let Some(transitions) = summary["total_transitions"].as_u64() {
-                if transitions > 0 {
-                    wells_with_transitions += 1;
-                    total_transitions += transitions;
+            // Check if the well has a phase change time (indicates transition occurred)
+            if let Some(_phase_change_time) = summary["first_phase_change_time"].as_str() {
+                wells_with_transitions += 1;
+            }
+            
+            // Check final state to count frozen wells
+            if let Some(final_state) = summary["final_state"].as_str() {
+                if final_state == "frozen" {
+                    frozen_wells += 1;
                 }
             }
         }
 
         println!("   - Wells with transitions: {wells_with_transitions}");
-        println!("   - Total transitions: {total_transitions}");
+        println!("   - Frozen wells: {frozen_wells}");
+        println!("   - Total wells: {}", well_summaries.len());
 
-        if wells_with_transitions > 0 {}
+        // Expected: all 192 wells should have transitions since our test data shows all wells freeze
+        if wells_with_transitions != EXPECTED_TOTAL_WELLS {
+            println!(
+                "⚠️ Wells with transitions differ from expected: got {wells_with_transitions}, expected {EXPECTED_TOTAL_WELLS}"
+            );
+        }
     }
 }

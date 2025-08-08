@@ -7,7 +7,7 @@ use aws_sdk_s3::primitives::ByteStream;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::routing::post;
-use axum::{extract::Multipart, http::status::StatusCode, response::Response, routing::get};
+use axum::{extract::Multipart, http::status::StatusCode, response::Response, routing::get, Router};
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::CRUDResource;
 use sea_orm::ActiveValue::Set;
@@ -23,13 +23,9 @@ where
     Experiment: CRUDResource,
 {
     let mut mutating_router = crudrouter(&state.db.clone());
+    // Excel upload endpoint is handled separately in excel_upload_router()
     // .route("/{experiment_id}/uploads", post(upload_file))
     // .route("/{experiment_id}/download", get(download_experiment_assets))
-    // .route(
-    // "/{experiment_id}/process-excel",
-    // post(super::excel_upload::process_excel_upload),
-    // )
-    // .with_state(state.clone());
 
     if let Some(instance) = &state.keycloak_auth_instance {
         mutating_router = mutating_router.layer(
@@ -49,6 +45,18 @@ where
     }
 
     mutating_router
+}
+
+/// Separate router for Excel upload endpoint (uses regular Axum Router, not OpenApiRouter)
+pub fn excel_upload_router() -> Router<AppState> {
+    use axum::extract::DefaultBodyLimit;
+    
+    Router::new()
+        .route(
+            "/{experiment_id}/process-excel",
+            post(super::excel_upload::process_excel_upload),
+        )
+        .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit to match main router
 }
 
 #[derive(Serialize, ToSchema)]

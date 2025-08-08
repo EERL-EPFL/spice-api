@@ -78,9 +78,9 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
 
     // Merge the Excel upload routes separately since they're not OpenApiRouter compatible
     router
-        // .nest(
-        // "/api/experiments",
-        // experiments::views::excel_upload_router().with_state(app_state),
-        // )
+        .nest(
+            "/api/experiments",
+            experiments::views::excel_upload_router().with_state(app_state),
+        )
         .merge(Scalar::with_url("/api/docs", api))
 }

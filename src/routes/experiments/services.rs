@@ -9,7 +9,7 @@ use crate::routes::{
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
     tray_configurations::regions::models as regions,
-    tray_configurations::trays::models as tray_configuration_assignments,
+    tray_configurations::trays::models as trays,
     tray_configurations::wells::models as wells,
 };
 use chrono::Utc;
@@ -80,18 +80,18 @@ pub(super) async fn build_results_summary(
         .into_iter()
         .collect();
 
-    // After schema simplification, tray data is embedded in configuration assignments
+    // After schema flattening, tray data is now in the trays table
     let trays_data = if tray_ids.is_empty() {
         vec![]
     } else {
-        tray_configuration_assignments::Entity::find()
-            .filter(tray_configuration_assignments::Column::Id.is_in(tray_ids))
+        trays::Entity::find()
+            .filter(trays::Column::Id.is_in(tray_ids))
             .all(db)
             .await?
     };
 
-    // Create tray lookup map by ID (using configuration assignments with embedded tray data)
-    let tray_map: std::collections::HashMap<Uuid, &tray_configuration_assignments::Model> =
+    // Create tray lookup map by ID (using flattened trays table)
+    let tray_map: std::collections::HashMap<Uuid, &trays::Model> =
         trays_data.iter().map(|t| (t.id, t)).collect();
 
     // Count wells by final state
@@ -115,15 +115,14 @@ pub(super) async fn build_results_summary(
 
         if let Some(exp) = experiment {
             if let Some(tray_config_id) = exp.tray_configuration_id {
-                let tray_assignments = tray_configuration_assignments::Entity::find()
+                let tray_list = trays::Entity::find()
                     .filter(
-                        tray_configuration_assignments::Column::TrayConfigurationId
-                            .eq(tray_config_id),
+                        trays::Column::TrayConfigurationId.eq(tray_config_id),
                     )
                     .all(db)
                     .await?;
 
-                let tray_ids: Vec<Uuid> = tray_assignments.into_iter().map(|ta| ta.id).collect();
+                let tray_ids: Vec<Uuid> = tray_list.into_iter().map(|tray| tray.id).collect();
 
                 wells::Entity::find()
                     .filter(wells::Column::TrayId.is_in(tray_ids))
@@ -522,7 +521,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
 ) -> Result<Option<TrayInfo>, DbErr> {
     use crate::routes::{
         experiments::models as experiments,
-        tray_configurations::trays::models as tray_configuration_assignments,
+        tray_configurations::trays::models as trays,
     };
 
     // Get the experiment to find its tray configuration
@@ -532,24 +531,24 @@ pub(super) async fn fetch_tray_info_by_sequence(
 
     if let Some(exp) = experiment {
         if let Some(tray_config_id) = exp.tray_configuration_id {
-            // Find the tray assignment with the matching sequence ID
-            // Note: After schema simplification, all tray data is embedded in the assignment
-            let assignment = tray_configuration_assignments::Entity::find()
+            // Find the tray with the matching sequence ID
+            // Note: After schema simplification, all tray data is in the trays table
+            let tray = trays::Entity::find()
                 .filter(
-                    tray_configuration_assignments::Column::TrayConfigurationId.eq(tray_config_id),
+                    trays::Column::TrayConfigurationId.eq(tray_config_id),
                 )
-                .filter(tray_configuration_assignments::Column::OrderSequence.eq(tray_sequence_id))
+                .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
                 .one(db)
                 .await?;
 
-            if let Some(assignment) = assignment {
+            if let Some(tray) = tray {
                 return Ok(Some(TrayInfo {
-                    id: assignment.id,
-                    name: assignment.name,
-                    sequence_id: assignment.order_sequence,
-                    qty_x_axis: assignment.qty_x_axis,
-                    qty_y_axis: assignment.qty_y_axis,
-                    well_relative_diameter: assignment
+                    id: tray.id,
+                    name: tray.name,
+                    sequence_id: tray.order_sequence,
+                    qty_x_axis: tray.qty_x_axis,
+                    qty_y_axis: tray.qty_y_axis,
+                    well_relative_diameter: tray
                         .well_relative_diameter
                         .map(|d| d.to_string()),
                 }));
