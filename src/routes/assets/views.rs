@@ -1,9 +1,8 @@
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
-use crudcrate::{CRUDResource, crud_handlers};
-use sea_orm::ConnectionTrait;
-use utoipa_axum::{router::OpenApiRouter, routes};
+use crudcrate::CRUDResource;
+use utoipa_axum::router::OpenApiRouter;
 // crud_handlers!(Asset, AssetUpdate, AssetCreate);
 pub use super::models::{Asset, router as crudrouter};
 

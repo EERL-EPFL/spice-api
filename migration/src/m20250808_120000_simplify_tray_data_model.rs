@@ -7,7 +7,7 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
-        
+
         match manager.get_database_backend() {
             sea_orm::DatabaseBackend::Postgres => {
                 // PostgreSQL version - can do multiple columns at once
@@ -17,9 +17,16 @@ impl MigrationTrait for Migration {
                         Table::alter()
                             .table(TrayConfigurationAssignments::Table)
                             .add_column(ColumnDef::new(TrayConfigurationAssignments::Name).text())
-                            .add_column(ColumnDef::new(TrayConfigurationAssignments::QtyXAxis).integer())
-                            .add_column(ColumnDef::new(TrayConfigurationAssignments::QtyYAxis).integer())
-                            .add_column(ColumnDef::new(TrayConfigurationAssignments::WellRelativeDiameter).decimal())
+                            .add_column(
+                                ColumnDef::new(TrayConfigurationAssignments::QtyXAxis).integer(),
+                            )
+                            .add_column(
+                                ColumnDef::new(TrayConfigurationAssignments::QtyYAxis).integer(),
+                            )
+                            .add_column(
+                                ColumnDef::new(TrayConfigurationAssignments::WellRelativeDiameter)
+                                    .decimal(),
+                            )
                             .to_owned(),
                     )
                     .await?;
@@ -32,8 +39,9 @@ impl MigrationTrait for Migration {
                          qty_y_axis = trays.qty_y_axis,
                          well_relative_diameter = trays.well_relative_diameter
                      FROM trays 
-                     WHERE tray_configuration_assignments.tray_id = trays.id"
-                ).await?;
+                     WHERE tray_configuration_assignments.tray_id = trays.id",
+                )
+                .await?;
 
                 // Step 3: Drop foreign key constraint
                 let _ = manager
@@ -67,7 +75,8 @@ impl MigrationTrait for Migration {
                     .await?;
 
                 // Step 6: Rename table
-                db.execute_unprepared("ALTER TABLE tray_configuration_assignments RENAME TO trays").await?;
+                db.execute_unprepared("ALTER TABLE tray_configuration_assignments RENAME TO trays")
+                    .await?;
 
                 // Step 7: Recreate index with new name
                 let _ = manager
@@ -87,13 +96,14 @@ impl MigrationTrait for Migration {
                             .to_owned(),
                     )
                     .await?;
-            },
+            }
             sea_orm::DatabaseBackend::Sqlite => {
                 // SQLite version - simplified approach for both fresh and existing databases
                 // Just create the new table structure directly
-                
+
                 // Drop old tables if they exist
-                db.execute_unprepared("DROP TABLE IF EXISTS tray_configuration_assignments").await?;
+                db.execute_unprepared("DROP TABLE IF EXISTS tray_configuration_assignments")
+                    .await?;
                 db.execute_unprepared("DROP TABLE IF EXISTS trays").await?;
 
                 // Create the new trays table with embedded tray details
@@ -115,9 +125,10 @@ impl MigrationTrait for Migration {
 
                 // Create index
                 db.execute_unprepared(
-                    "CREATE INDEX idx_trays_tray_configuration_id ON trays (tray_configuration_id)"
-                ).await?;
-            },
+                    "CREATE INDEX idx_trays_tray_configuration_id ON trays (tray_configuration_id)",
+                )
+                .await?;
+            }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
             }
@@ -126,11 +137,11 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
         // This is a complex migration that simplifies the schema.
         // Rolling back would require recreating the original 3-table structure.
         // For now, we'll just log a warning about the complexity of rollback.
-        
+
         println!("Warning: Rolling back this migration is complex and not implemented.");
         println!("This migration simplified tray_configuration_assignments + trays into a single trays table.");
         println!("To rollback, you would need to:");
@@ -149,25 +160,14 @@ impl MigrationTrait for Migration {
 enum TrayConfigurationAssignments {
     Table,
     TrayId,
-    TrayConfigurationId,
-    OrderSequence,
-    RotationDegrees,
-    // New columns being added
     Name,
     QtyXAxis,
     QtyYAxis,
     WellRelativeDiameter,
-    CreatedAt,
-    LastUpdated,
 }
 
 #[derive(DeriveIden)]
 enum Trays {
     Table,
-    Id,
-    Name,
-    QtyXAxis,
-    QtyYAxis,
-    WellRelativeDiameter,
-    TrayConfigurationId,  // This will be the column after rename
+    TrayConfigurationId,
 }
