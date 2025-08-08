@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder, QuerySelect,
+    ActiveModelTrait, DatabaseConnection, EntityTrait, QueryOrder, QuerySelect,
     entity::prelude::*,
 };
 use uuid::Uuid;
@@ -141,6 +141,9 @@ impl Related<crate::routes::treatments::models::Entity> for Entity {
 impl ActiveModelBehavior for ActiveModel {}
 
 // Helper function to fetch wells within region coordinates
+// Experimental results functionality - not implemented yet
+// TODO: Implement on-demand loading of experimental results for samples
+/*
 async fn fetch_wells_in_region(
     db: &DatabaseConnection,
     region: &crate::routes::tray_configurations::regions::models::Model,
@@ -353,6 +356,7 @@ async fn fetch_experimental_results_for_sample(
 
     Ok(experimental_results)
 }
+*/
 
 // Custom functions that handle treatments while leveraging crudcrate for base operations
 
@@ -374,7 +378,11 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
         .map(|t| crate::routes::treatments::models::Treatment::from(t))
         .collect();
 
-    // Note: experimental_results can be loaded on-demand if needed
+    // Note: experimental_results functionality is not implemented yet.
+    // The field exists in the API schema but is always returned as an empty vector.
+    // The functions fetch_wells_in_region, determine_final_state, format_well_coordinate,
+    // calculate_freezing_metrics, and fetch_experimental_results_for_sample are part
+    // of this unimplemented feature.
 
     Ok(sample)
 }
@@ -456,7 +464,7 @@ async fn update_sample_with_treatments(
     };
 
     // Use the auto-generated default update logic
-    let sample = Sample::update(db, id, update_data).await?;
+    let _sample = Sample::update(db, id, update_data).await?;
 
     // Handle treatments if provided (delete and recreate approach)
     if let Some(treatments) = treatments_to_recreate {

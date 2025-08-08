@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use rust_decimal::Decimal;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, QuerySelect, entity::prelude::*};
+use sea_orm::{EntityTrait, entity::prelude::*};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, ToSchema, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,7 +97,9 @@ pub enum TreatmentName {
     H2o2,
 }
 
-// Helper function to format well coordinate (reused from samples)
+// Experimental results functionality - not implemented yet
+// TODO: Implement on-demand loading of experimental results for treatments
+/*
 fn format_well_coordinate_treatment(well: &crate::routes::tray_configurations::wells::models::Model) -> String {
     format!(
         "{}{}",
@@ -179,6 +181,7 @@ async fn fetch_experimental_results_for_treatment(
 
     Ok(experimental_results)
 }
+*/
 
 // Custom crudcrate functions - commented out to let macro generate join functionality
 // async fn get_one_treatment(db: &DatabaseConnection, id: Uuid) -> Result<Treatment, DbErr> {
