@@ -66,7 +66,6 @@ SET default_table_access_method = heap;
 --
 
 CREATE TABLE public.experiments (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name text NOT NULL,
     username text,
     performed_at timestamp with time zone,
@@ -76,60 +75,25 @@ CREATE TABLE public.experiments (
     is_calibration boolean DEFAULT false NOT NULL,
     remarks text,
     tray_configuration_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
 ALTER TABLE public.experiments OWNER TO postgres;
 
 --
--- Name: freezing_results; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.freezing_results (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    well_id uuid NOT NULL,
-    freezing_temperature_celsius numeric,
-    is_frozen boolean,
-    region_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.freezing_results OWNER TO postgres;
-
---
--- Name: inp_concentrations; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.inp_concentrations (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    region_id uuid NOT NULL,
-    temperature_celsius numeric,
-    nm_value numeric,
-    error numeric,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.inp_concentrations OWNER TO postgres;
-
---
 -- Name: locations; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.locations (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name character varying NOT NULL,
     comment text,
-    start_date timestamp with time zone,
-    end_date timestamp with time zone,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    project_id uuid
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    project_id uuid,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
@@ -140,12 +104,12 @@ ALTER TABLE public.locations OWNER TO postgres;
 --
 
 CREATE TABLE public.projects (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name character varying NOT NULL,
     note text,
     colour character varying,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
@@ -156,20 +120,20 @@ ALTER TABLE public.projects OWNER TO postgres;
 --
 
 CREATE TABLE public.regions (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     experiment_id uuid NOT NULL,
     treatment_id uuid,
     name text,
     display_colour_hex text,
-    tray_id smallint,
-    col_min smallint,
-    row_min smallint,
-    col_max smallint,
-    row_max smallint,
-    dilution_factor smallint,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
-    is_background_key boolean DEFAULT false NOT NULL
+    tray_id integer,
+    col_min integer,
+    row_min integer,
+    col_max integer,
+    row_max integer,
+    dilution_factor integer,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    is_background_key boolean DEFAULT false NOT NULL,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
@@ -180,18 +144,18 @@ ALTER TABLE public.regions OWNER TO postgres;
 --
 
 CREATE TABLE public.s3_assets (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     experiment_id uuid,
     original_filename text NOT NULL,
     s3_key text NOT NULL,
     size_bytes bigint,
     uploaded_by text,
-    uploaded_at timestamp with time zone DEFAULT now() NOT NULL,
+    uploaded_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     is_deleted boolean DEFAULT false NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     type text NOT NULL,
-    role text
+    role text,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
@@ -202,13 +166,11 @@ ALTER TABLE public.s3_assets OWNER TO postgres;
 --
 
 CREATE TABLE public.samples (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name text NOT NULL,
-    type public.sample_type NOT NULL,
     start_time timestamp with time zone,
     stop_time timestamp with time zone,
-    flow_litres_per_minute numeric(20,10),
-    total_volume numeric(20,10),
+    flow_litres_per_minute numeric(16,10),
+    total_volume numeric(16,10),
     material_description text,
     extraction_procedure text,
     filter_substrate text,
@@ -221,8 +183,10 @@ CREATE TABLE public.samples (
     longitude numeric(9,6),
     latitude numeric(9,6),
     location_id uuid,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    type public.sample_type NOT NULL
 );
 
 
@@ -241,48 +205,38 @@ CREATE TABLE public.seaql_migrations (
 ALTER TABLE public.seaql_migrations OWNER TO postgres;
 
 --
--- Name: temperature_probes; Type: TABLE; Schema: public; Owner: postgres
+-- Name: temperature_readings; Type: TABLE; Schema: public; Owner: postgres
 --
 
-CREATE TABLE public.temperature_probes (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+CREATE TABLE public.temperature_readings (
+    id uuid NOT NULL,
     experiment_id uuid NOT NULL,
-    probe_name text,
-    column_index integer,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
-    correction_factor numeric
+    "timestamp" timestamp with time zone NOT NULL,
+    image_filename text,
+    probe_1 numeric,
+    probe_2 numeric,
+    probe_3 numeric,
+    probe_4 numeric,
+    probe_5 numeric,
+    probe_6 numeric,
+    probe_7 numeric,
+    probe_8 numeric,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
-ALTER TABLE public.temperature_probes OWNER TO postgres;
-
---
--- Name: tray_configuration_assignments; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.tray_configuration_assignments (
-    tray_id uuid NOT NULL,
-    tray_configuration_id uuid NOT NULL,
-    order_sequence smallint NOT NULL,
-    rotation_degrees smallint NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.tray_configuration_assignments OWNER TO postgres;
+ALTER TABLE public.temperature_readings OWNER TO postgres;
 
 --
 -- Name: tray_configurations; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.tray_configurations (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name text,
     experiment_default boolean NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
@@ -293,13 +247,15 @@ ALTER TABLE public.tray_configurations OWNER TO postgres;
 --
 
 CREATE TABLE public.trays (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    tray_configuration_id uuid NOT NULL,
+    order_sequence integer NOT NULL,
+    rotation_degrees integer NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     name text,
-    qty_x_axis integer DEFAULT 8,
-    qty_y_axis integer DEFAULT 12,
-    well_relative_diameter numeric,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    qty_x_axis integer,
+    qty_y_axis integer,
+    well_relative_diameter numeric
 );
 
 
@@ -310,12 +266,12 @@ ALTER TABLE public.trays OWNER TO postgres;
 --
 
 CREATE TABLE public.treatments (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     notes text,
     sample_id uuid,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    enzyme_volume_litres numeric(20,10),
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    enzyme_volume_litres numeric(16,10),
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     name public.treatment_name NOT NULL
 );
 
@@ -323,59 +279,38 @@ CREATE TABLE public.treatments (
 ALTER TABLE public.treatments OWNER TO postgres;
 
 --
--- Name: COLUMN treatments.enzyme_volume_litres; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: well_phase_transitions; Type: TABLE; Schema: public; Owner: postgres
 --
 
-COMMENT ON COLUMN public.treatments.enzyme_volume_litres IS 'Only applicable to the peroxide treatment';
-
-
---
--- Name: well_temperatures; Type: TABLE; Schema: public; Owner: postgres
---
-
-CREATE TABLE public.well_temperatures (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+CREATE TABLE public.well_phase_transitions (
+    id uuid NOT NULL,
     well_id uuid NOT NULL,
-    "timestamp" timestamp with time zone,
-    temperature_celsius numeric,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL
+    experiment_id uuid NOT NULL,
+    temperature_reading_id uuid NOT NULL,
+    "timestamp" timestamp with time zone NOT NULL,
+    previous_state integer NOT NULL,
+    new_state integer NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 
-ALTER TABLE public.well_temperatures OWNER TO postgres;
+ALTER TABLE public.well_phase_transitions OWNER TO postgres;
 
 --
 -- Name: wells; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE public.wells (
-    id uuid DEFAULT public.uuid_generate_v4() NOT NULL,
     tray_id uuid NOT NULL,
     column_number integer NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    last_updated timestamp with time zone DEFAULT now() NOT NULL,
-    row_number integer NOT NULL
+    row_number integer NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    last_updated timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL
 );
 
 
 ALTER TABLE public.wells OWNER TO postgres;
-
---
--- Name: locations campaign_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.locations
-    ADD CONSTRAINT campaign_pkey PRIMARY KEY (id);
-
-
---
--- Name: experiments experiments_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.experiments
-    ADD CONSTRAINT experiments_name_key UNIQUE (name);
-
 
 --
 -- Name: experiments experiments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
@@ -386,35 +321,11 @@ ALTER TABLE ONLY public.experiments
 
 
 --
--- Name: freezing_results freezing_results_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: locations locations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.freezing_results
-    ADD CONSTRAINT freezing_results_pkey PRIMARY KEY (id);
-
-
---
--- Name: inp_concentrations inp_concentrations_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.inp_concentrations
-    ADD CONSTRAINT inp_concentrations_pkey PRIMARY KEY (id);
-
-
---
--- Name: tray_configurations name_uniqueness; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.tray_configurations
-    ADD CONSTRAINT name_uniqueness UNIQUE (name);
-
-
---
--- Name: tray_configuration_assignments no_duplicate_sequences; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.tray_configuration_assignments
-    ADD CONSTRAINT no_duplicate_sequences UNIQUE (tray_configuration_id, order_sequence);
+ALTER TABLE ONLY public.locations
+    ADD CONSTRAINT locations_pkey PRIMARY KEY (id);
 
 
 --
@@ -442,14 +353,6 @@ ALTER TABLE ONLY public.s3_assets
 
 
 --
--- Name: s3_assets s3_assets_s3_key_key; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.s3_assets
-    ADD CONSTRAINT s3_assets_s3_key_key UNIQUE (s3_key);
-
-
---
 -- Name: samples samples_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -466,19 +369,11 @@ ALTER TABLE ONLY public.seaql_migrations
 
 
 --
--- Name: temperature_probes temperature_probes_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: temperature_readings temperature_readings_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.temperature_probes
-    ADD CONSTRAINT temperature_probes_pkey PRIMARY KEY (id);
-
-
---
--- Name: tray_configuration_assignments tray_configuration_assignments_pk; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.tray_configuration_assignments
-    ADD CONSTRAINT tray_configuration_assignments_pk PRIMARY KEY (tray_id, tray_configuration_id, order_sequence);
+ALTER TABLE ONLY public.temperature_readings
+    ADD CONSTRAINT temperature_readings_pkey PRIMARY KEY (id);
 
 
 --
@@ -490,14 +385,6 @@ ALTER TABLE ONLY public.tray_configurations
 
 
 --
--- Name: trays trays_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.trays
-    ADD CONSTRAINT trays_pkey PRIMARY KEY (id);
-
-
---
 -- Name: treatments treatments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -506,11 +393,11 @@ ALTER TABLE ONLY public.treatments
 
 
 --
--- Name: well_temperatures well_temperatures_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: well_phase_transitions well_phase_transitions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.well_temperatures
-    ADD CONSTRAINT well_temperatures_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.well_phase_transitions
+    ADD CONSTRAINT well_phase_transitions_pkey PRIMARY KEY (id);
 
 
 --
@@ -522,38 +409,24 @@ ALTER TABLE ONLY public.wells
 
 
 --
+-- Name: experiments_name_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX experiments_name_key ON public.experiments USING btree (name);
+
+
+--
 -- Name: idx_experiment_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_experiment_id ON public.experiments USING btree (id) WITH (fillfactor='90');
+CREATE INDEX idx_experiment_id ON public.experiments USING btree (id);
 
 
 --
 -- Name: idx_experiments_tray_configuration_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_experiments_tray_configuration_id ON public.experiments USING btree (tray_configuration_id) WITH (fillfactor='90');
-
-
---
--- Name: idx_freezing_results_region_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_freezing_results_region_id ON public.freezing_results USING btree (region_id) WITH (fillfactor='90');
-
-
---
--- Name: idx_freezing_results_well_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_freezing_results_well_id ON public.freezing_results USING btree (well_id) WITH (fillfactor='90');
-
-
---
--- Name: idx_inp_concentrations_region_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_inp_concentrations_region_id ON public.inp_concentrations USING btree (region_id) WITH (fillfactor='90');
+CREATE INDEX idx_experiments_tray_configuration_id ON public.experiments USING btree (tray_configuration_id);
 
 
 --
@@ -595,28 +468,28 @@ CREATE INDEX idx_projects_name ON public.projects USING btree (name);
 -- Name: idx_regions_experiment_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_regions_experiment_id ON public.regions USING btree (experiment_id) WITH (fillfactor='90');
+CREATE INDEX idx_regions_experiment_id ON public.regions USING btree (experiment_id);
 
 
 --
 -- Name: idx_regions_treatment_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_regions_treatment_id ON public.regions USING btree (treatment_id) WITH (fillfactor='90');
+CREATE INDEX idx_regions_treatment_id ON public.regions USING btree (treatment_id);
 
 
 --
 -- Name: idx_s3_asset_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_s3_asset_id ON public.s3_assets USING btree (id) WITH (fillfactor='90');
+CREATE INDEX idx_s3_asset_id ON public.s3_assets USING btree (id);
 
 
 --
 -- Name: idx_s3_assets_experiment_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_s3_assets_experiment_id ON public.s3_assets USING btree (experiment_id) WITH (fillfactor='90');
+CREATE INDEX idx_s3_assets_experiment_id ON public.s3_assets USING btree (experiment_id);
 
 
 --
@@ -627,38 +500,38 @@ CREATE INDEX idx_samples_location_id ON public.samples USING btree (location_id)
 
 
 --
--- Name: idx_temperature_probes_experiment_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_temperature_readings_experiment_timestamp; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_temperature_probes_experiment_id ON public.temperature_probes USING btree (experiment_id) WITH (fillfactor='90');
-
-
---
--- Name: idx_tray_configuration_assignments_tray_configuration_id; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_tray_configuration_assignments_tray_configuration_id ON public.tray_configuration_assignments USING btree (tray_configuration_id) WITH (fillfactor='90');
+CREATE INDEX idx_temperature_readings_experiment_timestamp ON public.temperature_readings USING btree (experiment_id, "timestamp");
 
 
 --
--- Name: idx_tray_configuration_assignments_tray_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_trays_tray_configuration_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_tray_configuration_assignments_tray_id ON public.tray_configuration_assignments USING btree (tray_id) WITH (fillfactor='90');
+CREATE INDEX idx_trays_tray_configuration_id ON public.trays USING btree (tray_configuration_id);
 
 
 --
--- Name: idx_well_temperatures_well_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_well_phase_transitions_experiment; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_well_temperatures_well_id ON public.well_temperatures USING btree (well_id) WITH (fillfactor='90');
+CREATE INDEX idx_well_phase_transitions_experiment ON public.well_phase_transitions USING btree (experiment_id, "timestamp");
+
+
+--
+-- Name: idx_well_phase_transitions_well_timestamp; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_well_phase_transitions_well_timestamp ON public.well_phase_transitions USING btree (well_id, "timestamp");
 
 
 --
 -- Name: idx_wells_tray_id; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX idx_wells_tray_id ON public.wells USING btree (tray_id) WITH (fillfactor='90');
+CREATE INDEX idx_wells_tray_id ON public.wells USING btree (tray_id);
 
 
 --
@@ -669,10 +542,31 @@ CREATE UNIQUE INDEX locations_name_key ON public.locations USING btree (name);
 
 
 --
+-- Name: name_uniqueness; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX name_uniqueness ON public.tray_configurations USING btree (name);
+
+
+--
+-- Name: no_duplicate_sequences; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX no_duplicate_sequences ON public.trays USING btree (tray_configuration_id, order_sequence);
+
+
+--
 -- Name: projects_name_key; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE UNIQUE INDEX projects_name_key ON public.projects USING btree (name);
+
+
+--
+-- Name: s3_assets_s3_key_key; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE UNIQUE INDEX s3_assets_s3_key_key ON public.s3_assets USING btree (s3_key);
 
 
 --
@@ -692,43 +586,43 @@ ALTER TABLE ONLY public.locations
 
 
 --
--- Name: tray_configuration_assignments fk_tray_assignment_to_configuration; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: temperature_readings fk_temperature_readings_experiment; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.tray_configuration_assignments
+ALTER TABLE ONLY public.temperature_readings
+    ADD CONSTRAINT fk_temperature_readings_experiment FOREIGN KEY (experiment_id) REFERENCES public.experiments(id) ON DELETE CASCADE;
+
+
+--
+-- Name: trays fk_tray_assignment_to_configuration; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.trays
     ADD CONSTRAINT fk_tray_assignment_to_configuration FOREIGN KEY (tray_configuration_id) REFERENCES public.tray_configurations(id);
 
 
 --
--- Name: tray_configuration_assignments fk_tray_assignments_to_tray; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: well_phase_transitions fk_well_phase_transitions_experiment; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.tray_configuration_assignments
-    ADD CONSTRAINT fk_tray_assignments_to_tray FOREIGN KEY (tray_id) REFERENCES public.trays(id);
-
-
---
--- Name: freezing_results freezing_results_region_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.freezing_results
-    ADD CONSTRAINT freezing_results_region_id_fkey FOREIGN KEY (region_id) REFERENCES public.regions(id);
+ALTER TABLE ONLY public.well_phase_transitions
+    ADD CONSTRAINT fk_well_phase_transitions_experiment FOREIGN KEY (experiment_id) REFERENCES public.experiments(id) ON DELETE CASCADE;
 
 
 --
--- Name: freezing_results freezing_results_well_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: well_phase_transitions fk_well_phase_transitions_temperature_reading; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.freezing_results
-    ADD CONSTRAINT freezing_results_well_id_fkey FOREIGN KEY (well_id) REFERENCES public.wells(id);
+ALTER TABLE ONLY public.well_phase_transitions
+    ADD CONSTRAINT fk_well_phase_transitions_temperature_reading FOREIGN KEY (temperature_reading_id) REFERENCES public.temperature_readings(id) ON DELETE CASCADE;
 
 
 --
--- Name: inp_concentrations inp_concentrations_region_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: well_phase_transitions fk_well_phase_transitions_well; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
-ALTER TABLE ONLY public.inp_concentrations
-    ADD CONSTRAINT inp_concentrations_region_id_fkey FOREIGN KEY (region_id) REFERENCES public.regions(id);
+ALTER TABLE ONLY public.well_phase_transitions
+    ADD CONSTRAINT fk_well_phase_transitions_well FOREIGN KEY (well_id) REFERENCES public.wells(id) ON DELETE CASCADE;
 
 
 --
@@ -769,30 +663,6 @@ ALTER TABLE ONLY public.treatments
 
 ALTER TABLE ONLY public.samples
     ADD CONSTRAINT samples_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.locations(id);
-
-
---
--- Name: temperature_probes temperature_probes_experiment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.temperature_probes
-    ADD CONSTRAINT temperature_probes_experiment_id_fkey FOREIGN KEY (experiment_id) REFERENCES public.experiments(id);
-
-
---
--- Name: well_temperatures well_temperatures_well_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.well_temperatures
-    ADD CONSTRAINT well_temperatures_well_id_fkey FOREIGN KEY (well_id) REFERENCES public.wells(id);
-
-
---
--- Name: wells wells_tray_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.wells
-    ADD CONSTRAINT wells_tray_id_fkey FOREIGN KEY (tray_id) REFERENCES public.trays(id);
 
 
 --
