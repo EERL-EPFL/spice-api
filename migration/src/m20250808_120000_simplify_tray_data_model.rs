@@ -44,14 +44,14 @@ impl MigrationTrait for Migration {
                 .await?;
 
                 // Step 3: Drop foreign key constraint
-                let _ = manager
-                    .drop_foreign_key(
-                        ForeignKey::drop()
-                            .name("fk_tray_configuration_assignment_tray_id")
-                            .table(TrayConfigurationAssignments::Table)
-                            .to_owned(),
-                    )
-                    .await; // Ignore error if FK doesn't exist
+                // let _ = manager
+                //     .drop_foreign_key(
+                //         ForeignKey::drop()
+                //             .name("fk_tray_configuration_assignment_tray_id")
+                //             .table(TrayConfigurationAssignments::Table)
+                //             .to_owned(),
+                //     )
+                //     .await; // Ignore error if FK doesn't exist
 
                 // Step 4: Drop tray_id column
                 manager
