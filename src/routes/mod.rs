@@ -76,11 +76,15 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 
-    // Merge the Excel upload routes separately since they're not OpenApiRouter compatible
+    // Merge the Excel upload and asset routes separately since they're not OpenApiRouter compatible
     router
         .nest(
             "/api/experiments",
-            experiments::views::excel_upload_router().with_state(app_state),
+            experiments::views::excel_upload_router().with_state(app_state.clone()),
+        )
+        .nest(
+            "/api/experiments",
+            experiments::views::asset_router().with_state(app_state),
         )
         .merge(Scalar::with_url("/api/docs", api))
 }
