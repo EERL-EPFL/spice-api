@@ -144,8 +144,8 @@ struct TrayRegions {
     pub last_updated: DateTime<Utc>,
 }
 
-impl From<crate::routes::trays::regions::models::Model> for TrayRegions {
-    fn from(region: crate::routes::trays::regions::models::Model) -> Self {
+impl From<crate::routes::tray_configurations::regions::models::Model> for TrayRegions {
+    fn from(region: crate::routes::tray_configurations::regions::models::Model) -> Self {
         Self {
             id: region.id,
             experiment_id: region.experiment_id,
@@ -244,7 +244,7 @@ impl CRUDResource for Experiment {
             .await?;
 
         let regions = model
-            .find_related(crate::routes::trays::regions::models::Entity)
+            .find_related(crate::routes::tray_configurations::regions::models::Entity)
             .all(db)
             .await?;
 
@@ -312,8 +312,11 @@ impl CRUDResource for Experiment {
         // Handle regions update - delete existing regions and create new ones
         if !regions.is_empty() {
             // Delete existing regions for this experiment
-            crate::routes::trays::regions::models::Entity::delete_many()
-                .filter(crate::routes::trays::regions::models::Column::ExperimentId.eq(id))
+            crate::routes::tray_configurations::regions::models::Entity::delete_many()
+                .filter(
+                    crate::routes::tray_configurations::regions::models::Column::ExperimentId
+                        .eq(id),
+                )
                 .exec(&txn)
                 .await?;
 
@@ -356,7 +359,7 @@ impl CRUDResource for Experiment {
                 .await?;
 
             let regions = model
-                .find_related(crate::routes::trays::regions::models::Entity)
+                .find_related(crate::routes::tray_configurations::regions::models::Entity)
                 .all(db)
                 .await?;
 

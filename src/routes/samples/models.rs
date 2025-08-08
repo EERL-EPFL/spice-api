@@ -143,22 +143,29 @@ impl ActiveModelBehavior for ActiveModel {}
 // Helper function to fetch wells within region coordinates
 async fn fetch_wells_in_region(
     db: &DatabaseConnection,
-    region: &crate::routes::trays::regions::models::Model,
-) -> Result<Vec<crate::routes::trays::wells::models::Model>, DbErr> {
+    region: &crate::routes::tray_configurations::regions::models::Model,
+) -> Result<Vec<crate::routes::tray_configurations::wells::models::Model>, DbErr> {
     if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
         region.row_min,
         region.row_max,
         region.col_min,
         region.col_max,
     ) {
-        crate::routes::trays::wells::models::Entity::find()
+        crate::routes::tray_configurations::wells::models::Entity::find()
             .filter(
-                crate::routes::trays::wells::models::Column::RowNumber
+                crate::routes::tray_configurations::wells::models::Column::RowNumber
                     .gte(row_min + 1) // Convert 0-based to 1-based
-                    .and(crate::routes::trays::wells::models::Column::RowNumber.lte(row_max + 1))
-                    .and(crate::routes::trays::wells::models::Column::ColumnNumber.gte(col_min + 1))
                     .and(
-                        crate::routes::trays::wells::models::Column::ColumnNumber.lte(col_max + 1),
+                        crate::routes::tray_configurations::wells::models::Column::RowNumber
+                            .lte(row_max + 1),
+                    )
+                    .and(
+                        crate::routes::tray_configurations::wells::models::Column::ColumnNumber
+                            .gte(col_min + 1),
+                    )
+                    .and(
+                        crate::routes::tray_configurations::wells::models::Column::ColumnNumber
+                            .lte(col_max + 1),
                     ),
             )
             .all(db)
@@ -200,7 +207,9 @@ async fn determine_final_state(
 }
 
 // Helper function to format well coordinate
-fn format_well_coordinate(well: &crate::routes::trays::wells::models::Model) -> String {
+fn format_well_coordinate(
+    well: &crate::routes::tray_configurations::wells::models::Model,
+) -> String {
     format!(
         "{}{}",
         char::from(b'A' + u8::try_from(well.column_number - 1).unwrap_or(0)),
@@ -289,9 +298,10 @@ async fn fetch_experimental_results_for_sample(
     let treatment_ids: Vec<Uuid> = treatments.iter().map(|t| t.id).collect();
 
     // Find all regions that use these treatments
-    let regions = crate::routes::trays::regions::models::Entity::find()
+    let regions = crate::routes::tray_configurations::regions::models::Entity::find()
         .filter(
-            crate::routes::trays::regions::models::Column::TreatmentId.is_in(treatment_ids.clone()),
+            crate::routes::tray_configurations::regions::models::Column::TreatmentId
+                .is_in(treatment_ids.clone()),
         )
         .find_with_related(crate::routes::experiments::models::Entity)
         .all(db)
@@ -317,10 +327,12 @@ async fn fetch_experimental_results_for_sample(
                     .iter()
                     .find(|t| t.id == region.treatment_id.unwrap_or_default());
 
-                // Get tray name
-                let tray = crate::routes::trays::models::Entity::find_by_id(well.tray_id)
-                    .one(db)
-                    .await?;
+                // Get tray name (from configuration assignments with embedded tray data)
+                let tray = crate::routes::tray_configurations::trays::models::Entity::find_by_id(
+                    well.tray_id,
+                )
+                .one(db)
+                .await?;
 
                 experimental_results.push(ExperimentalResult {
                     experiment_id: experiment.id,
@@ -361,9 +373,9 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
         .into_iter()
         .map(|t| crate::routes::treatments::models::Treatment::from(t))
         .collect();
-    
+
     // Note: experimental_results can be loaded on-demand if needed
-    
+
     Ok(sample)
 }
 
@@ -422,7 +434,8 @@ async fn create_sample_with_treatments(
         for treatment_create in treatments {
             let mut treatment_with_sample = treatment_create;
             treatment_with_sample.sample_id = Some(sample_id);
-            let _ = crate::routes::treatments::models::Treatment::create(db, treatment_with_sample).await?;
+            let _ = crate::routes::treatments::models::Treatment::create(db, treatment_with_sample)
+                .await?;
         }
     }
 
@@ -442,7 +455,7 @@ async fn update_sample_with_treatments(
         Some(update_data.treatments.clone())
     };
 
-    // Use the auto-generated default update logic 
+    // Use the auto-generated default update logic
     let sample = Sample::update(db, id, update_data).await?;
 
     // Handle treatments if provided (delete and recreate approach)
@@ -456,13 +469,17 @@ async fn update_sample_with_treatments(
         // Create new treatments
         for treatment_update in treatments {
             let treatment_create = crate::routes::treatments::models::TreatmentCreate {
-                name: treatment_update.name.unwrap_or_default().unwrap_or(crate::routes::treatments::models::TreatmentName::None),
+                name: treatment_update
+                    .name
+                    .unwrap_or_default()
+                    .unwrap_or(crate::routes::treatments::models::TreatmentName::None),
                 notes: treatment_update.notes.unwrap_or_default(),
                 enzyme_volume_litres: treatment_update.enzyme_volume_litres.unwrap_or_default(),
                 sample_id: Some(id),
                 experimental_results: vec![],
             };
-            let _ = crate::routes::treatments::models::Treatment::create(db, treatment_create).await?;
+            let _ =
+                crate::routes::treatments::models::Treatment::create(db, treatment_create).await?;
         }
     }
 

@@ -12,7 +12,7 @@ use uuid::Uuid;
     api_struct = "Well",
     name_singular = "well",
     name_plural = "wells",
-    description = "Wells represent individual positions within trays for experimental samples.",
+    description = "Wells represent individual positions within trays for experimental samples."
 )]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -33,9 +33,9 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "crate::routes::trays::models::Entity",
+        belongs_to = "crate::routes::tray_configurations::trays::models::Entity",
         from = "Column::TrayId",
-        to = "crate::routes::trays::models::Column::Id",
+        to = "crate::routes::tray_configurations::trays::models::Column::Id",
         on_update = "NoAction",
         on_delete = "NoAction"
     )]
@@ -44,7 +44,7 @@ pub enum Relation {
     WellPhaseTransitions,
 }
 
-impl Related<crate::routes::trays::models::Entity> for Entity {
+impl Related<crate::routes::tray_configurations::trays::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Trays.def()
     }

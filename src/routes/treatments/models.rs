@@ -34,7 +34,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, enum_field)]
     pub name: TreatmentName,
     #[sea_orm(column_type = "Text", nullable)]
     #[crudcrate(sortable, filterable, fulltext)]
@@ -55,7 +55,7 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "crate::routes::trays::regions::models::Entity")]
+    #[sea_orm(has_many = "crate::routes::tray_configurations::regions::models::Entity")]
     Regions,
     #[sea_orm(
         belongs_to = "crate::routes::samples::models::Entity",
@@ -67,7 +67,7 @@ pub enum Relation {
     Samples,
 }
 
-impl Related<crate::routes::trays::regions::models::Entity> for Entity {
+impl Related<crate::routes::tray_configurations::regions::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Regions.def()
     }
@@ -98,7 +98,7 @@ pub enum TreatmentName {
 }
 
 // Helper function to format well coordinate (reused from samples)
-fn format_well_coordinate_treatment(well: &crate::routes::trays::wells::models::Model) -> String {
+fn format_well_coordinate_treatment(well: &crate::routes::tray_configurations::wells::models::Model) -> String {
     format!(
         "{}{}",
         char::from(b'A' + u8::try_from(well.column_number - 1).unwrap_or(0)),
@@ -111,8 +111,8 @@ async fn fetch_experimental_results_for_treatment(
     treatment_id: Uuid,
 ) -> Result<Vec<ExperimentalResult>, DbErr> {
     // Find all regions that use this treatment
-    let regions = crate::routes::trays::regions::models::Entity::find()
-        .filter(crate::routes::trays::regions::models::Column::TreatmentId.eq(treatment_id))
+    let regions = crate::routes::tray_configurations::regions::models::Entity::find()
+        .filter(crate::routes::tray_configurations::regions::models::Column::TreatmentId.eq(treatment_id))
         .find_with_related(crate::routes::experiments::models::Entity)
         .all(db)
         .await?;
@@ -128,20 +128,20 @@ async fn fetch_experimental_results_for_treatment(
                 region.col_min,
                 region.col_max,
             ) {
-                crate::routes::trays::wells::models::Entity::find()
+                crate::routes::tray_configurations::wells::models::Entity::find()
                     .filter(
-                        crate::routes::trays::wells::models::Column::RowNumber
+                        crate::routes::tray_configurations::wells::models::Column::RowNumber
                             .gte(row_min + 1) // Convert 0-based to 1-based
                             .and(
-                                crate::routes::trays::wells::models::Column::RowNumber
+                                crate::routes::tray_configurations::wells::models::Column::RowNumber
                                     .lte(row_max + 1),
                             )
                             .and(
-                                crate::routes::trays::wells::models::Column::ColumnNumber
+                                crate::routes::tray_configurations::wells::models::Column::ColumnNumber
                                     .gte(col_min + 1),
                             )
                             .and(
-                                crate::routes::trays::wells::models::Column::ColumnNumber
+                                crate::routes::tray_configurations::wells::models::Column::ColumnNumber
                                     .lte(col_max + 1),
                             ),
                     )
@@ -154,8 +154,8 @@ async fn fetch_experimental_results_for_treatment(
             for well in wells {
                 let well_coordinate = format_well_coordinate_treatment(&well);
 
-                // Get tray name
-                let tray = crate::routes::trays::models::Entity::find_by_id(well.tray_id)
+                // Get tray name (from configuration assignments with embedded tray data)
+                let tray = crate::routes::tray_configurations::trays::models::Entity::find_by_id(well.tray_id)
                     .one(db)
                     .await?;
 
@@ -180,43 +180,43 @@ async fn fetch_experimental_results_for_treatment(
     Ok(experimental_results)
 }
 
-// Custom crudcrate functions
-async fn get_one_treatment(db: &DatabaseConnection, id: Uuid) -> Result<Treatment, DbErr> {
-    let model = Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or_else(|| DbErr::RecordNotFound("Treatment not found".to_string()))?;
+// Custom crudcrate functions - commented out to let macro generate join functionality
+// async fn get_one_treatment(db: &DatabaseConnection, id: Uuid) -> Result<Treatment, DbErr> {
+//     let model = Entity::find_by_id(id)
+//         .one(db)
+//         .await?
+//         .ok_or_else(|| DbErr::RecordNotFound("Treatment not found".to_string()))?;
 
-    let experimental_results = fetch_experimental_results_for_treatment(db, id).await?;
+//     let experimental_results = fetch_experimental_results_for_treatment(db, id).await?;
 
-    let mut treatment: Treatment = model.into();
-    treatment.experimental_results = experimental_results;
+//     let mut treatment: Treatment = model.into();
+//     treatment.experimental_results = experimental_results;
 
-    Ok(treatment)
-}
+//     Ok(treatment)
+// }
 
-async fn get_all_treatments(
-    db: &DatabaseConnection,
-    condition: sea_orm::Condition,
-    order_column: Column,
-    order_direction: sea_orm::Order,
-    offset: u64,
-    limit: u64,
-) -> Result<Vec<Treatment>, DbErr> {
-    let models = Entity::find()
-        .filter(condition)
-        .order_by(order_column, order_direction)
-        .offset(offset)
-        .limit(limit)
-        .all(db)
-        .await?;
+// async fn get_all_treatments(
+//     db: &DatabaseConnection,
+//     condition: sea_orm::Condition,
+//     order_column: Column,
+//     order_direction: sea_orm::Order,
+//     offset: u64,
+//     limit: u64,
+// ) -> Result<Vec<Treatment>, DbErr> {
+//     let models = Entity::find()
+//         .filter(condition)
+//         .order_by(order_column, order_direction)
+//         .offset(offset)
+//         .limit(limit)
+//         .all(db)
+//         .await?;
 
-    let mut treatments: Vec<Treatment> = models.into_iter().map(Treatment::from).collect();
+//     let mut treatments: Vec<Treatment> = models.into_iter().map(Treatment::from).collect();
 
-    for treatment in treatments.iter_mut() {
-        treatment.experimental_results =
-            fetch_experimental_results_for_treatment(db, treatment.id).await?;
-    }
+//     for treatment in treatments.iter_mut() {
+//         treatment.experimental_results =
+//             fetch_experimental_results_for_treatment(db, treatment.id).await?;
+//     }
 
-    Ok(treatments)
-}
+//     Ok(treatments)
+// }

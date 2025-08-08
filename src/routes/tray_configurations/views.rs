@@ -1,4 +1,4 @@
-pub use super::configurations::models::{TrayConfiguration, router as crudrouter};
+pub use super::models::{TrayConfiguration, router as crudrouter};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};

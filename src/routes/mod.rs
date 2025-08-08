@@ -3,7 +3,7 @@ pub mod experiments;
 pub mod locations;
 pub mod projects;
 pub mod samples;
-pub mod trays;
+pub mod tray_configurations;
 pub mod treatments;
 
 use crate::common::state::AppState;
@@ -61,14 +61,14 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     // Build the router with routes from the plots module
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(crate::common::views::router(&app_state)) // Root routes
-        .nest("/api", locations::views::router(&app_state))
-        .nest("/api", projects::views::router(&app_state))
-        .nest("/api", experiments::views::router(&app_state))
+        .nest("/api/locations", locations::views::router(&app_state))
+        .nest("/api/projects", projects::views::router(&app_state))
+        .nest("/api/experiments", experiments::views::router(&app_state))
         // .nest("/api", phase_changes::router(&app_state))
-        .nest("/api", samples::views::router(&app_state))
-        .nest("/api", assets::views::router(&app_state))
-        .nest("/api", trays::views::router(&app_state))
-        .nest("/api", treatments::views::router(&app_state))
+        .nest("/api/samples", samples::views::router(&app_state))
+        .nest("/api/assets", assets::views::router(&app_state))
+        .nest("/api/trays", tray_configurations::views::router(&app_state))
+        .nest("/api/treatments", treatments::views::router(&app_state))
         // .nest(
         //     "/api",
         //     freezing_results::views::freezing_results_routes().with_state(app_state.clone()),
@@ -76,5 +76,11 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 
-    router.merge(Scalar::with_url("/api/docs", api))
+    // Merge the Excel upload routes separately since they're not OpenApiRouter compatible
+    router
+        // .nest(
+        // "/api/experiments",
+        // experiments::views::excel_upload_router().with_state(app_state),
+        // )
+        .merge(Scalar::with_url("/api/docs", api))
 }

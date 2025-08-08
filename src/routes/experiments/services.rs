@@ -1,15 +1,16 @@
 use super::models_old::{
-    ExperimentResultsSummary, RegionInput, SampleResultsSummary, TemperatureProbeValues,
-    TrayInfo, TreatmentResultsSummary, WellSummary,
+    ExperimentResultsSummary, RegionInput, SampleResultsSummary, TemperatureProbeValues, TrayInfo,
+    TreatmentResultsSummary, WellSummary,
 };
 // Structs now imported from models_old
-use crate::routes::trays::services::{WellCoordinate, coordinates_to_str};
+use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str};
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
-    trays::configuration_assignments::models as tray_configuration_assignments,
-    trays::regions::models as regions, trays::wells::models as wells,
+    tray_configurations::regions::models as regions,
+    tray_configurations::trays::models as tray_configuration_assignments,
+    tray_configurations::wells::models as wells,
 };
 use chrono::Utc;
 use rust_decimal::Decimal;
@@ -79,17 +80,18 @@ pub(super) async fn build_results_summary(
         .into_iter()
         .collect();
 
+    // After schema simplification, tray data is embedded in configuration assignments
     let trays_data = if tray_ids.is_empty() {
         vec![]
     } else {
-        crate::routes::trays::models::Entity::find()
-            .filter(crate::routes::trays::models::Column::Id.is_in(tray_ids))
+        tray_configuration_assignments::Entity::find()
+            .filter(tray_configuration_assignments::Column::Id.is_in(tray_ids))
             .all(db)
             .await?
     };
 
-    // Create tray lookup map by ID
-    let tray_map: std::collections::HashMap<Uuid, &crate::routes::trays::models::Model> =
+    // Create tray lookup map by ID (using configuration assignments with embedded tray data)
+    let tray_map: std::collections::HashMap<Uuid, &tray_configuration_assignments::Model> =
         trays_data.iter().map(|t| (t.id, t)).collect();
 
     // Count wells by final state
@@ -121,8 +123,7 @@ pub(super) async fn build_results_summary(
                     .all(db)
                     .await?;
 
-                let tray_ids: Vec<Uuid> =
-                    tray_assignments.into_iter().map(|ta| ta.tray_id).collect();
+                let tray_ids: Vec<Uuid> = tray_assignments.into_iter().map(|ta| ta.id).collect();
 
                 wells::Entity::find()
                     .filter(wells::Column::TrayId.is_in(tray_ids))
@@ -149,7 +150,13 @@ pub(super) async fn build_results_summary(
         .filter_map(|r| r.treatment_id)
         .collect();
 
-    let mut treatment_map: std::collections::HashMap<Uuid, (crate::routes::treatments::models::Treatment, Option<crate::routes::samples::models::Sample>)> = std::collections::HashMap::new();
+    let mut treatment_map: std::collections::HashMap<
+        Uuid,
+        (
+            crate::routes::treatments::models::Treatment,
+            Option<crate::routes::samples::models::Sample>,
+        ),
+    > = std::collections::HashMap::new();
     if !treatment_ids.is_empty() {
         use crate::routes::{
             locations::models as locations, samples::models as samples,
@@ -207,13 +214,15 @@ pub(super) async fn build_results_summary(
         for treatment in &treatments_data {
             let sample_info = treatment.sample_id.and_then(|sample_id| {
                 sample_map.get(&sample_id).map(|(sample, _location)| {
-                    let sample_api: crate::routes::samples::models::Sample = (*sample).clone().into();
+                    let sample_api: crate::routes::samples::models::Sample =
+                        (*sample).clone().into();
                     // Note: We already have the location data in the model
                     sample_api
                 })
             });
 
-            let treatment_info: crate::routes::treatments::models::Treatment = treatment.clone().into();
+            let treatment_info: crate::routes::treatments::models::Treatment =
+                treatment.clone().into();
 
             treatment_map.insert(treatment.id, (treatment_info, sample_info));
         }
@@ -221,8 +230,11 @@ pub(super) async fn build_results_summary(
 
     // Build well summaries grouped by sample and treatment
     let mut well_summaries = Vec::new();
-    let mut sample_treatment_wells: std::collections::HashMap<(Option<Uuid>, Option<Uuid>), Vec<WellSummary>> = std::collections::HashMap::new();
-    
+    let mut sample_treatment_wells: std::collections::HashMap<
+        (Option<Uuid>, Option<Uuid>),
+        Vec<WellSummary>,
+    > = std::collections::HashMap::new();
+
     for well in &experiment_wells {
         // Convert row/col to coordinate (A1, B2, etc.)s
         let coordinate = WellCoordinate {
@@ -355,42 +367,55 @@ pub(super) async fn build_results_summary(
         };
 
         well_summaries.push(well_summary.clone());
-        
+
         // Group by sample and treatment for sample-first approach
         let sample_id = sample.as_ref().map(|s| s.id);
         let treatment_id = treatment.as_ref().map(|t| t.id);
-        sample_treatment_wells.entry((sample_id, treatment_id))
+        sample_treatment_wells
+            .entry((sample_id, treatment_id))
             .or_insert_with(Vec::new)
             .push(well_summary);
     }
 
     // Build sample-first results
     let mut sample_results = Vec::new();
-    let mut samples_map: std::collections::HashMap<Uuid, crate::routes::samples::models::Sample> = std::collections::HashMap::new();
-    
+    let mut samples_map: std::collections::HashMap<Uuid, crate::routes::samples::models::Sample> =
+        std::collections::HashMap::new();
+
     // Group wells by sample
     for ((sample_id, _), _wells) in &sample_treatment_wells {
         if let Some(sample_id) = sample_id {
-            if let Some((_, sample)) = treatment_map.values().find(|(_, s)| s.as_ref().map(|s| s.id) == Some(*sample_id)) {
+            if let Some((_, sample)) = treatment_map
+                .values()
+                .find(|(_, s)| s.as_ref().map(|s| s.id) == Some(*sample_id))
+            {
                 if let Some(sample) = sample {
                     samples_map.insert(sample.id, sample.clone());
                 }
             }
         }
     }
-    
+
     // Build results for each sample
     for (sample_id, sample) in samples_map {
         let mut treatment_results = Vec::new();
-        
+
         // Find all treatments for this sample
         for (treatment_id, (treatment, s)) in &treatment_map {
             if s.as_ref().map(|s| s.id) == Some(sample_id) {
                 // Get wells for this sample-treatment combination
-                if let Some(wells) = sample_treatment_wells.get(&(Some(sample_id), Some(*treatment_id))) {
-                    let frozen_count = wells.iter().filter(|w| w.final_state.as_deref() == Some("frozen")).count();
-                    let liquid_count = wells.iter().filter(|w| w.final_state.as_deref() == Some("liquid")).count();
-                    
+                if let Some(wells) =
+                    sample_treatment_wells.get(&(Some(sample_id), Some(*treatment_id)))
+                {
+                    let frozen_count = wells
+                        .iter()
+                        .filter(|w| w.final_state.as_deref() == Some("frozen"))
+                        .count();
+                    let liquid_count = wells
+                        .iter()
+                        .filter(|w| w.final_state.as_deref() == Some("liquid"))
+                        .count();
+
                     treatment_results.push(TreatmentResultsSummary {
                         treatment: treatment.clone(),
                         wells: wells.clone(),
@@ -400,7 +425,7 @@ pub(super) async fn build_results_summary(
                 }
             }
         }
-        
+
         if !treatment_results.is_empty() {
             sample_results.push(SampleResultsSummary {
                 sample: sample.clone(),
@@ -408,7 +433,7 @@ pub(super) async fn build_results_summary(
             });
         }
     }
-    
+
     // Always return a summary, even if empty
     Ok(Some(ExperimentResultsSummary {
         total_wells: experiment_wells.len(),
@@ -428,13 +453,13 @@ pub(super) fn create_region_active_models(
     experiment_id: Uuid,
     regions: Vec<RegionInput>,
     _db: &impl ConnectionTrait,
-) -> Vec<crate::routes::trays::regions::models::ActiveModel> {
+) -> Vec<crate::routes::tray_configurations::regions::models::ActiveModel> {
     let mut active_models = Vec::new();
 
     for region in regions {
         let dilution_factor = region.dilution.as_ref().and_then(|s| s.parse::<i32>().ok());
 
-        let active_model = crate::routes::trays::regions::models::ActiveModel {
+        let active_model = crate::routes::tray_configurations::regions::models::ActiveModel {
             id: ActiveValue::Set(Uuid::new_v4()),
             experiment_id: ActiveValue::Set(experiment_id),
             treatment_id: ActiveValue::Set(region.treatment_id),
@@ -461,7 +486,13 @@ pub(super) fn create_region_active_models(
 pub(super) async fn fetch_treatment_info(
     treatment_id: Uuid,
     db: &impl ConnectionTrait,
-) -> Result<Option<(crate::routes::treatments::models::Treatment, Option<crate::routes::samples::models::Sample>)>, DbErr> {
+) -> Result<
+    Option<(
+        crate::routes::treatments::models::Treatment,
+        Option<crate::routes::samples::models::Sample>,
+    )>,
+    DbErr,
+> {
     let treatment = crate::routes::treatments::models::Entity::find_by_id(treatment_id)
         .one(db)
         .await?;
@@ -491,8 +522,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
 ) -> Result<Option<TrayInfo>, DbErr> {
     use crate::routes::{
         experiments::models as experiments,
-        trays::configuration_assignments::models as tray_configuration_assignments,
-        trays::models as trays,
+        tray_configurations::trays::models as tray_configuration_assignments,
     };
 
     // Get the experiment to find its tray configuration
@@ -503,23 +533,25 @@ pub(super) async fn fetch_tray_info_by_sequence(
     if let Some(exp) = experiment {
         if let Some(tray_config_id) = exp.tray_configuration_id {
             // Find the tray assignment with the matching sequence ID
+            // Note: After schema simplification, all tray data is embedded in the assignment
             let assignment = tray_configuration_assignments::Entity::find()
                 .filter(
                     tray_configuration_assignments::Column::TrayConfigurationId.eq(tray_config_id),
                 )
                 .filter(tray_configuration_assignments::Column::OrderSequence.eq(tray_sequence_id))
-                .find_also_related(trays::Entity)
                 .one(db)
                 .await?;
 
-            if let Some((assignment, Some(tray))) = assignment {
+            if let Some(assignment) = assignment {
                 return Ok(Some(TrayInfo {
-                    id: tray.id,
-                    name: tray.name,
+                    id: assignment.id,
+                    name: assignment.name,
                     sequence_id: assignment.order_sequence,
-                    qty_x_axis: tray.qty_x_axis,
-                    qty_y_axis: tray.qty_y_axis,
-                    well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
+                    qty_x_axis: assignment.qty_x_axis,
+                    qty_y_axis: assignment.qty_y_axis,
+                    well_relative_diameter: assignment
+                        .well_relative_diameter
+                        .map(|d| d.to_string()),
                 }));
             }
         }
@@ -530,11 +562,14 @@ pub(super) async fn fetch_tray_info_by_sequence(
 
 // Convert region model back to RegionInput for response
 pub(super) async fn region_model_to_input_with_treatment(
-    region: crate::routes::trays::regions::models::Model,
+    region: crate::routes::tray_configurations::regions::models::Model,
     db: &impl ConnectionTrait,
 ) -> Result<RegionInput, DbErr> {
     let (treatment, sample) = if let Some(treatment_id) = region.treatment_id {
-        fetch_treatment_info(treatment_id, db).await?.map(|(t, s)| (Some(t), s)).unwrap_or((None, None))
+        fetch_treatment_info(treatment_id, db)
+            .await?
+            .map(|(t, s)| (Some(t), s))
+            .unwrap_or((None, None))
     } else {
         (None, None)
     };

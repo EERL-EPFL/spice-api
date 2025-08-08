@@ -1,12 +1,11 @@
-use crate::routes::trays::services::str_to_coordinates;
+use crate::routes::tray_configurations::services::str_to_coordinates;
 use crate::routes::{
     experiments::{
         models as experiments, phase_transitions::models as well_phase_transitions,
         temperatures::models as temperature_readings,
     },
-    trays::{
-        configuration_assignments::models as tray_configuration_assignments, models as trays,
-        wells::models as wells,
+    tray_configurations::{
+        trays::models as tray_configuration_assignments, wells::models as wells,
     },
 };
 use anyhow::{Context, Result, anyhow};
@@ -564,20 +563,11 @@ impl DirectExcelProcessor {
                 .await
                 .context("Failed to query tray assignments")?;
 
-        let tray_ids: Vec<Uuid> = tray_assignments
+        // After schema simplification, all tray data is embedded in assignments
+        // So we can build the name-to-id mapping directly from assignments
+        let tray_name_to_id: HashMap<String, Uuid> = tray_assignments
             .into_iter()
-            .map(|assignment| assignment.tray_id)
-            .collect();
-
-        let all_trays: Vec<trays::Model> = trays::Entity::find()
-            .filter(trays::Column::Id.is_in(tray_ids))
-            .all(&self.db)
-            .await
-            .context("Failed to query trays")?;
-
-        let tray_name_to_id: HashMap<String, Uuid> = all_trays
-            .into_iter()
-            .filter_map(|tray| tray.name.map(|name| (name, tray.id)))
+            .filter_map(|assignment| assignment.name.map(|name| (name, assignment.id)))
             .collect();
 
         println!(

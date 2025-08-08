@@ -1,10 +1,14 @@
+use super::services::{
+    build_results_summary, create_region_active_models, region_model_to_input_with_treatment,
+};
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels, traits::MergeIntoActiveModel};
 use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
+use sea_orm::{
+    ActiveModelTrait, Condition, Order, QueryFilter, QueryOrder, QuerySelect, TransactionTrait,
+};
 use uuid::Uuid;
-use super::services::{build_results_summary, create_region_active_models, region_model_to_input_with_treatment};
-use sea_orm::{ActiveModelTrait, TransactionTrait, Condition, Order, QueryFilter, QueryOrder, QuerySelect};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "experiments")]
@@ -61,16 +65,16 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "crate::routes::trays::regions::models::Entity")]
+    #[sea_orm(has_many = "crate::routes::tray_configurations::regions::models::Entity")]
     Regions,
     #[sea_orm(has_many = "crate::routes::assets::models::Entity")]
     S3Assets,
     #[sea_orm(has_many = "crate::routes::experiments::temperatures::models::Entity")]
     TemperatureReadings,
     #[sea_orm(
-        belongs_to = "crate::routes::trays::configurations::models::Entity",
+        belongs_to = "crate::routes::tray_configurations::models::Entity",
         from = "Column::TrayConfigurationId",
-        to = "crate::routes::trays::configurations::models::Column::Id",
+        to = "crate::routes::tray_configurations::models::Column::Id",
         on_update = "NoAction",
         on_delete = "NoAction"
     )]
@@ -79,7 +83,7 @@ pub enum Relation {
     WellPhaseTransitions,
 }
 
-impl Related<crate::routes::trays::regions::models::Entity> for Entity {
+impl Related<crate::routes::tray_configurations::regions::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Regions.def()
     }
@@ -97,7 +101,7 @@ impl Related<crate::routes::experiments::temperatures::models::Entity> for Entit
     }
 }
 
-impl Related<crate::routes::trays::configurations::models::Entity> for Entity {
+impl Related<crate::routes::tray_configurations::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::TrayConfigurations.def()
     }
@@ -124,7 +128,7 @@ async fn get_one_experiment(db: &DatabaseConnection, id: Uuid) -> Result<Experim
         .await?;
 
     let regions = model
-        .find_related(crate::routes::trays::regions::models::Entity)
+        .find_related(crate::routes::tray_configurations::regions::models::Entity)
         .all(db)
         .await?;
 
@@ -145,7 +149,10 @@ async fn get_one_experiment(db: &DatabaseConnection, id: Uuid) -> Result<Experim
     Ok(experiment)
 }
 
-async fn create_experiment(db: &DatabaseConnection, data: ExperimentCreate) -> Result<Experiment, DbErr> {
+async fn create_experiment(
+    db: &DatabaseConnection,
+    data: ExperimentCreate,
+) -> Result<Experiment, DbErr> {
     let txn = db.begin().await?;
 
     // Store regions before conversion since they're not part of the DB model
@@ -180,17 +187,23 @@ async fn update_experiment(
     let existing: ActiveModel = Entity::find_by_id(id)
         .one(&txn)
         .await?
-        .ok_or(DbErr::RecordNotFound(format!("Experiment not found")))?   
+        .ok_or(DbErr::RecordNotFound(format!("Experiment not found")))?
         .into();
     let regions = update_data.regions.clone();
-    let updated_model = <ExperimentUpdate as MergeIntoActiveModel<ActiveModel>>::merge_into_activemodel(update_data, existing)?;
+    let updated_model =
+        <ExperimentUpdate as MergeIntoActiveModel<ActiveModel>>::merge_into_activemodel(
+            update_data,
+            existing,
+        )?;
     let _updated = updated_model.update(&txn).await?;
 
     // Handle regions update - delete existing regions and create new ones
     if !regions.is_empty() {
         // Delete existing regions for this experiment
-        crate::routes::trays::regions::models::Entity::delete_many()
-            .filter(crate::routes::trays::regions::models::Column::ExperimentId.eq(id))
+        crate::routes::tray_configurations::regions::models::Entity::delete_many()
+            .filter(
+                crate::routes::tray_configurations::regions::models::Column::ExperimentId.eq(id),
+            )
             .exec(&txn)
             .await?;
 
@@ -233,7 +246,7 @@ async fn get_all_experiments(
             .await?;
 
         let regions = model
-            .find_related(crate::routes::trays::regions::models::Entity)
+            .find_related(crate::routes::tray_configurations::regions::models::Entity)
             .all(db)
             .await?;
 

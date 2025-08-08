@@ -1,5 +1,5 @@
 use crate::config::test_helpers::setup_test_app;
-use crate::routes::trays::services::{coordinates_to_str, str_to_coordinates};
+use crate::routes::tray_configurations::services::{coordinates_to_str, str_to_coordinates};
 use axum::body::Body;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
@@ -2048,7 +2048,7 @@ async fn test_excel_upload_and_validate_results_legacy() {
                 .count(&db)
                 .await
                 .expect("Failed to count treatments");
-            let regions_count = crate::routes::trays::regions::models::Entity::find()
+            let regions_count = crate::routes::tray_configurations::regions::models::Entity::find()
                 .count(&db)
                 .await
                 .expect("Failed to count regions");

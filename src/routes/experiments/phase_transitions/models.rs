@@ -53,9 +53,9 @@ pub enum Relation {
     )]
     TemperatureReadings,
     #[sea_orm(
-        belongs_to = "crate::routes::trays::wells::models::Entity",
+        belongs_to = "crate::routes::tray_configurations::wells::models::Entity",
         from = "Column::WellId",
-        to = "crate::routes::trays::wells::models::Column::Id",
+        to = "crate::routes::tray_configurations::wells::models::Column::Id",
         on_update = "NoAction",
         on_delete = "Cascade"
     )]
@@ -74,7 +74,7 @@ impl Related<crate::routes::experiments::temperatures::models::Entity> for Entit
     }
 }
 
-impl Related<crate::routes::trays::wells::models::Entity> for Entity {
+impl Related<crate::routes::tray_configurations::wells::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Wells.def()
     }

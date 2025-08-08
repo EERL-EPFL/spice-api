@@ -410,13 +410,13 @@ async fn test_treatment_filtering_and_sorting() {
         assert_eq!(status, StatusCode::CREATED);
     }
 
-    // Test filtering by treatment name
+    // Test filtering by treatment name using URL-encoded JSON filter format
     let filter_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/treatments?filter[name]=heat")
+                .uri("/api/treatments?filter=%7B%22name%22%3A%22heat%22%7D")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -431,8 +431,8 @@ async fn test_treatment_filtering_and_sorting() {
     // Verify filtering actually filters - should only return "heat" treatments
     for treatment in filtered_treatments {
         assert_eq!(
-            treatment["treatment_type"], "heat",
-            "Filtering should only return heat treatments, but got: {:?}", treatment["treatment_type"]
+            treatment["name"], "heat",
+            "Filtering should only return heat treatments, but got: {:?}", treatment["name"]
         );
     }
     assert!(!filtered_treatments.is_empty(), "Should return at least some treatments");
