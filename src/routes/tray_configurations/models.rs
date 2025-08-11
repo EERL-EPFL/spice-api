@@ -1,20 +1,8 @@
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
-use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
+use sea_orm::{QueryOrder, QuerySelect};
 use uuid::Uuid;
-
-// Simplified tray assignment structure - tray details directly embedded
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
-pub struct TrayAssignment {
-    pub order_sequence: i32,
-    pub rotation_degrees: i32,
-    // Tray details directly in the assignment (flattened structure)
-    pub name: Option<String>,
-    pub qty_x_axis: Option<i32>,
-    pub qty_y_axis: Option<i32>,
-    pub well_relative_diameter: Option<Decimal>,
-}
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "tray_configurations")]
@@ -25,6 +13,7 @@ pub struct TrayAssignment {
     name_plural = "tray_configurations",
     description = "This endpoint manages tray configurations, which define the setup of trays used in experiments.",
     fn_get_one = get_one_tray_configuration,
+    fn_get_all = get_all_tray_configurations,
     fn_create = create_tray_configuration,
     fn_update = update_tray_configuration,
     error_mapper = crudcrate::error_handling::BusinessErrorMapper
@@ -44,9 +33,9 @@ pub struct Model {
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![])]
-    pub trays: Vec<TrayAssignment>,
+    pub trays: Vec<crate::routes::tray_configurations::trays::models::Tray>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![])]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
     pub associated_experiments: Vec<serde_json::Value>,
 }
 
@@ -72,33 +61,6 @@ impl Related<crate::routes::tray_configurations::trays::models::Entity> for Enti
 
 impl ActiveModelBehavior for ActiveModel {}
 
-// Extended TrayConfiguration for API responses that includes nested data
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
-pub struct TrayConfigurationExtended {
-    pub id: Uuid,
-    pub name: Option<String>,
-    pub experiment_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub last_updated: DateTime<Utc>,
-    pub trays: Vec<TrayAssignment>,
-    pub associated_experiments: Vec<serde_json::Value>,
-}
-
-// Convert from basic TrayConfiguration to Extended version
-impl From<TrayConfiguration> for TrayConfigurationExtended {
-    fn from(basic: TrayConfiguration) -> Self {
-        Self {
-            id: basic.id,
-            name: basic.name,
-            experiment_default: basic.experiment_default,
-            created_at: basic.created_at,
-            last_updated: basic.last_updated,
-            trays: basic.trays,
-            associated_experiments: basic.associated_experiments,
-        }
-    }
-}
-
 // Custom crudcrate function to load nested tray assignments and experiments data
 pub async fn get_one_tray_configuration(
     db: &DatabaseConnection,
@@ -122,16 +84,9 @@ pub async fn get_one_tray_configuration(
         .all(db)
         .await?;
 
-    let mut tray_assignments: Vec<TrayAssignment> = assignments
+    let mut tray_assignments: Vec<crate::routes::tray_configurations::trays::models::Tray> = assignments
         .into_iter()
-        .map(|assignment| TrayAssignment {
-            order_sequence: assignment.order_sequence,
-            rotation_degrees: assignment.rotation_degrees,
-            name: assignment.name,
-            qty_x_axis: assignment.qty_x_axis,
-            qty_y_axis: assignment.qty_y_axis,
-            well_relative_diameter: assignment.well_relative_diameter,
-        })
+        .map(From::from)
         .collect();
 
     // Sort by order_sequence as tests expect
@@ -159,6 +114,71 @@ pub async fn get_one_tray_configuration(
     tray_config.associated_experiments = experiments;
 
     Ok(tray_config)
+}
+
+// Custom crudcrate function to load all tray configurations with nested data
+pub async fn get_all_tray_configurations(
+    db: &DatabaseConnection,
+    condition: &sea_orm::Condition,
+    order_column: Column,
+    order_direction: sea_orm::Order,
+    offset: u64,
+    limit: u64,
+) -> Result<Vec<TrayConfigurationList>, DbErr> {
+    let models = Entity::find()
+        .filter(condition.clone())
+        .order_by(order_column, order_direction)
+        .offset(offset)
+        .limit(limit)
+        .all(db)
+        .await?;
+
+    if models.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let model_ids: Vec<Uuid> = models.iter().map(|m| m.id).collect();
+
+    // Load all tray assignments for these configurations
+    let all_assignments = crate::routes::tray_configurations::trays::models::Entity::find()
+        .filter(
+            crate::routes::tray_configurations::trays::models::Column::TrayConfigurationId
+                .is_in(model_ids.clone()),
+        )
+        .all(db)
+        .await?;
+
+    // Group assignments by tray_configuration_id
+    let mut assignments_map: std::collections::HashMap<Uuid, Vec<crate::routes::tray_configurations::trays::models::Tray>> =
+        std::collections::HashMap::new();
+
+    for assignment in all_assignments {
+        let tray_config_id = assignment.tray_configuration_id;
+        let tray: crate::routes::tray_configurations::trays::models::Tray = assignment.into();
+        assignments_map.entry(tray_config_id).or_insert_with(Vec::new).push(tray);
+    }
+
+    // Sort assignments within each group by order_sequence
+    for assignments in assignments_map.values_mut() {
+        assignments.sort_by_key(|a| a.order_sequence);
+    }
+
+
+    // Convert models to TrayConfiguration and populate nested data
+    let mut tray_configs: Vec<TrayConfigurationList> = models
+        .into_iter()
+        .map(|model| {
+            let mut tray_config: TrayConfigurationList = model.into();
+            let config_id = tray_config.id;
+
+            // Set trays for this configuration
+            tray_config.trays = assignments_map.remove(&config_id).unwrap_or_default();
+
+            tray_config
+        })
+        .collect();
+
+    Ok(tray_configs)
 }
 
 // Custom crudcrate create function to handle nested tray assignments
@@ -233,8 +253,13 @@ pub async fn create_tray_configuration(
 
     txn.commit().await?;
 
-    // Return the complete tray configuration with nested data
-    get_one_tray_configuration(db, tray_config_id).await
+    // Return the complete tray configuration with nested data using crudcrate's get_one
+    let config: TrayConfiguration = Entity::find_by_id(tray_config_id)
+        .one(db)
+        .await?
+        .ok_or(DbErr::RecordNotFound("tray_configuration not found".to_string()))?
+        .into();
+    Ok(config)
 }
 
 // Custom crudcrate update function to handle nested tray assignments
@@ -307,21 +332,11 @@ pub async fn update_tray_configuration(
 
     txn.commit().await?;
 
-    // Return the complete tray configuration with nested data
-    get_one_tray_configuration(db, id).await
-}
-
-// Convert from Extended back to basic
-impl From<TrayConfigurationExtended> for TrayConfiguration {
-    fn from(extended: TrayConfigurationExtended) -> Self {
-        Self {
-            id: extended.id,
-            name: extended.name,
-            experiment_default: extended.experiment_default,
-            created_at: extended.created_at,
-            last_updated: extended.last_updated,
-            trays: extended.trays,
-            associated_experiments: extended.associated_experiments,
-        }
-    }
+    // Return the complete tray configuration with nested data using crudcrate's get_one
+    let config: TrayConfiguration = Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or(DbErr::RecordNotFound("tray_configuration not found".to_string()))?
+        .into();
+    Ok(config)
 }
