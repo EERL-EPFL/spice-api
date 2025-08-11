@@ -1,10 +1,17 @@
 use crate::common::auth::Role;
 use crate::common::state::AppState;
+use axum::{
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode, header::{CONTENT_TYPE, CONTENT_DISPOSITION}},
+    response::{IntoResponse, Response},
+};
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::CRUDResource;
-use utoipa_axum::router::OpenApiRouter;
+use sea_orm::{EntityTrait, DatabaseConnection};
+use utoipa_axum::{router::OpenApiRouter, routes};
+use uuid::Uuid;
 // crud_handlers!(Asset, AssetUpdate, AssetCreate);
-pub use super::models::{Asset, router as crudrouter};
+pub use super::models::{Asset, router as crudrouter, Entity as AssetEntity};
 
 pub fn router(state: &AppState) -> OpenApiRouter
 where

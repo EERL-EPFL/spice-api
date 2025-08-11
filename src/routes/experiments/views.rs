@@ -180,7 +180,7 @@ pub async fn upload_file(
             s3_key: Set(s3_key.clone()),
             size_bytes: Set(Some(size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())),
-            file_type: Set(file_type),
+            r#type: Set(file_type),
             role: Set(Some("raw_image".to_string())),
             ..Default::default()
         };

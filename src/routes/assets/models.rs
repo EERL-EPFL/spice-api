@@ -41,9 +41,9 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
-    #[sea_orm(column_type = "Text", column_name = "type")]
+    #[sea_orm(column_type = "Text")]
     #[crudcrate(sortable, filterable, fulltext)]
-    pub file_type: String,
+    pub r#type: String,
     #[sea_orm(column_type = "Text", nullable)]
     #[crudcrate(sortable, filterable, fulltext)]
     pub role: Option<String>,
