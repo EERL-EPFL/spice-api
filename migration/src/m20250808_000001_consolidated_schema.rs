@@ -737,6 +737,119 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Create performance indexes for experiments table based on crudcrate analysis
+        
+        // High Priority: Fulltext search index for PostgreSQL (exact match to crudcrate analysis)
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_experiments_fulltext ON experiments USING GIN (to_tsvector('english', name || ' ' || username || ' ' || remarks))"
+                )
+                .await?;
+        }
+
+        // Medium Priority: Individual column indexes for filterable/sortable fields
+        
+        // Username index (filterable & sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_username")
+                    .table(Experiments::Table)
+                    .col(Experiments::Username)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Performed at index (filterable & sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_performed_at")
+                    .table(Experiments::Table)
+                    .col(Experiments::PerformedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Temperature ramp index (filterable & sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_temperature_ramp")
+                    .table(Experiments::Table)
+                    .col(Experiments::TemperatureRamp)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Temperature start index (filterable & sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_temperature_start")
+                    .table(Experiments::Table)
+                    .col(Experiments::TemperatureStart)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Temperature end index (filterable & sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_temperature_end")
+                    .table(Experiments::Table)
+                    .col(Experiments::TemperatureEnd)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Is calibration index (filterable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_is_calibration")
+                    .table(Experiments::Table)
+                    .col(Experiments::IsCalibration)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Remarks index (filterable & sortable) 
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_remarks")
+                    .table(Experiments::Table)
+                    .col(Experiments::Remarks)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Created at index (sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_created_at")
+                    .table(Experiments::Table)
+                    .col(Experiments::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Last updated index (sortable)
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_experiments_last_updated")
+                    .table(Experiments::Table)
+                    .col(Experiments::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
         Ok(())
     }
 
@@ -748,6 +861,22 @@ impl MigrationTrait for Migration {
         manager.drop_table(Table::drop().table(Regions::Table).if_exists().to_owned()).await?;
         manager.drop_table(Table::drop().table(Wells::Table).if_exists().to_owned()).await?;
         manager.drop_table(Table::drop().table(Trays::Table).if_exists().to_owned()).await?;
+        // Drop experiments performance indexes first
+        manager.drop_index(Index::drop().name("idx_experiments_last_updated").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_created_at").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_remarks").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_is_calibration").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_temperature_end").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_temperature_start").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_temperature_ramp").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_performed_at").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        manager.drop_index(Index::drop().name("idx_experiments_username").table(Experiments::Table).if_exists().to_owned()).await.ok();
+        
+        // Drop PostgreSQL fulltext index if it exists
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager.get_connection().execute_unprepared("DROP INDEX IF EXISTS idx_experiments_fulltext").await.ok();
+        }
+        
         manager.drop_table(Table::drop().table(Experiments::Table).if_exists().to_owned()).await?;
         manager.drop_table(Table::drop().table(TrayConfigurations::Table).if_exists().to_owned()).await?;
         manager.drop_table(Table::drop().table(Treatments::Table).if_exists().to_owned()).await?;
