@@ -47,6 +47,12 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     #[crudcrate(sortable, filterable, fulltext)]
     pub role: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable)]
+    pub processing_status: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(filterable)]
+    pub processing_message: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

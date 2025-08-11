@@ -5,7 +5,7 @@ use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
 // This will become the new 'trays' table after migration
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels, serde::Serialize, serde::Deserialize)]
 #[sea_orm(table_name = "trays")]
 #[crudcrate(api_struct = "Tray")]
 pub struct Model {
@@ -56,6 +56,17 @@ impl Related<crate::routes::tray_configurations::wells::models::Entity> for Enti
     fn to() -> RelationDef {
         Relation::Wells.def()
     }
+}
+
+// Input model for creating trays (without id field)
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct TrayCreateInput {
+    pub order_sequence: i32,
+    pub rotation_degrees: i32,
+    pub name: Option<String>,
+    pub qty_x_axis: Option<i32>,
+    pub qty_y_axis: Option<i32>,
+    pub well_relative_diameter: Option<Decimal>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}

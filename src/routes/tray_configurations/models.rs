@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
+use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use sea_orm::{QueryOrder, QuerySelect};
 use uuid::Uuid;
@@ -33,7 +34,7 @@ pub struct Model {
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![])]
-    pub trays: Vec<crate::routes::tray_configurations::trays::models::Tray>,
+    pub trays: Vec<serde_json::Value>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
     pub associated_experiments: Vec<serde_json::Value>,
@@ -84,10 +85,8 @@ pub async fn get_one_tray_configuration(
         .all(db)
         .await?;
 
-    let mut tray_assignments: Vec<crate::routes::tray_configurations::trays::models::Tray> = assignments
-        .into_iter()
-        .map(From::from)
-        .collect();
+    let mut tray_assignments: Vec<crate::routes::tray_configurations::trays::models::Model> =
+        assignments;
 
     // Sort by order_sequence as tests expect
     tray_assignments.sort_by_key(|a| a.order_sequence);
@@ -110,7 +109,7 @@ pub async fn get_one_tray_configuration(
 
     // Convert to crudcrate-generated TrayConfiguration and populate non-db fields
     let mut tray_config: TrayConfiguration = model.into();
-    tray_config.trays = tray_assignments;
+    tray_config.trays = tray_assignments.into_iter().map(|t| serde_json::to_value(t).unwrap()).collect();
     tray_config.associated_experiments = experiments;
 
     Ok(tray_config)
@@ -149,20 +148,23 @@ pub async fn get_all_tray_configurations(
         .await?;
 
     // Group assignments by tray_configuration_id
-    let mut assignments_map: std::collections::HashMap<Uuid, Vec<crate::routes::tray_configurations::trays::models::Tray>> =
-        std::collections::HashMap::new();
+    let mut assignments_map: std::collections::HashMap<
+        Uuid,
+        Vec<crate::routes::tray_configurations::trays::models::Model>,
+    > = std::collections::HashMap::new();
 
     for assignment in all_assignments {
         let tray_config_id = assignment.tray_configuration_id;
-        let tray: crate::routes::tray_configurations::trays::models::Tray = assignment.into();
-        assignments_map.entry(tray_config_id).or_insert_with(Vec::new).push(tray);
+        assignments_map
+            .entry(tray_config_id)
+            .or_insert_with(Vec::new)
+            .push(assignment);
     }
 
     // Sort assignments within each group by order_sequence
     for assignments in assignments_map.values_mut() {
         assignments.sort_by_key(|a| a.order_sequence);
     }
-
 
     // Convert models to TrayConfiguration and populate nested data
     let mut tray_configs: Vec<TrayConfigurationList> = models
@@ -172,7 +174,7 @@ pub async fn get_all_tray_configurations(
             let config_id = tray_config.id;
 
             // Set trays for this configuration
-            tray_config.trays = assignments_map.remove(&config_id).unwrap_or_default();
+            tray_config.trays = assignments_map.remove(&config_id).unwrap_or_default().into_iter().map(|t| serde_json::to_value(t).unwrap()).collect();
 
             tray_config
         })
@@ -188,23 +190,30 @@ pub async fn create_tray_configuration(
 ) -> Result<TrayConfiguration, DbErr> {
     use sea_orm::{Set, TransactionTrait, prelude::Expr};
 
-    // Validate tray data before creating (simplified - all data is in assignment)
-    for assignment in &data.trays {
-        if let Some(qty_x) = assignment.qty_x_axis {
+    // Deserialize and validate tray data before creating
+    let mut tray_data_vec = Vec::new();
+    for tray_json in &data.trays {
+        let tray_data: crate::routes::tray_configurations::trays::models::TrayCreateInput = serde_json::from_value(tray_json.clone())
+            .map_err(|e| DbErr::Custom(format!("Invalid tray data: {}", e)))?;
+        tray_data_vec.push(tray_data);
+    }
+    
+    for tray in &tray_data_vec {
+        if let Some(qty_x) = tray.qty_x_axis {
             if qty_x < 1 {
                 return Err(DbErr::Custom(
                     "Validation failed: qty_x_axis must be positive".to_string(),
                 ));
             }
         }
-        if let Some(qty_y) = assignment.qty_y_axis {
+        if let Some(qty_y) = tray.qty_y_axis {
             if qty_y < 1 {
                 return Err(DbErr::Custom(
                     "Validation failed: qty_y_axis must be positive".to_string(),
                 ));
             }
         }
-        if let Some(diameter) = &assignment.well_relative_diameter {
+        if let Some(diameter) = &tray.well_relative_diameter {
             if diameter.is_sign_negative() || *diameter == rust_decimal::Decimal::ZERO {
                 return Err(DbErr::Custom(
                     "Validation failed: well_relative_diameter must be positive".to_string(),
@@ -234,17 +243,17 @@ pub async fn create_tray_configuration(
     };
     active_model.insert(&txn).await?;
 
-    // Handle tray assignments (simplified - create directly in trays table)
-    for assignment in data.trays {
+    // Handle tray assignments (create directly in trays table)
+    for tray in tray_data_vec {
         let tray_active = crate::routes::tray_configurations::trays::models::ActiveModel {
             id: Set(Uuid::new_v4()),
             tray_configuration_id: Set(tray_config_id),
-            order_sequence: Set(assignment.order_sequence),
-            rotation_degrees: Set(assignment.rotation_degrees),
-            name: Set(assignment.name),
-            qty_x_axis: Set(assignment.qty_x_axis),
-            qty_y_axis: Set(assignment.qty_y_axis),
-            well_relative_diameter: Set(assignment.well_relative_diameter),
+            order_sequence: Set(tray.order_sequence),
+            rotation_degrees: Set(tray.rotation_degrees),
+            name: Set(tray.name),
+            qty_x_axis: Set(tray.qty_x_axis),
+            qty_y_axis: Set(tray.qty_y_axis),
+            well_relative_diameter: Set(tray.well_relative_diameter),
             created_at: Set(chrono::Utc::now()),
             last_updated: Set(chrono::Utc::now()),
         };
@@ -253,13 +262,8 @@ pub async fn create_tray_configuration(
 
     txn.commit().await?;
 
-    // Return the complete tray configuration with nested data using crudcrate's get_one
-    let config: TrayConfiguration = Entity::find_by_id(tray_config_id)
-        .one(db)
-        .await?
-        .ok_or(DbErr::RecordNotFound("tray_configuration not found".to_string()))?
-        .into();
-    Ok(config)
+    // Return the complete tray configuration with nested data using custom get_one function
+    get_one_tray_configuration(db, tray_config_id).await
 }
 
 // Custom crudcrate update function to handle nested tray assignments
@@ -312,17 +316,19 @@ pub async fn update_tray_configuration(
             .exec(&txn)
             .await?;
 
-        // Create new assignments (simplified - create directly in trays table)
-        for assignment in trays {
+        // Create new assignments (create directly in trays table)
+        for tray_json in trays {
+            let tray: crate::routes::tray_configurations::trays::models::TrayCreateInput = serde_json::from_value(tray_json)
+                .map_err(|e| DbErr::Custom(format!("Invalid tray data: {}", e)))?;
             let tray_active = crate::routes::tray_configurations::trays::models::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tray_configuration_id: Set(id),
-                order_sequence: Set(assignment.order_sequence),
-                rotation_degrees: Set(assignment.rotation_degrees),
-                name: Set(assignment.name),
-                qty_x_axis: Set(assignment.qty_x_axis),
-                qty_y_axis: Set(assignment.qty_y_axis),
-                well_relative_diameter: Set(assignment.well_relative_diameter),
+                order_sequence: Set(tray.order_sequence),
+                rotation_degrees: Set(tray.rotation_degrees),
+                name: Set(tray.name),
+                qty_x_axis: Set(tray.qty_x_axis),
+                qty_y_axis: Set(tray.qty_y_axis),
+                well_relative_diameter: Set(tray.well_relative_diameter),
                 created_at: Set(chrono::Utc::now()),
                 last_updated: Set(chrono::Utc::now()),
             };
@@ -336,7 +342,9 @@ pub async fn update_tray_configuration(
     let config: TrayConfiguration = Entity::find_by_id(id)
         .one(db)
         .await?
-        .ok_or(DbErr::RecordNotFound("tray_configuration not found".to_string()))?
+        .ok_or(DbErr::RecordNotFound(
+            "tray_configuration not found".to_string(),
+        ))?
         .into();
     Ok(config)
 }

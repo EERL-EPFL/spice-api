@@ -483,6 +483,8 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(S3Assets::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
             .col(ColumnDef::new(S3Assets::Type).text().not_null())
             .col(ColumnDef::new(S3Assets::Role).text())
+            .col(ColumnDef::new(S3Assets::ProcessingStatus).text())
+            .col(ColumnDef::new(S3Assets::ProcessingMessage).text())
             .foreign_key(
                 ForeignKey::create()
                     .name("s3_assets_experiment_id_fkey")
@@ -1042,6 +1044,8 @@ enum S3Assets {
     LastUpdated,
     Type,
     Role,
+    ProcessingStatus,
+    ProcessingMessage,
 }
 
 #[derive(DeriveIden)]
