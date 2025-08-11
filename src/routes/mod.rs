@@ -67,7 +67,7 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         // .nest("/api", phase_changes::router(&app_state))
         .nest("/api/samples", samples::views::router(&app_state))
         .nest("/api/assets", assets::views::router(&app_state))
-        .nest("/api/trays", tray_configurations::views::router(&app_state))
+        .nest("/api/tray_configurations", tray_configurations::views::router(&app_state))
         .nest("/api/treatments", treatments::views::router(&app_state))
         // .nest(
         //     "/api",

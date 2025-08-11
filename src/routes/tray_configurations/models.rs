@@ -1,10 +1,9 @@
 use chrono::{DateTime, Utc};
+use crudcrate::traits::MergeIntoActiveModel;
 use crudcrate::{CRUDResource, EntityToModels};
-use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
-use sea_orm::{QueryOrder, QuerySelect};
+use sea_orm::{QueryOrder, QuerySelect, Set, TransactionTrait, prelude::Expr};
 use uuid::Uuid;
-
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "tray_configurations")]
 #[crudcrate(
@@ -33,11 +32,11 @@ pub struct Model {
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![])]
-    pub trays: Vec<serde_json::Value>,
+    #[crudcrate(non_db_attr = true, default = vec![], use_target_model)]
+    pub trays: Vec<crate::routes::tray_configurations::trays::models::Tray>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
-    pub associated_experiments: Vec<serde_json::Value>,
+    pub associated_experiments: Vec<crate::routes::experiments::models::Experiment>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -92,24 +91,18 @@ pub async fn get_one_tray_configuration(
     tray_assignments.sort_by_key(|a| a.order_sequence);
 
     // Load associated experiments
-    let experiments: Vec<serde_json::Value> = crate::routes::experiments::models::Entity::find()
-        .filter(crate::routes::experiments::models::Column::TrayConfigurationId.eq(id))
-        .all(db)
-        .await?
-        .into_iter()
-        .map(|exp| {
-            serde_json::json!({
-                "id": exp.id,
-                "name": exp.name,
-                "username": exp.username,
-                "remarks": exp.remarks
-            })
-        })
-        .collect();
+    let experiments: Vec<crate::routes::experiments::models::Experiment> =
+        crate::routes::experiments::models::Entity::find()
+            .filter(crate::routes::experiments::models::Column::TrayConfigurationId.eq(id))
+            .all(db)
+            .await?
+            .into_iter()
+            .map(From::from)
+            .collect();
 
     // Convert to crudcrate-generated TrayConfiguration and populate non-db fields
     let mut tray_config: TrayConfiguration = model.into();
-    tray_config.trays = tray_assignments.into_iter().map(|t| serde_json::to_value(t).unwrap()).collect();
+    tray_config.trays = tray_assignments.into_iter().map(From::from).collect();
     tray_config.associated_experiments = experiments;
 
     Ok(tray_config)
@@ -167,14 +160,21 @@ pub async fn get_all_tray_configurations(
     }
 
     // Convert models to TrayConfiguration and populate nested data
-    let mut tray_configs: Vec<TrayConfigurationList> = models
+    let tray_configs: Vec<TrayConfigurationList> = models
         .into_iter()
         .map(|model| {
             let mut tray_config: TrayConfigurationList = model.into();
             let config_id = tray_config.id;
 
-            // Set trays for this configuration
-            tray_config.trays = assignments_map.remove(&config_id).unwrap_or_default().into_iter().map(|t| serde_json::to_value(t).unwrap()).collect();
+            // Set trays for this configuration - convert models to the expected type
+            if let Some(assignments) = assignments_map.remove(&config_id) {
+                tray_config.trays = assignments
+                    .into_iter()
+                    .map(|model| model.into()) // Convert Model to Tray using From trait
+                    .collect();
+            } else {
+                tray_config.trays = vec![];
+            }
 
             tray_config
         })
@@ -188,17 +188,8 @@ pub async fn create_tray_configuration(
     db: &DatabaseConnection,
     data: TrayConfigurationCreate,
 ) -> Result<TrayConfiguration, DbErr> {
-    use sea_orm::{Set, TransactionTrait, prelude::Expr};
-
-    // Deserialize and validate tray data before creating
-    let mut tray_data_vec = Vec::new();
-    for tray_json in &data.trays {
-        let tray_data: crate::routes::tray_configurations::trays::models::TrayCreateInput = serde_json::from_value(tray_json.clone())
-            .map_err(|e| DbErr::Custom(format!("Invalid tray data: {}", e)))?;
-        tray_data_vec.push(tray_data);
-    }
-    
-    for tray in &tray_data_vec {
+    // Validate tray data - data.trays is already Vec<Tray>
+    for tray in &data.trays {
         if let Some(qty_x) = tray.qty_x_axis {
             if qty_x < 1 {
                 return Err(DbErr::Custom(
@@ -244,16 +235,16 @@ pub async fn create_tray_configuration(
     active_model.insert(&txn).await?;
 
     // Handle tray assignments (create directly in trays table)
-    for tray in tray_data_vec {
+    for tray in &data.trays {
         let tray_active = crate::routes::tray_configurations::trays::models::ActiveModel {
             id: Set(Uuid::new_v4()),
             tray_configuration_id: Set(tray_config_id),
             order_sequence: Set(tray.order_sequence),
             rotation_degrees: Set(tray.rotation_degrees),
-            name: Set(tray.name),
+            name: Set(tray.name.clone()),
             qty_x_axis: Set(tray.qty_x_axis),
             qty_y_axis: Set(tray.qty_y_axis),
-            well_relative_diameter: Set(tray.well_relative_diameter),
+            well_relative_diameter: Set(tray.well_relative_diameter.clone()),
             created_at: Set(chrono::Utc::now()),
             last_updated: Set(chrono::Utc::now()),
         };
@@ -272,9 +263,6 @@ pub async fn update_tray_configuration(
     id: Uuid,
     update_data: TrayConfigurationUpdate,
 ) -> Result<TrayConfiguration, DbErr> {
-    use crudcrate::traits::MergeIntoActiveModel;
-    use sea_orm::{Set, TransactionTrait, prelude::Expr};
-
     let txn = db.begin().await?;
 
     // If experiment_default is true, set all others to false
@@ -316,10 +304,8 @@ pub async fn update_tray_configuration(
             .exec(&txn)
             .await?;
 
-        // Create new assignments (create directly in trays table)
-        for tray_json in trays {
-            let tray: crate::routes::tray_configurations::trays::models::TrayCreateInput = serde_json::from_value(tray_json)
-                .map_err(|e| DbErr::Custom(format!("Invalid tray data: {}", e)))?;
+        // Create new assignments (create directly in trays table)  
+        for tray in trays {
             let tray_active = crate::routes::tray_configurations::trays::models::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tray_configuration_id: Set(id),

@@ -23,7 +23,7 @@ async fn create_tray_via_api(app: &axum::Router, rows: i32, cols: i32) -> Result
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_data.to_string()))
                 .unwrap(),
@@ -3390,7 +3390,7 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_config_data.to_string()))
                 .unwrap(),

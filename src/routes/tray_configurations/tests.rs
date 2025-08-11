@@ -41,7 +41,7 @@ async fn create_test_tray_crud(app: &axum::Router) -> (StatusCode, Value) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_data.to_string()))
                 .unwrap(),
@@ -77,7 +77,7 @@ async fn test_tray_crud_operations() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/trays/{tray_id}"))
+                    .uri(format!("/api/tray_configurations/{tray_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -105,7 +105,7 @@ async fn test_tray_crud_operations() {
             .oneshot(
                 Request::builder()
                     .method("PATCH")
-                    .uri(format!("/api/trays/{tray_id}"))
+                    .uri(format!("/api/tray_configurations/{tray_id}"))
                     .header("content-type", "application/json")
                     .body(Body::from(update_data.to_string()))
                     .unwrap(),
@@ -125,7 +125,7 @@ async fn test_tray_crud_operations() {
             .oneshot(
                 Request::builder()
                     .method("DELETE")
-                    .uri(format!("/api/trays/{tray_id}"))
+                    .uri(format!("/api/tray_configurations/{tray_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -160,7 +160,7 @@ async fn test_tray_list_operations() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -226,7 +226,7 @@ async fn test_tray_validation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(invalid_data.to_string()))
                 .unwrap(),
@@ -262,7 +262,7 @@ async fn test_tray_validation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(zero_data.to_string()))
                 .unwrap(),
@@ -312,7 +312,7 @@ async fn test_tray_filtering_and_sorting() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/trays")
+                    .uri("/api/tray_configurations")
                     .header("content-type", "application/json")
                     .body(Body::from(tray_data.to_string()))
                     .unwrap(),
@@ -335,7 +335,7 @@ async fn test_tray_filtering_and_sorting() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/trays?filter=%7B%22name%22%3A%2296-Well%20Plate%20Config%22%7D")
+                    .uri("/api/tray_configurations?filter=%7B%22name%22%3A%2296-Well%20Plate%20Config%22%7D")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -366,7 +366,7 @@ async fn test_tray_filtering_and_sorting() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/api/trays?sort[name]=asc")
+                    .uri("/api/tray_configurations?sort[name]=asc")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -394,7 +394,7 @@ async fn test_tray_not_found() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/trays/{fake_id}"))
+                .uri(format!("/api/tray_configurations/{fake_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -432,7 +432,7 @@ async fn create_tray_configuration(
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_config_data.to_string()))
                 .unwrap(),
@@ -488,7 +488,7 @@ async fn test_tray_configuration_crud_operations() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/trays/{tray_config_id}"))
+                .uri(format!("/api/tray_configurations/{tray_config_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -510,7 +510,7 @@ async fn test_tray_configuration_crud_operations() {
         .oneshot(
             Request::builder()
                 .method("PATCH")
-                .uri(format!("/api/trays/{tray_config_id}"))
+                .uri(format!("/api/tray_configurations/{tray_config_id}"))
                 .header("content-type", "application/json")
                 .body(Body::from(update_data.to_string()))
                 .unwrap(),
@@ -529,7 +529,7 @@ async fn test_tray_configuration_crud_operations() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/trays/{tray_config_id}"))
+                .uri(format!("/api/tray_configurations/{tray_config_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -552,7 +552,7 @@ async fn test_tray_configuration_list_operations() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -621,7 +621,7 @@ async fn test_tray_configuration_default_behavior() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(default_config_data.to_string()))
                 .unwrap(),
@@ -661,7 +661,7 @@ async fn test_tray_configuration_default_behavior() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/trays")
+                    .uri("/api/tray_configurations")
                     .header("content-type", "application/json")
                     .body(Body::from(second_default_config_data.to_string()))
                     .unwrap(),
@@ -680,7 +680,7 @@ async fn test_tray_configuration_default_behavior() {
                 .oneshot(
                     Request::builder()
                         .method("GET")
-                        .uri(format!("/api/trays/{first_config_id}"))
+                        .uri(format!("/api/tray_configurations/{first_config_id}"))
                         .body(Body::empty())
                         .unwrap(),
                 )
@@ -741,7 +741,7 @@ async fn test_tray_dimensions_validation() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/trays")
+                    .uri("/api/tray_configurations")
                     .header("content-type", "application/json")
                     .body(Body::from(tray_data.to_string()))
                     .unwrap(),
@@ -805,7 +805,7 @@ async fn create_tray_configuration_complex_structure(app: &axum::Router) -> axum
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(complex_config_data.to_string()))
                 .unwrap(),
@@ -864,7 +864,7 @@ async fn test_tray_configuration_complex_structure() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/trays/{config_id}"))
+                    .uri(format!("/api/tray_configurations/{config_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -912,7 +912,7 @@ async fn test_tray_configuration_not_found() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/trays/{fake_id}"))
+                .uri(format!("/api/tray_configurations/{fake_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -952,7 +952,7 @@ async fn create_test_tray_comprehensive(app: &axum::Router) -> (StatusCode, Valu
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(individual_tray_data.to_string()))
                 .unwrap(),
@@ -1010,7 +1010,7 @@ async fn test_tray_workflow_comprehensive() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(comprehensive_config_data.to_string()))
                 .unwrap(),
@@ -1029,7 +1029,7 @@ async fn test_tray_workflow_comprehensive() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/trays/{config_id}"))
+                    .uri(format!("/api/tray_configurations/{config_id}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1093,7 +1093,7 @@ async fn create_test_tray_via_api(app: &axum::Router) -> Result<Value, Box<dyn s
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_data.to_string()))
                 .unwrap(),
@@ -1141,7 +1141,7 @@ async fn test_create_tray() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(tray_data.to_string()))
                 .unwrap(),
@@ -1194,7 +1194,7 @@ async fn test_get_tray_by_id() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/trays/{tray_id}"))
+                .uri(format!("/api/tray_configurations/{tray_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1225,7 +1225,7 @@ async fn test_list_trays() {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/api/trays")
+                    .uri("/api/tray_configurations")
                     .header("content-type", "application/json")
                     .body(Body::from(tray_data.to_string()))
                     .unwrap(),
@@ -1243,7 +1243,7 @@ async fn test_list_trays() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1288,7 +1288,7 @@ async fn test_update_tray() {
         .oneshot(
             Request::builder()
                 .method("PUT")
-                .uri(format!("/api/trays/{tray_id}"))
+                .uri(format!("/api/tray_configurations/{tray_id}"))
                 .header("content-type", "application/json")
                 .body(Body::from(update_data.to_string()))
                 .unwrap(),
@@ -1309,7 +1309,7 @@ async fn test_update_tray() {
             .oneshot(
                 Request::builder()
                     .method("PATCH")
-                    .uri(format!("/api/trays/{tray_id}"))
+                    .uri(format!("/api/tray_configurations/{tray_id}"))
                     .header("content-type", "application/json")
                     .body(Body::from(update_data.to_string()))
                     .unwrap(),
@@ -1341,7 +1341,7 @@ async fn test_delete_tray() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/api/trays/{tray_id}"))
+                .uri(format!("/api/tray_configurations/{tray_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1357,7 +1357,7 @@ async fn test_delete_tray() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/trays/{tray_id}"))
+                .uri(format!("/api/tray_configurations/{tray_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1384,7 +1384,7 @@ async fn test_experiment_default_exclusivity() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(first_tray_data.to_string()))
                 .unwrap(),
@@ -1408,7 +1408,7 @@ async fn test_experiment_default_exclusivity() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(second_tray_data.to_string()))
                 .unwrap(),
@@ -1425,7 +1425,7 @@ async fn test_experiment_default_exclusivity() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/trays/{first_tray_id}"))
+                .uri(format!("/api/tray_configurations/{first_tray_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -1455,7 +1455,7 @@ async fn test_validation_errors() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/trays")
+                .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
                 .body(Body::from(invalid_data.to_string()))
                 .unwrap(),

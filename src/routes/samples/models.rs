@@ -417,7 +417,7 @@ async fn get_all_samples(
             .collect();
     }
 
-    // Convert to SampleList for response
+    // Convert to SampleList but preserve treatments
     Ok(samples.into_iter().map(SampleList::from).collect())
 }
 
