@@ -338,13 +338,6 @@ pub async fn update_tray_configuration(
 
     txn.commit().await?;
 
-    // Return the complete tray configuration with nested data using crudcrate's get_one
-    let config: TrayConfiguration = Entity::find_by_id(id)
-        .one(db)
-        .await?
-        .ok_or(DbErr::RecordNotFound(
-            "tray_configuration not found".to_string(),
-        ))?
-        .into();
-    Ok(config)
+    // Return the complete tray configuration with nested data using custom get_one function
+    get_one_tray_configuration(db, id).await
 }

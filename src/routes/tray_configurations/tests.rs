@@ -1273,14 +1273,10 @@ async fn test_update_tray() {
         "experiment_default": false,
         "trays": [
             {
-                "trays": [
-                    {
-                        "name": "UpdatedP1",
-                        "qty_x_axis": 10,
-                        "qty_y_axis": 14,
-                        "well_relative_diameter": 0.8
-                    }
-                ],
+                "name": "UpdatedP1",
+                "qty_x_axis": 10,
+                "qty_y_axis": 14,
+                "well_relative_diameter": 0.8,
                 "rotation_degrees": 90,
                 "order_sequence": 1
             }
