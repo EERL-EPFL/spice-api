@@ -430,7 +430,26 @@ async fn test_image_filename_in_results_service() {
     };
     transition.insert(&db).await.unwrap();
     
-    println!("✅ Created test data: experiment, temperature reading with image filename, well, phase transition");
+    // Create matching S3 asset with .jpg extension to match the temperature filename
+    let asset = crate::routes::assets::models::ActiveModel {
+        id: ActiveValue::Set(Uuid::new_v4()),
+        experiment_id: ActiveValue::Set(Some(experiment_id)),
+        original_filename: ActiveValue::Set("INP_49640_2025-03-20_15-14-17.jpg".to_string()), // With .jpg
+        r#type: ActiveValue::Set("image".to_string()),
+        role: ActiveValue::Set(Some("camera_image".to_string())),
+        s3_key: ActiveValue::Set("test-key".to_string()),
+        size_bytes: ActiveValue::Set(Some(1024)),
+        uploaded_by: ActiveValue::Set(Some("test@example.com".to_string())),
+        uploaded_at: ActiveValue::Set(chrono::Utc::now()),
+        is_deleted: ActiveValue::Set(false),
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+        last_updated: ActiveValue::Set(chrono::Utc::now()),
+        processing_status: ActiveValue::Set(None),
+        processing_message: ActiveValue::Set(None),
+    };
+    asset.insert(&db).await.unwrap();
+    
+    println!("✅ Created test data: experiment, temperature reading with image filename, well, phase transition, and matching asset");
     
     // Test the results summary service directly
     let results_summary = build_results_summary(experiment_id, &db).await.unwrap();
@@ -459,7 +478,12 @@ async fn test_image_filename_in_results_service() {
     assert!(!image_filename.ends_with(".jpg"), 
             "Image filename should be stored without .jpg extension");
     
-    println!("✅ Image filename service test completed successfully");
+    // Verify that image_asset_id is populated (the key test for our linking functionality)
+    assert!(well.image_asset_id.is_some(), 
+            "Expected well to have image_asset_id populated from filename matching");
+    println!("🔗 Image asset ID: {:?}", well.image_asset_id);
+    
+    println!("✅ Image filename and asset linking service test completed successfully");
 }
 
 // ===== TESTS MIGRATED FROM views.rs =====

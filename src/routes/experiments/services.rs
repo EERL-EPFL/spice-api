@@ -46,6 +46,47 @@ pub(super) async fn build_results_summary(
     let temp_readings_map: std::collections::HashMap<Uuid, &temperature_readings::Model> =
         temp_readings_data.iter().map(|tr| (tr.id, tr)).collect();
 
+    // Get all assets for this experiment to enable image linking
+    let experiment_assets = crate::routes::assets::models::Entity::find()
+        .filter(crate::routes::assets::models::Column::ExperimentId.eq(experiment_id))
+        .filter(crate::routes::assets::models::Column::Type.eq("image"))
+        .all(db)
+        .await?;
+
+    println!("🔍 [DEBUG] Experiment {} has {} image assets", experiment_id, experiment_assets.len());
+
+    // Show time range of assets
+    if !experiment_assets.is_empty() {
+        let asset_filenames: Vec<&String> = experiment_assets.iter().map(|a| &a.original_filename).collect();
+        if let (Some(first), Some(last)) = (asset_filenames.iter().min(), asset_filenames.iter().max()) {
+            println!("🔍 [DEBUG] Asset time range: {} to {}", first, last);
+        }
+    }
+
+    // Create filename-to-asset-id mapping (strip .jpg extension for matching)
+    let filename_to_asset_id: std::collections::HashMap<String, Uuid> = experiment_assets
+        .iter()
+        .filter_map(|asset| {
+            let filename_without_ext = if std::path::Path::new(&asset.original_filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg")) {
+                asset.original_filename.strip_suffix(".jpg").unwrap_or(&asset.original_filename).to_string()
+            } else {
+                asset.original_filename.clone()
+            };
+            Some((filename_without_ext, asset.id))
+        })
+        .collect();
+
+    println!("🔍 [DEBUG] Total filename mappings: {}", filename_to_asset_id.len());
+
+
+    // Print subset of first 5 mappings:
+    println!("🔍 [DEBUG] First 5 filename mappings:");
+    for (filename, asset_id) in filename_to_asset_id.iter().take(5) {
+        println!("🔍 [DEBUG] - {}: {}", filename, asset_id);
+    }
+
     // Get all regions for this experiment
     let experiment_regions = regions::Entity::find()
         .filter(regions::Column::ExperimentId.eq(experiment_id))
@@ -306,6 +347,14 @@ pub(super) async fn build_results_summary(
         let first_phase_change_temperature_probes = temperature_and_image.as_ref().map(|(temp_probes, _)| temp_probes.clone());
         let image_filename_at_freeze = temperature_and_image.as_ref().and_then(|(_, image_filename)| image_filename.clone());
 
+        // Look up asset ID for this image filename
+        let image_asset_id = image_filename_at_freeze
+        .as_ref()
+        .and_then(|filename| {
+                filename_to_asset_id.get(filename)
+            })
+            .copied();
+
         // Calculate seconds from experiment start to first phase change
         let first_phase_change_seconds = match (first_phase_change_time, first_timestamp) {
             (Some(phase_change_time), Some(start_time)) => {
@@ -360,6 +409,7 @@ pub(super) async fn build_results_summary(
             first_phase_change_temperature_probes,
             final_state,
             image_filename_at_freeze,
+            image_asset_id,
             tray_id: Some(well.tray_id.to_string()),
             tray_name,
             dilution_factor: region.and_then(|r| r.dilution_factor),

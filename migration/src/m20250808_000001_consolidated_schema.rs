@@ -685,6 +685,15 @@ impl MigrationTrait for Migration {
                     .to_owned(),
             )
             .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_original_filename")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::OriginalFilename)
+                    .to_owned(),
+            )
+            .await?;
 
         manager
             .create_index(
