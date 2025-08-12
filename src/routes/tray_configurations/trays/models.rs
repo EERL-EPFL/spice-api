@@ -12,7 +12,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, list_model=false)]
     pub tray_configuration_id: Uuid,
     #[crudcrate(sortable, filterable)]
     pub order_sequence: i32,

@@ -74,7 +74,7 @@ pub struct ErrorResponse {
 }
 
 /// Processing status for async operations
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessingStatus {
     Pending,

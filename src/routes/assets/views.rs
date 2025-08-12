@@ -1,6 +1,5 @@
 use crate::common::auth::Role;
 use crate::common::state::AppState;
-use crate::external::s3::get_client;
 
 pub mod streaming_hybrid;
 use axum::{
@@ -158,23 +157,10 @@ async fn reprocess_asset(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Download file from S3
-    let s3_client = crate::external::s3::get_client(&state.config).await;
-    let object_result = s3_client
-        .get_object()
-        .bucket(&state.config.s3_bucket_id)
-        .key(&asset.s3_key)
-        .send()
+    // Download file from S3 (uses mock for tests, real S3 for production)
+    let file_bytes = crate::external::s3::get_object_from_s3(&asset.s3_key, &state.config)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let file_bytes = object_result
-        .body
-        .collect()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .into_bytes()
-        .to_vec();
 
     // Process Excel file
     match state.data_processing_service
@@ -240,23 +226,10 @@ async fn serve_asset_internal(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    // Download from S3
-    let s3_client = get_client(&state.config).await;
-    let object_result = s3_client
-        .get_object()
-        .bucket(&state.config.s3_bucket_id)
-        .key(&asset.s3_key)
-        .send()
+    // Download from S3 (uses mock for tests, real S3 for production)
+    let body_bytes = crate::external::s3::get_object_from_s3(&asset.s3_key, &state.config)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Stream the body
-    let body = object_result
-        .body
-        .collect()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .into_bytes();
 
     // Set headers
     let mut headers = HeaderMap::new();
@@ -292,7 +265,7 @@ async fn serve_asset_internal(
         headers.insert(CONTENT_DISPOSITION, disposition.parse().unwrap());
     }
 
-    Ok((headers, body).into_response())
+    Ok((headers, body_bytes).into_response())
 }
 
 

@@ -5070,6 +5070,7 @@ dependencies = [
  "gpx",
  "http-body-util",
  "hyper 1.6.0",
+ "lazy_static",
  "migration",
  "mime 0.3.17",
  "multipart",

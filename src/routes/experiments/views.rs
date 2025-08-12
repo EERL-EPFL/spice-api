@@ -3,7 +3,6 @@ use crate::common::auth::Role;
 use crate::common::state::AppState;
 use crate::external::s3::get_client;
 use crate::routes::assets::models as s3_assets;
-use aws_sdk_s3::primitives::ByteStream;
 use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{extract::Multipart, http::{status::StatusCode, HeaderMap}, response::{Json, Response}, routing::get, Router};
@@ -253,8 +252,8 @@ pub async fn upload_file(
         return Err((StatusCode::NOT_FOUND, "Experiment not found".to_string()));
     }
 
-    // Load S3 configuration from app state
-    let s3_client = get_client(&state.config).await;
+    // Load S3 configuration from app state (not needed for mocked S3 operations)
+    let _s3_client = get_client(&state.config).await;
 
     while let Some(mut field) = infile.next_field().await.unwrap() {
         let field_name = field.name().unwrap_or("none").to_string();
@@ -312,16 +311,9 @@ pub async fn upload_file(
             }
             
             // Delete existing asset from database and S3 before uploading new one
-            // Delete from S3 first
-            if s3_client
-                .delete_object()
-                .bucket(&state.config.s3_bucket_id)
-                .key(&existing.s3_key)
-                .send()
-                .await
-                .is_err()
-            {
-                println!("Warning: Failed to delete existing file from S3: {}", existing.s3_key);
+            // Delete from S3 first (uses mock for tests, real S3 for production)
+            if let Err(e) = crate::external::s3::delete_from_s3(&existing.s3_key).await {
+                println!("Warning: Failed to delete existing file from S3: {} - {}", existing.s3_key, e);
             }
 
             // Delete from database
@@ -331,20 +323,11 @@ pub async fn upload_file(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete existing asset: {e}")))?;
         }
 
-        // Upload the file to S3
-        let body = ByteStream::from(file_bytes.clone());
-        if s3_client
-            .put_object()
-            .bucket(&state.config.s3_bucket_id)
-            .key(&s3_key)
-            .body(body)
-            .send()
-            .await
-            .is_err()
-        {
+        // Upload the file to S3 (uses mock for tests, real S3 for production)
+        if let Err(e) = crate::external::s3::put_object_to_s3(&s3_key, file_bytes.clone(), &state.config).await {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to upload to S3".to_string(),
+                format!("Failed to upload to S3: {}", e),
             ));
         }
 
@@ -359,7 +342,7 @@ pub async fn upload_file(
             size_bytes: Set(Some(size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())),
             r#type: Set(file_type.clone()),
-            role: Set(Some(asset_role)),
+            role: Set(Some(asset_role.clone())),
             processing_status: Set(None),
             processing_message: Set(None),
             ..Default::default()
@@ -374,11 +357,72 @@ pub async fn upload_file(
                 )
             })?;
 
-        let _asset_id = asset_result.last_insert_id;
+        let asset_id = asset_result.last_insert_id;
 
-        // Disabled auto-processing - let users manually trigger processing
-        let auto_processed = false;
-        let processing_message = None;
+        // Auto-process Excel files with analysis_data role (like merged.xlsx)
+        let should_auto_process = file_type == "tabular" && 
+                                  (extension == "xlsx" || extension == "xls") && 
+                                  asset_role == "analysis_data";
+        
+        let (auto_processed, processing_message) = if should_auto_process {
+            println!("🔄 Auto-processing Excel file: {}", file_name);
+            
+            // Create processing service and trigger processing
+            let processing_service = crate::services::data_processing_service::DataProcessingService::new(state.db.clone());
+            
+            match processing_service.process_excel_file(experiment_id, file_bytes.clone()).await {
+                Ok(result) => {
+                    // Update asset with processing results
+                    let processing_status = match result.status {
+                        crate::services::models::ProcessingStatus::Completed => Some("completed".to_string()),
+                        crate::services::models::ProcessingStatus::Failed => Some("error".to_string()),
+                        _ => Some("processing".to_string()),
+                    };
+                    
+                    let message = if result.status == crate::services::models::ProcessingStatus::Completed {
+                        Some(format!("✅ Processed {} temperature readings in {}ms", 
+                                   result.temperature_readings_created, result.processing_time_ms))
+                    } else if let Some(error) = result.error {
+                        Some(format!("❌ Processing failed: {}", error))
+                    } else {
+                        Some("Processing completed".to_string())
+                    };
+
+                    // Update the asset record with processing status
+                    if let Ok(_) = crate::routes::assets::models::Entity::update_many()
+                        .col_expr(crate::routes::assets::models::Column::ProcessingStatus, 
+                                 sea_orm::sea_query::Expr::value(processing_status.clone()))
+                        .col_expr(crate::routes::assets::models::Column::ProcessingMessage,
+                                 sea_orm::sea_query::Expr::value(message.clone()))
+                        .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
+                        .exec(&state.db)
+                        .await 
+                    {
+                        println!("✅ Updated asset {} with processing status: {:?}", asset_id, processing_status);
+                    }
+                    
+                    (true, message)
+                },
+                Err(e) => {
+                    let error_msg = format!("❌ Auto-processing failed: {}", e);
+                    println!("{}", error_msg);
+                    
+                    // Update asset with error status
+                    let _ = crate::routes::assets::models::Entity::update_many()
+                        .col_expr(crate::routes::assets::models::Column::ProcessingStatus, 
+                                 sea_orm::sea_query::Expr::value(Some("error".to_string())))
+                        .col_expr(crate::routes::assets::models::Column::ProcessingMessage,
+                                 sea_orm::sea_query::Expr::value(Some(error_msg.clone())))
+                        .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
+                        .exec(&state.db)
+                        .await;
+                    
+                    (false, Some(error_msg))
+                }
+            }
+        } else {
+            (false, None)
+        };
 
         return Ok(Json(UploadResponse {
             success: true,
@@ -701,23 +745,10 @@ pub async fn process_asset_data(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update asset: {}", e)))?;
 
-    // Download the file from S3 to get bytes for processing
-    let s3_client = get_client(&app_state.config).await;
-    let get_object_output = s3_client
-        .get_object()
-        .bucket(&app_state.config.s3_bucket_id)
-        .key(&asset.s3_key)
-        .send()
+    // Download the file from S3 to get bytes for processing (uses mock for tests)
+    let file_bytes = crate::external::s3::get_object_from_s3(&asset.s3_key, &app_state.config)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to download from S3: {}", e)))?;
-
-    let file_bytes = get_object_output
-        .body
-        .collect()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to read S3 data: {}", e)))?
-        .into_bytes()
-        .to_vec();
 
     // Validate file can be processed - only allow Excel files with appropriate names
     let filename = asset.original_filename.to_lowercase();

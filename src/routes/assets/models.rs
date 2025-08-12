@@ -33,7 +33,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     #[crudcrate(sortable, filterable, fulltext)]
     pub uploaded_by: Option<String>,
-    #[crudcrate(sortable)]
+    #[crudcrate(sortable, create_model = false, on_create = chrono::Utc::now())]
     pub uploaded_at: DateTime<Utc>,
     #[crudcrate(filterable)]
     pub is_deleted: bool,
