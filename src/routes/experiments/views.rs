@@ -1,10 +1,9 @@
 pub use super::models::{Experiment, router as crudrouter};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
-use crate::external::s3::{download_assets, get_client};
+use crate::external::s3::get_client;
 use crate::routes::assets::models as s3_assets;
 use aws_sdk_s3::primitives::ByteStream;
-use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{extract::Multipart, http::{status::StatusCode, HeaderMap}, response::{Json, Response}, routing::get, Router};
@@ -14,10 +13,147 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
 use serde::Serialize;
 use std::convert::TryInto;
-use tokio_util::io::ReaderStream;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
-use http_body_util;
+
+#[cfg(test)]
+mod asset_role_tests {
+    use super::determine_asset_role;
+
+    #[test]
+    fn test_camera_image_detection() {
+        // Test camera image patterns
+        assert_eq!(
+            determine_asset_role("INP_49640_2025-03-20_15-14-17.jpg", "image", "jpg"),
+            "camera_image"
+        );
+        assert_eq!(
+            determine_asset_role("INP_12345_2024-12-01_10-30-45.png", "image", "png"),
+            "camera_image"
+        );
+        // Non-camera image
+        assert_eq!(
+            determine_asset_role("random_photo.jpg", "image", "jpg"),
+            "other_image"
+        );
+    }
+
+    #[test]
+    fn test_tabular_data_roles() {
+        // Analysis data files
+        assert_eq!(
+            determine_asset_role("merged.xlsx", "tabular", "xlsx"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("freezing_temperatures.xlsx", "tabular", "xlsx"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("merged.csv", "tabular", "csv"),
+            "analysis_data"
+        );
+        // Temperature sensor data
+        assert_eq!(
+            determine_asset_role("S39031 INP Freezing.xlsx", "tabular", "xlsx"),
+            "temperature_data"
+        );
+        // Configuration files
+        assert_eq!(
+            determine_asset_role("regions.yaml", "tabular", "yaml"),
+            "configuration"
+        );
+        assert_eq!(
+            determine_asset_role("temperature_config.yaml", "tabular", "yaml"),
+            "configuration"
+        );
+        // Other data
+        assert_eq!(
+            determine_asset_role("random_data.xlsx", "tabular", "xlsx"),
+            "raw_data"
+        );
+    }
+
+    #[test]
+    fn test_other_file_types() {
+        // NetCDF analysis files
+        assert_eq!(
+            determine_asset_role("analysis.nc", "netcdf", "nc"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("well_temperatures.nc", "netcdf", "nc"),
+            "analysis_data"
+        );
+        // Analysis images
+        assert_eq!(
+            determine_asset_role("analysis_tray_1.png", "image", "png"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("frozen_fraction.png", "image", "png"),
+            "analysis_data"
+        );
+        // Other files
+        assert_eq!(
+            determine_asset_role("setup.yaml", "unknown", "yaml"),
+            "configuration"
+        );
+        assert_eq!(
+            determine_asset_role("random.pdf", "unknown", "pdf"),
+            "miscellaneous"
+        );
+    }
+}
+
+/// Determine asset role based on filename patterns and file type
+fn determine_asset_role(filename: &str, file_type: &str, _extension: &str) -> String {
+    let filename_lower = filename.to_lowercase();
+    
+    match file_type {
+        "image" => {
+            // Camera images from INP system follow pattern: INP_XXXXX_YYYY-MM-DD_HH-MM-SS
+            if filename_lower.starts_with("inp_") && (filename_lower.contains("2024") || 
+               filename_lower.contains("2025") || filename_lower.contains("2026")) {
+                "camera_image".to_string()
+            } else if filename_lower.contains("analysis") || filename_lower.contains("frozen_fraction") || 
+                      filename_lower.contains("regions") || filename_lower.contains("trays_config") {
+                "analysis_data".to_string()
+            } else {
+                "other_image".to_string()
+            }
+        },
+        "tabular" => {
+            if filename_lower.contains("freezing_temperatures") || 
+               (filename_lower.contains("merged") && (filename_lower.contains("csv") || filename_lower.contains("xlsx"))) ||
+               filename_lower.contains("analysis") {
+                "analysis_data".to_string()
+            } else if filename_lower.contains("inp") && filename_lower.contains("freezing") {
+                "temperature_data".to_string() 
+            } else if filename_lower.contains("config") || filename_lower.contains("setup") || filename_lower.contains("yaml") {
+                "configuration".to_string()
+            } else {
+                "raw_data".to_string()
+            }
+        },
+        "netcdf" => {
+            if filename_lower.contains("analysis") || filename_lower.contains("well_temperatures") {
+                "analysis_data".to_string()
+            } else {
+                "scientific_data".to_string()
+            }
+        },
+        _ => {
+            if filename_lower.contains("readme") || filename_lower.contains("doc") {
+                "documentation".to_string()
+            } else if filename_lower.contains("config") || filename_lower.contains("yaml") || filename_lower.contains("yml") {
+                "configuration".to_string()
+            } else {
+                "miscellaneous".to_string()
+            }
+        }
+    }
+}
 
 pub fn router(state: &AppState) -> OpenApiRouter
 where
@@ -74,6 +210,7 @@ pub fn asset_router() -> Router<AppState> {
     Router::new()
         .route("/{experiment_id}/uploads", post(upload_file))
         .route("/{experiment_id}/download", get(download_experiment_assets))
+        .route("/{experiment_id}/download-token", post(create_experiment_download_token))
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit for file uploads
 }
 
@@ -103,6 +240,7 @@ pub struct UploadResponse {
 pub async fn upload_file(
     State(state): State<AppState>,
     Path(experiment_id): Path<uuid::Uuid>,
+    headers: HeaderMap,
     mut infile: Multipart,
 ) -> Result<Json<UploadResponse>, (StatusCode, String)> {
     // Check if the experiment exists
@@ -151,6 +289,12 @@ pub async fn upload_file(
             state.config.app_name, state.config.deployment, experiment_id, file_name
         );
 
+        // Check if overwrite is allowed
+        let allow_overwrite = headers.get("x-allow-overwrite")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s == "true")
+            .unwrap_or(false);
+
         // Check if file already exists in database
         let existing_asset = s3_assets::Entity::find()
             .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
@@ -159,11 +303,32 @@ pub async fn upload_file(
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-        if existing_asset.is_some() {
-            return Err((
-                StatusCode::CONFLICT,
-                format!("File '{file_name}' already exists in this experiment"),
-            ));
+        if let Some(existing) = existing_asset {
+            if !allow_overwrite {
+                return Err((
+                    StatusCode::CONFLICT,
+                    format!("File '{file_name}' already exists in this experiment"),
+                ));
+            }
+            
+            // Delete existing asset from database and S3 before uploading new one
+            // Delete from S3 first
+            if s3_client
+                .delete_object()
+                .bucket(&state.config.s3_bucket_id)
+                .key(&existing.s3_key)
+                .send()
+                .await
+                .is_err()
+            {
+                println!("Warning: Failed to delete existing file from S3: {}", existing.s3_key);
+            }
+
+            // Delete from database
+            s3_assets::Entity::delete_by_id(existing.id)
+                .exec(&state.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to delete existing asset: {e}")))?;
         }
 
         // Upload the file to S3
@@ -183,10 +348,8 @@ pub async fn upload_file(
             ));
         }
 
-        // Determine if this is a merged.xlsx file that should be processed
-        let is_merged_xlsx = (file_name.eq_ignore_ascii_case("merged.xlsx") || file_name.to_lowercase().contains("merged")) 
-            && file_type == "tabular" 
-            && extension == "xlsx";
+        // Determine asset role based on filename patterns and type
+        let asset_role = determine_asset_role(&file_name, &file_type, &extension);
 
         // Insert a record into the local DB
         let asset = s3_assets::ActiveModel {
@@ -196,8 +359,8 @@ pub async fn upload_file(
             size_bytes: Set(Some(size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())),
             r#type: Set(file_type.clone()),
-            role: Set(Some(if is_merged_xlsx { "experiment_data".to_string() } else { "raw_data".to_string() })),
-            processing_status: Set(if is_merged_xlsx { Some("processing".to_string()) } else { None }),
+            role: Set(Some(asset_role)),
+            processing_status: Set(None),
             processing_message: Set(None),
             ..Default::default()
         };
@@ -211,7 +374,7 @@ pub async fn upload_file(
                 )
             })?;
 
-        let asset_id = asset_result.last_insert_id;
+        let _asset_id = asset_result.last_insert_id;
 
         // Disabled auto-processing - let users manually trigger processing
         let auto_processed = false;
@@ -227,6 +390,31 @@ pub async fn upload_file(
     }
 
     Err((StatusCode::BAD_REQUEST, "No file uploaded".to_string()))
+}
+
+/// Create a download token for experiment assets
+pub async fn create_experiment_download_token(
+    State(state): State<AppState>,
+    Path(experiment_id): Path<uuid::Uuid>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    // Verify experiment exists
+    use crate::routes::experiments::models::Entity as ExperimentEntity;
+    
+    let experiment = ExperimentEntity::find_by_id(experiment_id)
+        .one(&state.db)
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+    
+    if experiment.is_none() {
+        return Err((StatusCode::NOT_FOUND, "Experiment not found".to_string()));
+    }
+    
+    let token = state.create_experiment_download_token(experiment_id).await;
+    
+    Ok(axum::Json(serde_json::json!({
+        "token": token,
+        "download_url": format!("/api/assets/download/{}", token)
+    })))
 }
 
 #[utoipa::path(
@@ -260,66 +448,225 @@ pub async fn download_experiment_assets(
         ));
     }
 
-    // Load configuration and create S3 client.
-    let s3_client = get_client(&state.config).await;
+    // Use hybrid streaming: concurrent downloads + immediate streaming
+    use crate::routes::assets::views::streaming_hybrid;
+    streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await
+        .map(|mut response| {
+            // Update filename for experiment
+            let headers = response.headers_mut();
+            headers.insert(
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"experiment_{}.zip\"", experiment_id)
+                    .parse()
+                    .unwrap()
+            );
+            response
+        })
+}
 
-    // Call the new function to download assets concurrently.
-    let (_temp_dir, asset_paths) = download_assets(assets, &state.config, s3_client).await?;
-
-    // Create a temporary file for the zip archive.
-    let zip_temp_file = tempfile::NamedTempFile::new()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let zip_path = zip_temp_file.path().to_owned();
-    let zip_path_for_task = zip_path.clone(); // Clone the path for the blocking task
-    drop(zip_temp_file);
-
-    // Create the zip archive in a blocking task.
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let zip_file = std::fs::File::create(&zip_path_for_task).map_err(|e| e.to_string())?;
-        let mut zip_writer = zip::ZipWriter::new(zip_file);
-        let options = zip::write::FileOptions::<()>::default()
-            .compression_method(zip::CompressionMethod::Stored)
-            .unix_permissions(0o644);
-        for (file_name, file_path) in asset_paths {
-            zip_writer
-                .start_file(file_name, options)
-                .map_err(|e| e.to_string())?;
-            let mut f = std::fs::File::open(&file_path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut f, &mut zip_writer).map_err(|e| e.to_string())?;
-        }
-        zip_writer.finish().map_err(|e| e.to_string())?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Open the zip file asynchronously for streaming.
-    let file = tokio::fs::File::open(&zip_path)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let stream = ReaderStream::new(file);
-    let body_stream = http_body_util::StreamBody::new(stream);
-    let hyper_body = Body::from_stream(body_stream);
-
-    // Build response headers.
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        axum::http::header::CONTENT_TYPE,
-        "application/zip".parse().unwrap(),
-    );
-    let filename = format!("experiment_{experiment_id}.zip",);
-    let content_disposition = format!("attachment; filename=\"{filename}\"",);
-    headers.insert(
-        axum::http::header::CONTENT_DISPOSITION,
-        content_disposition.parse().unwrap(),
-    );
-
-    let mut response_builder = Response::builder().status(StatusCode::OK);
-    for (key, value) in &headers {
-        response_builder = response_builder.header(key, value);
+/// Create a true streaming ZIP response for experiment downloads
+async fn streaming_experiment_zip_response(
+    assets: Vec<s3_assets::Model>,
+    config: &crate::config::Config,
+    experiment_id: uuid::Uuid,
+) -> Result<Response, (StatusCode, String)> {
+    use axum::body::Body;
+    use tokio::sync::mpsc;
+    
+    // Calculate exact ZIP size for Content-Length header
+    let mut total_zip_size: u64 = 0;
+    for asset in &assets {
+        let filename_len = asset.original_filename.len() as u64;
+        let file_size = asset.size_bytes.unwrap_or(0) as u64;
+        
+        // Local file header + file data
+        total_zip_size += 30 + filename_len + file_size;
+        // Central directory entry
+        total_zip_size += 46 + filename_len;
     }
-    Ok(response_builder.body(hyper_body).unwrap())
+    // End of central directory
+    total_zip_size += 22;
+    
+    let s3_client = get_client(config).await;
+    
+    // Channel for true streaming - send data immediately as it arrives from S3
+    let (tx, mut rx) = mpsc::channel::<Result<Vec<u8>, std::io::Error>>(1);
+    
+    // Clone data for the background task
+    let assets_for_task = assets.clone();
+    let s3_client_for_task = s3_client.clone();
+    let config_for_task = config.clone();
+    
+    // Spawn task that streams ZIP data immediately as S3 data arrives
+    tokio::spawn(async move {
+        // Track central directory entries
+        let mut central_directory = Vec::new();
+        let mut current_offset: u32 = 0;
+        
+        // Use concurrent downloads for better performance
+        use futures::stream::{StreamExt, FuturesUnordered};
+        
+        let mut download_futures = FuturesUnordered::new();
+        
+        // Start concurrent downloads (limit to 4 concurrent to avoid overwhelming S3)
+        for (file_index, asset) in assets_for_task.iter().enumerate() {
+            let s3_client = s3_client_for_task.clone();
+            let bucket = config_for_task.s3_bucket_id.clone();
+            let key = asset.s3_key.clone();
+            let asset_clone = asset.clone();
+            
+            let download_future = async move {
+                let s3_result = s3_client
+                    .get_object()
+                    .bucket(&bucket)
+                    .key(&key)
+                    .send()
+                    .await;
+                
+                let (file_data, file_len, crc) = match s3_result {
+                    Ok(response) => {
+                        match response.body.collect().await {
+                            Ok(data) => {
+                                let bytes = data.into_bytes().to_vec();
+                                let len = bytes.len() as u32;
+                                let crc = crc32fast::hash(&bytes);
+                                (bytes, len, crc)
+                            }
+                            Err(_) => return None,
+                        }
+                    }
+                    Err(_) => return None,
+                };
+                
+                Some((file_index, asset_clone, file_data, file_len, crc))
+            };
+            
+            download_futures.push(download_future);
+        }
+        
+        // Collect results and send in order
+        let mut results = Vec::with_capacity(assets_for_task.len());
+        while let Some(result) = download_futures.next().await {
+            if let Some(data) = result {
+                results.push(data);
+            }
+        }
+        
+        // Sort by file index to maintain order
+        results.sort_by_key(|(index, _, _, _, _)| *index);
+        
+        // Process results in order
+        for (file_index, asset, file_data, file_len, crc) in results {
+            let filename = asset.original_filename.as_bytes();
+            let is_first = file_index == 0;
+            
+            // Build local file header
+            let mut local_header = Vec::with_capacity(30 + filename.len());
+            local_header.extend_from_slice(&[0x50, 0x4b, 0x03, 0x04]); // Signature
+            local_header.extend_from_slice(&[0x14, 0x00]); // Version
+            local_header.extend_from_slice(&[0x00, 0x00]); // Flags
+            local_header.extend_from_slice(&[0x00, 0x00]); // Compression
+            local_header.extend_from_slice(&[0x00, 0x00]); // Time
+            local_header.extend_from_slice(&[0x00, 0x00]); // Date
+            local_header.extend_from_slice(&crc.to_le_bytes()); // CRC-32
+            local_header.extend_from_slice(&file_len.to_le_bytes()); // Compressed size
+            local_header.extend_from_slice(&file_len.to_le_bytes()); // Uncompressed size
+            local_header.extend_from_slice(&(filename.len() as u16).to_le_bytes()); // Name length
+            local_header.extend_from_slice(&[0x00, 0x00]); // Extra length
+            local_header.extend_from_slice(filename); // Filename
+            
+            // Send header immediately - starts the download!
+            if tx.send(Ok(local_header)).await.is_err() {
+                return; // Client disconnected
+            }
+            
+            // For the first file, send all data at once to ensure browser recognizes the download
+            // For subsequent files, stream in chunks
+            if is_first {
+                // Send entire first file at once to trigger browser download dialog
+                if tx.send(Ok(file_data)).await.is_err() {
+                    return; // Client disconnected
+                }
+            } else {
+                // Stream subsequent files in chunks
+                const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
+                for chunk in file_data.chunks(CHUNK_SIZE) {
+                    if tx.send(Ok(chunk.to_vec())).await.is_err() {
+                        return; // Client disconnected
+                    }
+                }
+            }
+            
+            // Build central directory entry
+            let mut cd_entry = Vec::with_capacity(46 + asset.original_filename.len());
+            cd_entry.extend_from_slice(&[0x50, 0x4b, 0x01, 0x02]); // Signature
+            cd_entry.extend_from_slice(&[0x14, 0x00]); // Version made by
+            cd_entry.extend_from_slice(&[0x14, 0x00]); // Version needed
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Flags
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Compression
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Time
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Date
+            cd_entry.extend_from_slice(&crc.to_le_bytes()); // CRC-32
+            cd_entry.extend_from_slice(&file_len.to_le_bytes()); // Compressed
+            cd_entry.extend_from_slice(&file_len.to_le_bytes()); // Uncompressed
+            cd_entry.extend_from_slice(&(asset.original_filename.len() as u16).to_le_bytes());
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Extra
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Comment
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Disk
+            cd_entry.extend_from_slice(&[0x00, 0x00]); // Internal attrs
+            cd_entry.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // External attrs
+            cd_entry.extend_from_slice(&current_offset.to_le_bytes()); // Offset
+            cd_entry.extend_from_slice(asset.original_filename.as_bytes());
+            
+            central_directory.extend_from_slice(&cd_entry);
+            current_offset += 30 + asset.original_filename.len() as u32 + file_len;
+        }
+        
+        // Send central directory
+        let cd_len = central_directory.len() as u32;
+        if !central_directory.is_empty() {
+            let _ = tx.send(Ok(central_directory)).await;
+        }
+        
+        // Send end of central directory record
+        let mut end_record = Vec::with_capacity(22);
+        end_record.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]); // Signature
+        end_record.extend_from_slice(&[0x00, 0x00]); // This disk
+        end_record.extend_from_slice(&[0x00, 0x00]); // Central dir disk
+        end_record.extend_from_slice(&(assets_for_task.len() as u16).to_le_bytes());
+        end_record.extend_from_slice(&(assets_for_task.len() as u16).to_le_bytes());
+        end_record.extend_from_slice(&cd_len.to_le_bytes());
+        end_record.extend_from_slice(&current_offset.to_le_bytes());
+        end_record.extend_from_slice(&[0x00, 0x00]); // Comment length
+        
+        let _ = tx.send(Ok(end_record)).await;
+    });
+    
+    // Create streaming body that sends data immediately
+    let stream = async_stream::stream! {
+        while let Some(chunk) = rx.recv().await {
+            yield chunk;
+        }
+    };
+    
+    let body = Body::from_stream(stream);
+    
+    // Set response headers for immediate download
+    let filename = format!("experiment_{experiment_id}.zip");
+    
+    // Return response with proper headers for immediate browser download
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "application/zip")
+        .header(axum::http::header::CONTENT_DISPOSITION, 
+                format!("attachment; filename=\"{filename}\""))
+        .header("Content-Length", total_zip_size.to_string())
+        .header("X-Accel-Buffering", "no") // Disable nginx buffering
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .header("Pragma", "no-cache")
+        .header("Expires", "0")
+        .body(body)
+        .unwrap())
 }
 
 /// Process asset data for an experiment

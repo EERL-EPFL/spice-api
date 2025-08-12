@@ -98,14 +98,17 @@ async fn delete_asset(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> 
     }
 }
 
-async fn delete_many_assets(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
+pub async fn delete_many_assets(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
     // Fetch the assets to get their S3 keys
     let assets = Entity::find()
         .filter(Column::Id.is_in(ids.clone()))
         .all(db)
         .await?;
 
-    // Delete the assets from S3
+    // Track which assets actually exist in the database
+    let existing_asset_ids: Vec<Uuid> = assets.iter().map(|a| a.id).collect();
+
+    // Delete the assets from S3 first
     for asset in &assets {
         if let Err(e) = delete_from_s3(&asset.s3_key).await {
             return Err(DbErr::Custom(format!(
@@ -116,10 +119,20 @@ async fn delete_many_assets(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<V
     }
 
     // Proceed with deleting the database records
-    let _res = Entity::delete_many()
-        .filter(Column::Id.is_in(ids.clone()))
+    let delete_result = Entity::delete_many()
+        .filter(Column::Id.is_in(existing_asset_ids.clone()))
         .exec(db)
         .await?;
 
-    Ok(ids)
+    // Verify that all records were actually deleted
+    if delete_result.rows_affected as usize != existing_asset_ids.len() {
+        return Err(DbErr::Custom(format!(
+            "Expected to delete {} records but only {} were affected",
+            existing_asset_ids.len(),
+            delete_result.rows_affected
+        )));
+    }
+
+    // Return only the IDs that were actually found and deleted
+    Ok(existing_asset_ids)
 }

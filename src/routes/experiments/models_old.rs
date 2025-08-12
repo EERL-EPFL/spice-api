@@ -59,6 +59,8 @@ pub struct WellSummary {
     pub first_phase_change_seconds: Option<i64>, // seconds from experiment start
     pub first_phase_change_temperature_probes: Option<TemperatureProbeValues>, // Temperature probe values at first phase change
     pub final_state: Option<String>, // "frozen", "liquid", "no_data"
+    pub image_filename_at_freeze: Option<String>, // Image filename at time of first phase change (without .jpg extension)
+    pub image_url: Option<String>, // Full S3 URL for the image at freeze time
     // pub sample_name: Option<String>,
     // pub treatment_name: Option<String>,
     // pub treatment_id: Option<Uuid>,

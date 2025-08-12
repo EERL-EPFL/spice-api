@@ -1,4 +1,6 @@
 use crate::config::test_helpers::setup_test_app;
+use crate::config::test_helpers::setup_test_db;
+use crate::routes::experiments::services::build_results_summary;
 use axum::Router;
 use axum::body::Body;
 use axum::body::to_bytes;
@@ -8,6 +10,8 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use tower::ServiceExt;
+use uuid::Uuid;
+use sea_orm::ActiveValue;
 
 /// Integration test helper to create a tray via API
 async fn create_tray_via_api(app: &axum::Router, rows: i32, cols: i32) -> Result<String, String> {
@@ -251,6 +255,211 @@ async fn create_treatment_via_api(app: &axum::Router, sample_id: &str) -> Result
     let treatment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     Ok(treatment["id"].as_str().unwrap().to_string())
+}
+
+async fn create_simple_tray_config(app: &axum::Router) -> Result<String, String> {
+    let tray_config_data = json!({
+        "name": "Simple Test Config",
+        "experiment_default": false
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tray_configurations")
+                .header("content-type", "application/json")
+                .body(Body::from(tray_config_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to create simple tray config: {}",
+            response.status()
+        ));
+    }
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let config: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    Ok(config["id"].as_str().unwrap().to_string())
+}
+
+async fn create_experiment_via_api(app: &axum::Router) -> Result<String, String> {
+    let experiment_data = json!({
+        "name": "Test Image Correlation Experiment",
+        "username": "test@example.com",
+        "performed_at": "2024-06-20T14:30:00Z",
+        "temperature_ramp": -1.0,
+        "temperature_start": 20.0,
+        "temperature_end": -40.0,
+        "is_calibration": false
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/experiments")
+                .header("content-type", "application/json")
+                .body(Body::from(experiment_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    if response.status() == StatusCode::NOT_FOUND {
+        return Err("Experiment API endpoint not implemented".to_string());
+    }
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to create experiment via API: {}",
+            response.status()
+        ));
+    }
+
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+    Ok(experiment["id"].as_str().unwrap().to_string())
+}
+
+// Test the core image-temperature correlation functionality at service layer
+#[tokio::test]
+async fn test_image_filename_in_results_service() {
+    let db = setup_test_db().await;
+    println!("🧪 Testing image filename extraction in results service");
+
+    // Create experiment directly in the database
+    let experiment_id = Uuid::new_v4();
+    let experiment = crate::routes::experiments::models::ActiveModel {
+        id: ActiveValue::Set(experiment_id),
+        name: ActiveValue::Set("Image Service Test".to_string()),
+        username: ActiveValue::Set(Some("test@example.com".to_string())),
+        performed_at: ActiveValue::Set(Some(chrono::Utc::now().into())),
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+        last_updated: ActiveValue::Set(chrono::Utc::now()),
+        temperature_ramp: ActiveValue::Set(Some(rust_decimal::Decimal::from(-1))),
+        temperature_start: ActiveValue::Set(Some(rust_decimal::Decimal::from(20))),
+        temperature_end: ActiveValue::Set(Some(rust_decimal::Decimal::from(-40))),
+        is_calibration: ActiveValue::Set(false),
+        remarks: ActiveValue::Set(None),
+        tray_configuration_id: ActiveValue::Set(None),
+    };
+    
+    use sea_orm::ActiveModelTrait;
+    experiment.insert(&db).await.unwrap();
+
+    // Create temperature reading with image filename
+    let temp_reading_id = Uuid::new_v4();
+    let temp_reading = crate::routes::experiments::temperatures::models::ActiveModel {
+        id: ActiveValue::Set(temp_reading_id),
+        experiment_id: ActiveValue::Set(experiment_id),
+        timestamp: ActiveValue::Set(chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z").unwrap().into()),
+        probe_1: ActiveValue::Set(Some(rust_decimal::Decimal::new(250, 1))), // 25.0
+        probe_2: ActiveValue::Set(None),
+        probe_3: ActiveValue::Set(None), 
+        probe_4: ActiveValue::Set(None),
+        probe_5: ActiveValue::Set(None),
+        probe_6: ActiveValue::Set(None),
+        probe_7: ActiveValue::Set(None),
+        probe_8: ActiveValue::Set(None),
+        image_filename: ActiveValue::Set(Some("INP_49640_2025-03-20_15-14-17".to_string())), // Without .jpg
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+    };
+    temp_reading.insert(&db).await.unwrap();
+
+    // Create tray configuration and tray first (to satisfy foreign key constraints)
+    let tray_config_id = Uuid::new_v4();
+    let tray_config = crate::routes::tray_configurations::models::ActiveModel {
+        id: ActiveValue::Set(tray_config_id),
+        name: ActiveValue::Set(Some("Test Config".to_string())),
+        experiment_default: ActiveValue::Set(false),
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+        last_updated: ActiveValue::Set(chrono::Utc::now()),
+    };
+    tray_config.insert(&db).await.unwrap();
+
+    let tray_id = Uuid::new_v4();
+    let tray = crate::routes::tray_configurations::trays::models::ActiveModel {
+        id: ActiveValue::Set(tray_id),
+        tray_configuration_id: ActiveValue::Set(tray_config_id),
+        order_sequence: ActiveValue::Set(1),
+        rotation_degrees: ActiveValue::Set(0),
+        name: ActiveValue::Set(Some("P1".to_string())),
+        qty_x_axis: ActiveValue::Set(Some(8)),
+        qty_y_axis: ActiveValue::Set(Some(12)),
+        well_relative_diameter: ActiveValue::Set(None),
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+        last_updated: ActiveValue::Set(chrono::Utc::now()),
+    };
+    tray.insert(&db).await.unwrap();
+
+    // Create well
+    let well_id = Uuid::new_v4();
+    let well = crate::routes::tray_configurations::wells::models::ActiveModel {
+        id: ActiveValue::Set(well_id),
+        tray_id: ActiveValue::Set(tray_id),
+        row_number: ActiveValue::Set(1),
+        column_number: ActiveValue::Set(1),
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+        last_updated: ActiveValue::Set(chrono::Utc::now()),
+    };
+    well.insert(&db).await.unwrap();
+
+    // Create phase transition linking well to temperature reading
+    let transition = crate::routes::experiments::phase_transitions::models::ActiveModel {
+        id: ActiveValue::Set(Uuid::new_v4()),
+        experiment_id: ActiveValue::Set(experiment_id),
+        well_id: ActiveValue::Set(well_id),
+        temperature_reading_id: ActiveValue::Set(temp_reading_id),
+        timestamp: ActiveValue::Set(chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z").unwrap().into()),
+        previous_state: ActiveValue::Set(0), // liquid
+        new_state: ActiveValue::Set(1),     // frozen
+        created_at: ActiveValue::Set(chrono::Utc::now()),
+    };
+    transition.insert(&db).await.unwrap();
+    
+    println!("✅ Created test data: experiment, temperature reading with image filename, well, phase transition");
+    
+    // Test the results summary service directly
+    let results_summary = build_results_summary(experiment_id, &db).await.unwrap();
+    
+    // Verify that well summaries contain image filenames
+    assert!(results_summary.is_some(), "Expected results summary to be generated");
+    let summary = results_summary.unwrap();
+    
+    println!("✅ Results summary generated with {} wells", summary.well_summaries.len());
+    assert!(summary.well_summaries.len() > 0, "Expected at least one well summary");
+    
+    // Check that the well has the image filename
+    let well_with_image = summary.well_summaries.iter()
+        .find(|w| w.image_filename_at_freeze.is_some());
+    
+    assert!(well_with_image.is_some(), "Expected at least one well to have an image filename");
+    
+    let well = well_with_image.unwrap();
+    let image_filename = well.image_filename_at_freeze.as_ref().unwrap();
+    
+    println!("🖼️ Well image filename: {}", image_filename);
+    
+    // Verify image filename properties
+    assert_eq!(image_filename, "INP_49640_2025-03-20_15-14-17",
+              "Image filename should match temperature reading filename");
+    assert!(!image_filename.ends_with(".jpg"), 
+            "Image filename should be stored without .jpg extension");
+    
+    println!("✅ Image filename service test completed successfully");
 }
 
 // ===== TESTS MIGRATED FROM views.rs =====
@@ -3826,4 +4035,431 @@ async fn test_well_coordinate_mapping_accuracy() {
     println!("   ✅ P2 wells: {p2_wells} ✓");
     println!("   ✅ Unique coordinates: {} ✓", coordinate_set.len());
     println!("   🗺️  Well coordinate mapping validated successfully");
+}
+
+/// Test image-temperature correlation in results summary
+#[tokio::test]
+async fn test_image_temperature_correlation() {
+    let app = setup_test_app().await;
+
+    // Create experiment
+    let experiment_id = create_experiment_via_api(&app).await.unwrap();
+    println!("🧪 Created experiment: {experiment_id}");
+
+    // Create a simple tray configuration manually (skip complex create function for now)
+    let tray_config_id = create_simple_tray_config(&app).await.unwrap();
+    assign_tray_config_to_experiment_via_api(&app, &experiment_id, &tray_config_id).await;
+    println!("📋 Created and assigned tray config: {tray_config_id}");
+
+    // Create temperature readings with image filenames (without .jpg extension)
+    let temp_reading_1 = create_temperature_reading(&app, &experiment_id, 
+        "2025-03-20T15:13:47Z", "INP_49640_2025-03-20_15-14-17", 25.0).await;
+    let temp_reading_2 = create_temperature_reading(&app, &experiment_id, 
+        "2025-03-20T15:14:47Z", "INP_49641_2025-03-20_15-15-17", 20.0).await;
+    let temp_reading_3 = create_temperature_reading(&app, &experiment_id, 
+        "2025-03-20T15:15:47Z", "INP_49642_2025-03-20_15-16-17", 15.0).await;
+
+    println!("🌡️ Created temperature readings with image filenames");
+
+    // Create well phase transitions (liquid -> frozen) linked to temperature readings
+    create_phase_transition(&app, &experiment_id, &temp_reading_1, 1, 1, 0, 1).await; // A1 freezes at time 1
+    create_phase_transition(&app, &experiment_id, &temp_reading_2, 2, 3, 0, 1).await; // B3 freezes at time 2
+    create_phase_transition(&app, &experiment_id, &temp_reading_3, 3, 5, 0, 1).await; // C5 freezes at time 3
+
+    println!("🧊 Created phase transitions for wells A1, B3, C5");
+
+    // Get results summary
+    let results_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(results_response.status(), StatusCode::OK);
+    
+    let body_bytes = to_bytes(results_response.into_body(), usize::MAX).await.unwrap();
+    let experiment_data: Value = serde_json::from_slice(&body_bytes).unwrap();
+    let results_summary = &experiment_data["results_summary"];
+    
+    assert!(results_summary.is_object(), "Results summary should be present");
+    
+    let well_summaries = results_summary["well_summaries"].as_array()
+        .expect("Should have well_summaries array");
+
+    println!("📊 Testing image filename correlation in {} wells", well_summaries.len());
+
+    // Find and test our specific wells
+    let mut found_wells = HashMap::new();
+    for well in well_summaries {
+        let coordinate = well["coordinate"].as_str().unwrap();
+        let image_filename = well["image_filename_at_freeze"].as_str();
+        let has_freeze_time = !well["first_phase_change_time"].is_null();
+
+        if ["A1", "B3", "C5"].contains(&coordinate) {
+            found_wells.insert(coordinate.to_string(), (image_filename, has_freeze_time));
+        }
+    }
+
+    // Verify A1 well has correct image filename
+    let (a1_image, a1_frozen) = found_wells.get("A1").expect("Should find A1 well");
+    assert!(a1_frozen, "A1 should be frozen");
+    assert_eq!(a1_image, &Some("INP_49640_2025-03-20_15-14-17"), 
+               "A1 should have image filename without .jpg extension");
+
+    // Verify B3 well has correct image filename
+    let (b3_image, b3_frozen) = found_wells.get("B3").expect("Should find B3 well");
+    assert!(b3_frozen, "B3 should be frozen");
+    assert_eq!(b3_image, &Some("INP_49641_2025-03-20_15-15-17"), 
+               "B3 should have correct image filename");
+
+    // Verify C5 well has correct image filename
+    let (c5_image, c5_frozen) = found_wells.get("C5").expect("Should find C5 well");
+    assert!(c5_frozen, "C5 should be frozen");
+    assert_eq!(c5_image, &Some("INP_49642_2025-03-20_15-16-17"), 
+               "C5 should have correct image filename");
+
+    println!("✅ Image-temperature correlation test passed");
+    println!("   🧊 A1 frozen with image: {:?}", a1_image);
+    println!("   🧊 B3 frozen with image: {:?}", b3_image);
+    println!("   🧊 C5 frozen with image: {:?}", c5_image);
+}
+
+/// Helper to create temperature reading with image filename
+async fn create_temperature_reading(
+    app: &Router,
+    experiment_id: &str,
+    timestamp: &str,
+    image_filename: &str,
+    temp: f64,
+) -> String {
+    let temp_data = json!({
+        "experiment_id": experiment_id,
+        "timestamp": timestamp,
+        "image_filename": image_filename,
+        "probe_1": temp,
+        "probe_2": temp + 0.1,
+        "probe_3": temp + 0.2,
+        "probe_4": temp - 0.1,
+        "probe_5": temp + 0.3,
+        "probe_6": temp - 0.2,
+        "probe_7": temp + 0.4,
+        "probe_8": temp - 0.3,
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/temperature_readings")
+                .header("content-type", "application/json")
+                .body(Body::from(temp_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    
+    let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let temp_reading: Value = serde_json::from_slice(&body_bytes).unwrap();
+    temp_reading["id"].as_str().unwrap().to_string()
+}
+
+/// Helper to create phase transition linked to temperature reading
+async fn create_phase_transition(
+    app: &Router,
+    experiment_id: &str,
+    temperature_reading_id: &str,
+    row: i32,
+    col: i32,
+    previous_state: i32,
+    new_state: i32,
+) {
+    let transition_data = json!({
+        "experiment_id": experiment_id,
+        "temperature_reading_id": temperature_reading_id,
+        "well_row": row,
+        "well_column": col,
+        "previous_state": previous_state,
+        "new_state": new_state,
+        "timestamp": "2025-03-20T15:13:47Z"
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/well_phase_transitions")
+                .header("content-type", "application/json")
+                .body(Body::from(transition_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+}
+
+/// Test asset retrieval by filename endpoint
+#[tokio::test]
+async fn test_asset_by_filename_endpoint() {
+    let app = setup_test_app().await;
+
+    // Create experiment
+    let experiment_id = create_experiment_via_api(&app).await.unwrap();
+    println!("🧪 Created experiment: {experiment_id}");
+
+    // Create mock assets with different filename formats
+    let asset_1_id = create_mock_asset(&app, &experiment_id, 
+        "INP_49640_2025-03-20_15-14-17.jpg", "image").await;
+    let asset_2_id = create_mock_asset(&app, &experiment_id, 
+        "INP_49641_2025-03-20_15-15-17", "image").await; // No .jpg extension
+
+    println!("📁 Created mock assets: {} and {}", asset_1_id, asset_2_id);
+
+    // Test 1: Access asset with exact filename match
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/assets/by-experiment/{experiment_id}/INP_49640_2025-03-20_15-14-17.jpg"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK, 
+               "Should find asset with exact filename match");
+    println!("✅ Test 1: Exact filename match works");
+
+    // Test 2: Access asset without .jpg extension (should add .jpg automatically)
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/assets/by-experiment/{experiment_id}/INP_49640_2025-03-20_15-14-17"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK, 
+               "Should find asset by adding .jpg extension");
+    println!("✅ Test 2: Automatic .jpg extension works");
+
+    // Test 3: Access asset that already exists without .jpg extension
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/assets/by-experiment/{experiment_id}/INP_49641_2025-03-20_15-15-17"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK, 
+               "Should find asset stored without .jpg extension");
+    println!("✅ Test 3: Asset without .jpg extension works");
+
+    // Test 4: Non-existent asset should return 404
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/assets/by-experiment/{experiment_id}/non_existent_image"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND, 
+               "Should return 404 for non-existent asset");
+    println!("✅ Test 4: Non-existent asset returns 404");
+
+    println!("🎯 Asset by filename endpoint tests completed successfully");
+}
+
+/// Helper to create mock asset for testing
+async fn create_mock_asset(
+    app: &Router,
+    experiment_id: &str,
+    filename: &str,
+    asset_type: &str,
+) -> String {
+    let asset_data = json!({
+        "experiment_id": experiment_id,
+        "original_filename": filename,
+        "s3_key": format!("test/{}", filename),
+        "type": asset_type,
+        "size_bytes": 1024,
+        "uploaded_by": "test_user",
+        "is_deleted": false,
+        "role": "camera_capture"
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/assets")
+                .header("content-type", "application/json")
+                .body(Body::from(asset_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    
+    let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let asset: Value = serde_json::from_slice(&body_bytes).unwrap();
+    asset["id"].as_str().unwrap().to_string()
+}
+
+/// Integration test for complete Excel processing with image filenames
+#[tokio::test]
+async fn test_excel_processing_with_images() {
+    let app = setup_test_app().await;
+
+    println!("🔬 Testing Excel processing with image filename correlation");
+
+    // This test would require the actual Excel file from test resources
+    // For now, we'll test the individual components that make up the workflow
+    
+    // 1. Create experiment and tray config
+    let experiment_id = create_experiment_via_api(&app).await.unwrap();
+    let tray_config_response = create_test_tray_config_with_trays(&app, "Excel Processing Test Config").await;
+    let tray_config: Value = serde_json::from_str(&tray_config_response).unwrap();
+    let tray_config_id = tray_config["id"].as_str().unwrap();
+    assign_tray_config_to_experiment_via_api(&app, &experiment_id, tray_config_id).await;
+
+    println!("📋 Created experiment and tray configuration");
+
+    // 2. Simulate Excel upload with image filenames in temperature readings
+    let timestamps = vec![
+        "2025-03-20T15:13:47Z",
+        "2025-03-20T15:13:48Z", 
+        "2025-03-20T15:13:49Z",
+    ];
+    
+    let image_filenames = vec![
+        "INP_49640_2025-03-20_15-14-17", // Excel format (no .jpg)
+        "INP_49641_2025-03-20_15-14-18",
+        "INP_49642_2025-03-20_15-14-19",
+    ];
+
+    let mut temp_reading_ids = Vec::new();
+    for (i, (timestamp, image_filename)) in timestamps.iter().zip(image_filenames.iter()).enumerate() {
+        let temp_id = create_temperature_reading(&app, &experiment_id, 
+            timestamp, image_filename, 25.0 - (i as f64)).await;
+        temp_reading_ids.push(temp_id);
+    }
+
+    println!("🌡️ Created {} temperature readings with image filenames", temp_reading_ids.len());
+
+    // 3. Create phase transitions (some wells freeze at different times)
+    create_phase_transition(&app, &experiment_id, &temp_reading_ids[0], 1, 1, 0, 1).await; // A1 freezes first
+    create_phase_transition(&app, &experiment_id, &temp_reading_ids[1], 2, 3, 0, 1).await; // B3 freezes second  
+    create_phase_transition(&app, &experiment_id, &temp_reading_ids[2], 3, 5, 0, 1).await; // C5 freezes last
+
+    println!("🧊 Created phase transitions with temperature reading links");
+
+    // 4. Create corresponding image assets (with .jpg extension)
+    for image_filename in &image_filenames {
+        let asset_filename = format!("{}.jpg", image_filename); // Assets have .jpg extension
+        create_mock_asset(&app, &experiment_id, &asset_filename, "image").await;
+    }
+
+    println!("📁 Created corresponding image assets");
+
+    // 5. Test that results summary contains correct image filenames
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    
+    let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let experiment_data: Value = serde_json::from_slice(&body_bytes).unwrap();
+    let results_summary = &experiment_data["results_summary"];
+    let well_summaries = results_summary["well_summaries"].as_array().unwrap();
+
+    // 6. Verify image correlation works correctly
+    let mut verified_wells = 0;
+    for well in well_summaries {
+        let coordinate = well["coordinate"].as_str().unwrap();
+        let image_filename = well["image_filename_at_freeze"].as_str();
+
+        match coordinate {
+            "A1" => {
+                assert_eq!(image_filename, Some("INP_49640_2025-03-20_15-14-17"));
+                verified_wells += 1;
+            },
+            "B3" => {
+                assert_eq!(image_filename, Some("INP_49641_2025-03-20_15-14-18"));
+                verified_wells += 1;
+            },
+            "C5" => {
+                assert_eq!(image_filename, Some("INP_49642_2025-03-20_15-14-19"));
+                verified_wells += 1;
+            },
+            _ => {
+                // Other wells should not have image filenames (no phase transition)
+                if !well["first_phase_change_time"].is_null() {
+                    panic!("Unexpected well {} has phase change data", coordinate);
+                }
+            }
+        }
+    }
+
+    assert_eq!(verified_wells, 3, "Should have verified 3 wells with image filenames");
+
+    // 7. Test that assets can be accessed via the by-filename endpoint
+    for image_filename in &image_filenames {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/api/assets/by-experiment/{experiment_id}/{image_filename}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK, 
+                   "Should be able to access asset {} via filename endpoint", image_filename);
+    }
+
+    println!("✅ Complete Excel processing with image correlation test passed");
+    println!("   🔗 Image-temperature links: {}", verified_wells);
+    println!("   📊 Results summary correctly populated");
+    println!("   🌐 Assets accessible via filename endpoint");
 }

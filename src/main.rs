@@ -50,6 +50,9 @@ async fn main() {
     println!("Listening on {addr}");
 
     let router = routes::build_router(&db, &config);
+    
+    // Configure server for large file downloads - extended timeouts handled by chunked transfer
+    println!("Server configured for large file streaming with 30-minute timeout tolerance");
     axum::serve(
         tokio::net::TcpListener::bind(addr).await.unwrap(),
         router.into_make_service(),

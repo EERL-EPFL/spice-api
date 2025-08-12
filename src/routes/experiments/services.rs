@@ -260,8 +260,8 @@ pub(super) async fn build_results_summary(
         let first_phase_change_time = first_phase_change_transition
             .map(|transition| transition.timestamp.with_timezone(&Utc));
 
-        // Get temperature probe values at first phase change
-        let first_phase_change_temperature_probes = first_phase_change_transition
+        // Get temperature probe values and image filename at first phase change
+        let temperature_and_image = first_phase_change_transition
             .and_then(|transition| temp_readings_map.get(&transition.temperature_reading_id))
             .map(|temp_reading| {
                 // Collect all non-null probe values for average calculation
@@ -288,7 +288,7 @@ pub(super) async fn build_results_summary(
                     Some(avg.round_dp(3))
                 };
 
-                TemperatureProbeValues {
+                let temperature_probes = TemperatureProbeValues {
                     probe_1: temp_reading.probe_1.map(|d| d.round_dp(3)),
                     probe_2: temp_reading.probe_2.map(|d| d.round_dp(3)),
                     probe_3: temp_reading.probe_3.map(|d| d.round_dp(3)),
@@ -298,8 +298,13 @@ pub(super) async fn build_results_summary(
                     probe_7: temp_reading.probe_7.map(|d| d.round_dp(3)),
                     probe_8: temp_reading.probe_8.map(|d| d.round_dp(3)),
                     average,
-                }
+                };
+
+                (temperature_probes, temp_reading.image_filename.clone())
             });
+
+        let first_phase_change_temperature_probes = temperature_and_image.as_ref().map(|(temp_probes, _)| temp_probes.clone());
+        let image_filename_at_freeze = temperature_and_image.as_ref().and_then(|(_, image_filename)| image_filename.clone());
 
         // Calculate seconds from experiment start to first phase change
         let first_phase_change_seconds = match (first_phase_change_time, first_timestamp) {
@@ -354,6 +359,7 @@ pub(super) async fn build_results_summary(
             first_phase_change_seconds,
             first_phase_change_temperature_probes,
             final_state,
+            image_filename_at_freeze,
             tray_id: Some(well.tray_id.to_string()),
             tray_name,
             dilution_factor: region.and_then(|r| r.dilution_factor),
