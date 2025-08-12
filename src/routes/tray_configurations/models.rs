@@ -46,7 +46,7 @@ impl From<crate::routes::tray_configurations::trays::models::Model> for TrayInpu
 )]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4(), list_model=false)]
+    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
     #[sea_orm(column_type = "Text", nullable, unique)]
     #[crudcrate(sortable, filterable, fulltext)]
