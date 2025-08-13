@@ -1469,3 +1469,113 @@ async fn test_validation_errors() {
         "Should reject tray with missing required fields"
     );
 }
+
+#[tokio::test]
+async fn test_tray_configurations_have_id_fields() {
+    let app = setup_test_app().await;
+    
+    // Create a test tray configuration via POST
+    let tray_data = json!({
+        "name": format!("React-Admin Test Config {}", uuid::Uuid::new_v4()),
+        "experiment_default": false,
+        "trays": [
+            {
+                "order_sequence": 1,
+                "rotation_degrees": 0,
+                "name": "Test Tray P1",
+                "qty_x_axis": 8,
+                "qty_y_axis": 12,
+                "well_relative_diameter": 2.5
+            },
+            {
+                "order_sequence": 2,
+                "rotation_degrees": 180,
+                "name": "Test Tray P2",
+                "qty_x_axis": 8,
+                "qty_y_axis": 12,
+                "well_relative_diameter": 2.5
+            }
+        ]
+    });
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tray_configurations")
+                .header("content-type", "application/json")
+                .body(Body::from(tray_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "Failed to create test tray configuration: {create_body:?}"
+    );
+
+    // Make a GET request to /api/tray_configurations to list all configurations
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/tray_configurations")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (list_status, list_body) = extract_response_body(list_response).await;
+    assert_eq!(
+        list_status,
+        StatusCode::OK,
+        "Failed to get tray configurations list: {list_body:?}"
+    );
+
+    // Verify that the response data contains objects with `id` fields
+    assert!(
+        list_body.is_array(),
+        "Response should be an array, got: {list_body:?}"
+    );
+    
+    let configurations = list_body.as_array().unwrap();
+    assert!(
+        !configurations.is_empty(),
+        "Should have at least one tray configuration"
+    );
+
+    // Verify each configuration has required id field for React-Admin
+    for config in configurations {
+        assert!(
+            config["id"].is_string(),
+            "Each tray configuration must have an 'id' field for React-Admin compatibility, got: {config:?}"
+        );
+        
+        // Verify other required fields for React-Admin
+        assert!(
+            config["experiment_default"].is_boolean(),
+            "Each tray configuration should have experiment_default field"
+        );
+        
+        // Verify trays array structure (if present)
+        if config["trays"].is_array() {
+            let trays = config["trays"].as_array().unwrap();
+            for tray in trays {
+                // Note: Individual trays don't need id fields since they're embedded,
+                // but they should have order_sequence for proper structure
+                assert!(
+                    tray["order_sequence"].is_number(),
+                    "Each tray should have order_sequence field"
+                );
+            }
+        }
+        
+        println!("✅ Tray configuration {} has required id field: {}", config["name"], config["id"]);
+    }
+}
