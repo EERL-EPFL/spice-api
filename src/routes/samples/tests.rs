@@ -1,4 +1,4 @@
-use crate::config::test_helpers::setup_test_app;
+use crate::config::test_helpers::{setup_test_app, setup_test_db};
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use serde_json::{Value, json};
@@ -198,7 +198,6 @@ async fn test_sample_type_validation() {
         ("bulk", "bulk"),
         ("filter", "filter"),
         ("procedural_blank", "procedural_blank"),
-        ("pure_water", "pure_water"),
     ] {
         let sample_data = json!({
             "name": format!("Test {} Sample", expected_type),
@@ -1134,6 +1133,325 @@ async fn test_sample_experimental_results_structure() {
     } else {
         // Skipping experimental results test - couldn't create sample
     }
+}
+
+#[tokio::test]
+async fn test_sample_experimental_results_comprehensive() {
+    let db = setup_test_db().await;
+    let mut config = crate::config::Config::for_tests();
+    config.keycloak_url = String::new(); // Disable Keycloak for tests
+    let app = crate::routes::build_router(&db, &config);
+
+    // Create comprehensive test data: sample -> treatments -> experiments -> temperature readings -> phase transitions
+    // This test validates that experimental_results contain all expected temperature and treatment data
+
+    // 1. Create a sample with treatments
+    let sample_data = json!({
+        "name": format!("Comprehensive Test Sample {}", uuid::Uuid::new_v4()),
+        "type": "bulk",
+        "material_description": "Sample for comprehensive experimental results testing",
+        "treatments": [
+            {
+                "name": "none",
+                "notes": "Control treatment"
+            },
+            {
+                "name": "heat", 
+                "notes": "Heat treatment at 95C"
+            }
+        ]
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(response).await;
+    assert_eq!(status, StatusCode::CREATED, "Should create sample with treatments");
+    
+    let sample_id = body["id"].as_str().unwrap();
+    let treatments = body["treatments"].as_array().unwrap();
+    assert_eq!(treatments.len(), 2, "Should create 2 treatments");
+
+    // Extract treatment IDs for later use (debug first)
+    println!("Created treatments: {}", serde_json::to_string_pretty(&treatments).unwrap());
+    
+    let none_treatment_id_str = treatments.iter()
+        .find(|t| t["name"] == "none" || t["name"] == "None")
+        .unwrap()["id"].as_str().unwrap();
+    let heat_treatment_id_str = treatments.iter()
+        .find(|t| t["name"] == "heat" || t["name"] == "Heat")
+        .unwrap()["id"].as_str().unwrap();
+        
+    let none_treatment_id = uuid::Uuid::parse_str(none_treatment_id_str).unwrap();
+    let heat_treatment_id = uuid::Uuid::parse_str(heat_treatment_id_str).unwrap();
+
+    // 2. Create test data directly in database (experiment, regions, wells, temperatures, phase transitions)
+    use crate::routes::{
+        experiments::models as experiments,
+        experiments::temperatures::models as temperature_readings,
+        experiments::phase_transitions::models as well_phase_transitions,
+        tray_configurations::{
+            wells::models as wells,
+            regions::models as regions,
+        }
+    };
+    use sea_orm::{ActiveModelTrait, Set};
+    use chrono::{Utc, Duration};
+    use rust_decimal::Decimal;
+
+    // Create experiment
+    let experiment_id = uuid::Uuid::new_v4();
+    let experiment = experiments::ActiveModel {
+        id: Set(experiment_id),
+        name: Set("Test Experiment".to_string()),
+        performed_at: Set(Some(Utc::now())),
+        ..Default::default()
+    };
+    experiment.insert(&db).await.unwrap();
+
+    // Create temperature readings (simulate temperature data from 8 probes)
+    let base_time = Utc::now();
+    let temp_reading_1_id = uuid::Uuid::new_v4();
+    let temp_reading_2_id = uuid::Uuid::new_v4();
+
+    // Temperature reading at time 0 (experiment start)
+    let temp_1 = temperature_readings::ActiveModel {
+        id: Set(temp_reading_1_id),
+        experiment_id: Set(experiment_id),
+        timestamp: Set(base_time),
+        probe_1: Set(Some(Decimal::new(200, 1))), // 20.0°C
+        probe_2: Set(Some(Decimal::new(198, 1))), // 19.8°C  
+        probe_3: Set(Some(Decimal::new(202, 1))), // 20.2°C
+        probe_4: Set(Some(Decimal::new(199, 1))), // 19.9°C
+        probe_5: Set(Some(Decimal::new(201, 1))), // 20.1°C
+        probe_6: Set(Some(Decimal::new(197, 1))), // 19.7°C
+        probe_7: Set(Some(Decimal::new(203, 1))), // 20.3°C
+        probe_8: Set(Some(Decimal::new(200, 1))), // 20.0°C
+        ..Default::default()
+    };
+    temp_1.insert(&db).await.unwrap();
+
+    // Temperature reading at time 1000s (nucleation event)
+    let temp_2 = temperature_readings::ActiveModel {
+        id: Set(temp_reading_2_id),
+        experiment_id: Set(experiment_id),
+        timestamp: Set(base_time + Duration::seconds(1000)),
+        probe_1: Set(Some(Decimal::new(-150, 1))), // -15.0°C
+        probe_2: Set(Some(Decimal::new(-148, 1))), // -14.8°C
+        probe_3: Set(Some(Decimal::new(-152, 1))), // -15.2°C
+        probe_4: Set(Some(Decimal::new(-149, 1))), // -14.9°C
+        probe_5: Set(Some(Decimal::new(-151, 1))), // -15.1°C
+        probe_6: Set(Some(Decimal::new(-147, 1))), // -14.7°C
+        probe_7: Set(Some(Decimal::new(-153, 1))), // -15.3°C
+        probe_8: Set(Some(Decimal::new(-150, 1))), // -15.0°C
+        ..Default::default()
+    };
+    temp_2.insert(&db).await.unwrap();
+
+    // Create tray configuration and tray first (needed for foreign key constraint)
+    use crate::routes::tray_configurations::{trays::models as trays, models as tray_configs};
+    let tray_config_id = uuid::Uuid::new_v4();
+    let tray_config = tray_configs::ActiveModel {
+        id: Set(tray_config_id),
+        name: Set(Some("Test Config".to_string())),
+        experiment_default: Set(true),
+        ..Default::default()
+    };
+    tray_config.insert(&db).await.unwrap();
+
+    let tray_id = uuid::Uuid::new_v4();
+    let tray = trays::ActiveModel {
+        id: Set(tray_id),
+        tray_configuration_id: Set(tray_config_id),
+        order_sequence: Set(1),
+        rotation_degrees: Set(0),
+        name: Set(Some("Test Tray".to_string())),
+        qty_x_axis: Set(Some(12)),
+        qty_y_axis: Set(Some(8)),
+        well_relative_diameter: Set(Some(Decimal::new(10, 1))), // 1.0
+        ..Default::default()
+    };
+    tray.insert(&db).await.unwrap();
+
+    // Create wells
+    let well_1_id = uuid::Uuid::new_v4();
+    let well_2_id = uuid::Uuid::new_v4();
+    
+    let well_1 = wells::ActiveModel {
+        id: Set(well_1_id),
+        tray_id: Set(tray_id),
+        row_number: Set(1), // A
+        column_number: Set(1), // 1 -> A1
+        ..Default::default()
+    };
+    well_1.insert(&db).await.unwrap();
+
+    let well_2 = wells::ActiveModel {
+        id: Set(well_2_id),
+        tray_id: Set(tray_id),
+        row_number: Set(1), // A
+        column_number: Set(2), // 2 -> A2
+        ..Default::default()
+    };
+    well_2.insert(&db).await.unwrap();
+
+    // Create regions linking treatments to experiment
+    let region_1_id = uuid::Uuid::new_v4();
+    let region_2_id = uuid::Uuid::new_v4();
+
+    let region_1 = regions::ActiveModel {
+        id: Set(region_1_id),
+        experiment_id: Set(experiment_id),
+        treatment_id: Set(Some(none_treatment_id)),
+        name: Set(Some("Control Region".to_string())),
+        display_colour_hex: Set(Some("#FF0000".to_string())),
+        tray_id: Set(Some(1)),
+        row_min: Set(Some(0)), // A1 region
+        row_max: Set(Some(0)),
+        col_min: Set(Some(0)),
+        col_max: Set(Some(0)),
+        dilution_factor: Set(Some(100)),
+        is_background_key: Set(false),
+        ..Default::default()
+    };
+    region_1.insert(&db).await.unwrap();
+
+    let region_2 = regions::ActiveModel {
+        id: Set(region_2_id),
+        experiment_id: Set(experiment_id),
+        treatment_id: Set(Some(heat_treatment_id)),
+        name: Set(Some("Heat Region".to_string())),
+        display_colour_hex: Set(Some("#00FF00".to_string())),
+        tray_id: Set(Some(1)),
+        row_min: Set(Some(0)), // A2 region
+        row_max: Set(Some(0)),
+        col_min: Set(Some(1)),
+        col_max: Set(Some(1)),
+        dilution_factor: Set(Some(50)),
+        is_background_key: Set(false),
+        ..Default::default()
+    };
+    region_2.insert(&db).await.unwrap();
+
+    // Create phase transitions (freezing events)
+    let transition_1 = well_phase_transitions::ActiveModel {
+        id: Set(uuid::Uuid::new_v4()),
+        experiment_id: Set(experiment_id),
+        well_id: Set(well_1_id),
+        temperature_reading_id: Set(temp_reading_2_id),
+        timestamp: Set(base_time + Duration::seconds(1000)),
+        previous_state: Set(0), // liquid -> frozen
+        new_state: Set(1),
+        ..Default::default()
+    };
+    transition_1.insert(&db).await.unwrap();
+
+    let transition_2 = well_phase_transitions::ActiveModel {
+        id: Set(uuid::Uuid::new_v4()),
+        experiment_id: Set(experiment_id),
+        well_id: Set(well_2_id),
+        temperature_reading_id: Set(temp_reading_2_id),
+        timestamp: Set(base_time + Duration::seconds(1000)),
+        previous_state: Set(0), // liquid -> frozen
+        new_state: Set(1),
+        ..Default::default()
+    };
+    transition_2.insert(&db).await.unwrap();
+
+    // 3. Now fetch the sample and validate experimental_results
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    assert_eq!(get_status, StatusCode::OK, "Should retrieve sample successfully");
+
+    // 4. Comprehensive validation of experimental_results
+    assert!(get_body["experimental_results"].is_array(), "Should have experimental_results array");
+    let experimental_results = get_body["experimental_results"].as_array().unwrap();
+    assert_eq!(experimental_results.len(), 2, "Should have 2 experimental results (2 wells with freezing events)");
+
+    for (i, result) in experimental_results.iter().enumerate() {
+        println!("Validating experimental result {}: {}", i, serde_json::to_string_pretty(result).unwrap());
+
+        // Basic fields
+        assert!(result["experiment_id"].is_string(), "Should have experiment_id");
+        assert!(result["experiment_name"].is_string(), "Should have experiment_name");
+        assert_eq!(result["experiment_name"], "Test Experiment");
+
+        // Well coordinate validation  
+        assert!(result["well_coordinate"].is_string(), "Should have well_coordinate");
+        let coord = result["well_coordinate"].as_str().unwrap();
+        assert!(coord == "A1" || coord == "A2", "Should be A1 or A2 coordinate");
+
+        // Temperature data validation (both field names for compatibility)
+        // Note: Decimal values are serialized as strings in JSON
+        assert!(result["nucleation_temperature_avg_celsius"].is_string(), "Should have nucleation_temperature_avg_celsius as string");
+        assert!(result["freezing_temperature_avg"].is_string(), "Should have freezing_temperature_avg for UI compatibility as string");
+        
+        let temp_celsius: f64 = result["nucleation_temperature_avg_celsius"].as_str().unwrap().parse().unwrap();
+        assert!(temp_celsius < -14.0 && temp_celsius > -16.0, "Temperature should be around -15°C (average of 8 probes)");
+        
+        let temp_ui: f64 = result["freezing_temperature_avg"].as_str().unwrap().parse().unwrap();
+        assert_eq!(temp_celsius, temp_ui, "Both temperature fields should have same value");
+
+        // Time data validation (both field names for compatibility)
+        assert!(result["nucleation_time_seconds"].is_number(), "Should have nucleation_time_seconds");
+        assert!(result["freezing_time_seconds"].is_number(), "Should have freezing_time_seconds for UI compatibility");
+        
+        let time_seconds = result["nucleation_time_seconds"].as_i64().unwrap();
+        assert_eq!(time_seconds, 1000, "Should be 1000 seconds from experiment start");
+        
+        let time_ui = result["freezing_time_seconds"].as_i64().unwrap();
+        assert_eq!(time_seconds, time_ui, "Both time fields should have same value");
+
+        // Treatment data validation
+        assert!(result["treatment_id"].is_string(), "Should have treatment_id");
+        assert!(result["treatment_name"].is_string(), "Should have treatment_name");
+        
+        let treatment_name = result["treatment_name"].as_str().unwrap();
+        println!("Found treatment_name: {}", treatment_name);
+        assert!(treatment_name.contains("none") || treatment_name.contains("None") || 
+               treatment_name.contains("heat") || treatment_name.contains("Heat"), 
+               "Should be none or heat treatment, got: {}", treatment_name);
+
+        // Dilution factor validation
+        assert!(result["dilution_factor"].is_number(), "Should have dilution_factor");
+        let dilution = result["dilution_factor"].as_i64().unwrap();
+        assert!(dilution == 100 || dilution == 50, "Should be 100 (none treatment) or 50 (heat treatment)");
+
+        // Final state validation
+        assert!(result["final_state"].is_string(), "Should have final_state");
+        assert_eq!(result["final_state"], "frozen", "Should be frozen since we created 0->1 transitions");
+
+        // Tray information
+        assert!(result["tray_name"].is_string(), "Should have tray_name");
+    }
+
+    println!("✅ All experimental results validated successfully!");
+    println!("   - Temperature calculations from 8 probes: ✅");
+    println!("   - Treatment linking through regions: ✅");
+    println!("   - Time calculations from experiment start: ✅");
+    println!("   - Well coordinate mapping: ✅");
+    println!("   - UI field compatibility: ✅");
 }
 
 #[tokio::test]

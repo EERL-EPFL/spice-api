@@ -23,10 +23,18 @@ pub struct NucleationEvent {
     pub nucleation_time_seconds: Option<i64>,
     /// Average temperature across all temperature probes at nucleation event, in Celsius
     pub nucleation_temperature_avg_celsius: Option<Decimal>,
+    /// UI compatibility field - same as nucleation_time_seconds
+    pub freezing_time_seconds: Option<i64>,
+    /// UI compatibility field - same as nucleation_temperature_avg_celsius  
+    pub freezing_temperature_avg: Option<Decimal>,
     /// Dilution factor applied to the sample in this well
     pub dilution_factor: Option<i32>,
     /// Final state of the well: "frozen", "liquid", or "no_data"
     pub final_state: String,
+    /// ID of the treatment applied to this sample
+    pub treatment_id: Option<Uuid>,
+    /// Name of the treatment applied to this sample
+    pub treatment_name: Option<String>,
 }
 
 /// Summary statistics for nucleation events, used for sample and treatment analysis
@@ -123,8 +131,12 @@ mod tests {
                 tray_name: Some("P1".to_string()),
                 nucleation_time_seconds: Some(1000),
                 nucleation_temperature_avg_celsius: Some(Decimal::new(-150, 1)), // -15.0
+                freezing_time_seconds: Some(1000), // UI compatibility
+                freezing_temperature_avg: Some(Decimal::new(-150, 1)), // UI compatibility
                 dilution_factor: Some(100),
                 final_state: "frozen".to_string(),
+                treatment_id: None,
+                treatment_name: None,
             },
             NucleationEvent {
                 experiment_id: Uuid::new_v4(),
@@ -134,8 +146,12 @@ mod tests {
                 tray_name: Some("P1".to_string()),
                 nucleation_time_seconds: Some(2000),
                 nucleation_temperature_avg_celsius: Some(Decimal::new(-180, 1)), // -18.0
+                freezing_time_seconds: Some(2000), // UI compatibility
+                freezing_temperature_avg: Some(Decimal::new(-180, 1)), // UI compatibility
                 dilution_factor: Some(100),
                 final_state: "frozen".to_string(),
+                treatment_id: None,
+                treatment_name: None,
             },
             NucleationEvent {
                 experiment_id: Uuid::new_v4(),
@@ -145,8 +161,12 @@ mod tests {
                 tray_name: Some("P1".to_string()),
                 nucleation_time_seconds: None,
                 nucleation_temperature_avg_celsius: None,
+                freezing_time_seconds: None, // UI compatibility
+                freezing_temperature_avg: None, // UI compatibility
                 dilution_factor: Some(100),
                 final_state: "liquid".to_string(),
+                treatment_id: None,
+                treatment_name: None,
             },
         ];
         

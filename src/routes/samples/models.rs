@@ -20,8 +20,6 @@ pub enum SampleType {
     Filter,
     #[sea_orm(string_value = "procedural_blank")]
     ProceduralBlank,
-    #[sea_orm(string_value = "pure_water")]
-    PureWater,
 }
 
 /// Enhanced treatment model with experimental results and statistics
@@ -57,7 +55,7 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     #[crudcrate(sortable, filterable, fulltext)]
     pub name: String,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, enum_field)]
     pub r#type: SampleType,
     #[crudcrate(sortable)]
     pub start_time: Option<DateTime<Utc>>,
@@ -109,6 +107,9 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model = false, create_model = false, update_model = false)]
     pub treatments_with_results: Vec<TreatmentWithResults>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model = false, create_model = false, update_model = false)]
+    pub experimental_results: Vec<NucleationEvent>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -214,8 +215,8 @@ fn format_well_coordinate(
 ) -> String {
     format!(
         "{}{}",
-        char::from(b'A' + u8::try_from(well.column_number - 1).unwrap_or(0)),
-        well.row_number
+        char::from(b'A' + u8::try_from(well.row_number - 1).unwrap_or(0)),
+        well.column_number
     )
 }
 
@@ -477,9 +478,14 @@ async fn fetch_experimental_results_for_sample(
                     // Convert well coordinates to string format (A1, B2, etc.)
                     let well_coordinate = format!(
                         "{}{}",
-                        char::from(b'A' + u8::try_from(well.column_number - 1).unwrap_or(0)),
-                        well.row_number
+                        char::from(b'A' + u8::try_from(well.row_number - 1).unwrap_or(0)),
+                        well.column_number
                     );
+
+                    // Find the treatment for this region
+                    let treatment = sample_treatments
+                        .iter()
+                        .find(|t| t.id == region.treatment_id.unwrap_or_default());
 
                     let nucleation_event = NucleationEvent {
                         experiment_id: experiment.id,
@@ -489,8 +495,12 @@ async fn fetch_experimental_results_for_sample(
                         tray_name: Some(tray_name.clone()),
                         nucleation_time_seconds,
                         nucleation_temperature_avg_celsius: temperature_avg,
+                        freezing_time_seconds: nucleation_time_seconds, // UI compatibility
+                        freezing_temperature_avg: temperature_avg, // UI compatibility
                         dilution_factor: region.dilution_factor,
                         final_state: "frozen".to_string(), // Since this is a 0→1 transition
+                        treatment_id: treatment.map(|t| t.id),
+                        treatment_name: treatment.map(|t| format!("{:?}", t.name)), // Convert enum to string
                     };
 
                     nucleation_events.push(nucleation_event);
@@ -590,6 +600,9 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
         .collect();
     // Add enhanced treatments with results
     sample.treatments_with_results = treatments_with_results;
+    
+    // Fetch all experimental results for this sample
+    sample.experimental_results = fetch_experimental_results_for_sample(db, id).await?;
 
     Ok(sample)
 }

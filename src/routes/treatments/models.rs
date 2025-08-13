@@ -102,6 +102,12 @@ async fn fetch_experimental_results_for_treatment(
         },
     };
 
+    // Get the treatment information
+    let treatment = Entity::find_by_id(treatment_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Treatment not found".to_string()))?;
+
     // Find all regions that use this treatment
     let regions_data = regions::Entity::find()
         .filter(regions::Column::TreatmentId.eq(treatment_id))
@@ -192,10 +198,11 @@ async fn fetch_experimental_results_for_treatment(
                     };
 
                     // Convert well coordinates to string format (A1, B2, etc.)
+                    // Row determines letter (A, B, C...), Column determines number (1, 2, 3...)
                     let well_coordinate = format!(
                         "{}{}",
-                        char::from(b'A' + u8::try_from(well.column_number - 1).unwrap_or(0)),
-                        well.row_number
+                        char::from(b'A' + u8::try_from(well.row_number - 1).unwrap_or(0)),
+                        well.column_number
                     );
 
                     let nucleation_event = NucleationEvent {
@@ -206,8 +213,12 @@ async fn fetch_experimental_results_for_treatment(
                         tray_name: Some(tray_name.clone()),
                         nucleation_time_seconds,
                         nucleation_temperature_avg_celsius: temperature_avg,
+                        freezing_time_seconds: nucleation_time_seconds, // UI compatibility
+                        freezing_temperature_avg: temperature_avg, // UI compatibility
                         dilution_factor: region.dilution_factor,
                         final_state: "frozen".to_string(), // Since this is a 0→1 transition
+                        treatment_id: Some(treatment_id),
+                        treatment_name: Some(format!("{:?}", treatment.name)), // Convert enum to string
                     };
 
                     nucleation_events.push(nucleation_event);

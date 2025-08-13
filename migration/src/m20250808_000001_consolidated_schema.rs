@@ -26,7 +26,6 @@ impl MigrationTrait for Migration {
                             SampleType::Bulk,
                             SampleType::Filter,
                             SampleType::ProceduralBlank,
-                            SampleType::PureWater,
                         ])
                         .to_owned(),
                 )
@@ -1094,7 +1093,6 @@ enum SampleType {
     Bulk,
     Filter,
     ProceduralBlank,
-    PureWater,
 }
 
 #[derive(DeriveIden)]
