@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod experiments;
 pub mod locations;
+pub mod nucleation_events;
 pub mod projects;
 pub mod samples;
 pub mod tray_configurations;
