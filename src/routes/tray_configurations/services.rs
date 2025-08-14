@@ -9,14 +9,14 @@ pub fn coordinates_to_str(coord: &WellCoordinate) -> Result<String, String> {
     if coord.column == 0 || coord.row == 0 {
         return Err(String::from("Invalid coordinate"));
     }
-    if coord.column > 26 {
-        return Err(String::from("Only supports A-Z for columns"));
+    if coord.row > 26 {
+        return Err("Only supports A-Z for rows".into());
     }
 
     Ok(format!(
         "{}{}",
-        char::from(b'A' + (coord.column - 1)),
-        coord.row
+        char::from(b'A' + (coord.row - 1)),       // row determines letter (A, B, C...)
+        coord.column                              // column determines number (1, 2, 3...)
     ))
 }
 
@@ -41,13 +41,13 @@ pub fn str_to_coordinates(coordinate: &str) -> Result<WellCoordinate, String> {
         return Err("Invalid coordinate format".into());
     }
 
-    let column: u8 = (column_char as u8) - b'A' + 1;
-    let row: u8 = row_str
+    let row: u8 = (column_char as u8) - b'A' + 1;      // A=1, B=2 (row number)
+    let column: u8 = row_str
         .parse()
-        .map_err(|_| format!("Invalid row number: {coordinate}"))?;
+        .map_err(|_| format!("Invalid column number: {coordinate}"))?;
 
-    if row < 1 {
-        return Err("Invalid row number, must be a positive integer".into());
+    if column < 1 {
+        return Err("Invalid column number, must be a positive integer".into());
     }
     Ok(WellCoordinate { column, row })
 }
@@ -55,11 +55,11 @@ pub fn str_to_coordinates(coordinate: &str) -> Result<WellCoordinate, String> {
 #[test]
 fn test_coordinates_to_str() {
     assert_eq!(
-        coordinates_to_str(&WellCoordinate { column: 1, row: 1 }),
+        coordinates_to_str(&WellCoordinate { column: 1, row: 1 }),  // A1
         Ok("A1".into())
     );
     assert_eq!(
-        coordinates_to_str(&WellCoordinate { column: 26, row: 1 }),
+        coordinates_to_str(&WellCoordinate { column: 1, row: 26 }), // Z1
         Ok("Z1".into())
     );
     assert_eq!(
@@ -67,8 +67,8 @@ fn test_coordinates_to_str() {
         Err("Invalid coordinate".into())
     );
     assert_eq!(
-        coordinates_to_str(&WellCoordinate { column: 27, row: 1 }),
-        Err("Only supports A-Z for columns".into())
+        coordinates_to_str(&WellCoordinate { column: 1, row: 27 }),
+        Err("Only supports A-Z for rows".into())
     );
 }
 
@@ -76,11 +76,11 @@ fn test_coordinates_to_str() {
 fn test_str_to_coordinates() {
     assert_eq!(
         str_to_coordinates("A1"),
-        Ok(WellCoordinate { column: 1, row: 1 })
+        Ok(WellCoordinate { column: 1, row: 1 })    // A=row 1, 1=col 1
     );
     assert_eq!(
         str_to_coordinates("Z1"),
-        Ok(WellCoordinate { column: 26, row: 1 })
+        Ok(WellCoordinate { column: 1, row: 26 })   // Z=row 26, 1=col 1
     );
     assert_eq!(
         str_to_coordinates("AA1"),
@@ -88,10 +88,10 @@ fn test_str_to_coordinates() {
     );
     assert_eq!(
         str_to_coordinates("A0"),
-        Err("Invalid row number, must be a positive integer".into())
+        Err("Invalid column number, must be a positive integer".into())
     );
     assert_eq!(
         str_to_coordinates("H12"),
-        Ok(WellCoordinate { column: 8, row: 12 })
+        Ok(WellCoordinate { column: 12, row: 8 })   // H=row 8, 12=col 12
     );
 }

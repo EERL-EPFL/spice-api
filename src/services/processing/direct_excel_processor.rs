@@ -504,7 +504,9 @@ impl DirectExcelProcessor {
         let well_coord = str_to_coordinates(coordinate)
             .map_err(|e| anyhow!("Invalid well coordinate '{}': {}", coordinate, e))?;
 
-        // Convert u8 to i32 for consistency with existing code
+        // WellCoordinate now correctly maps: row=letter(A=1,B=2), column=number(1,2,12)
+        // Return (row, column) for database storage
+        // For H12: WellCoordinate{row=8, column=12} -> return (8, 12)
         Ok((i32::from(well_coord.row), i32::from(well_coord.column)))
     }
 
@@ -801,18 +803,21 @@ mod tests {
     fn test_parse_well_coordinate() {
         let _processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
 
-        // Test normal coordinates (row, column)
+        // Test coordinates with corrected WellCoordinate mapping
+        // A1 = row 1 (A), column 1 (1)
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("A1").unwrap(),
             (1, 1)
         );
+        // B2 = row 2 (B), column 2 (2)  
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("B2").unwrap(),
             (2, 2)
         );
+        // H12 = row 8 (H), column 12 (12)
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("H12").unwrap(),
-            (12, 8)
+            (8, 12)
         );
 
         // Test invalid coordinates
