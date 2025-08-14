@@ -48,6 +48,7 @@ impl MockS3Store {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn list_objects(&self) -> Result<Vec<String>, String> {
         Ok(self
             .files
@@ -65,6 +66,7 @@ lazy_static::lazy_static! {
 }
 
 /// Clear the mock S3 store - useful for test cleanup
+#[allow(dead_code)]
 pub fn clear_mock_s3_store() {
     if let Ok(mut files) = MOCK_S3_STORE.files.lock() {
         files.clear();
@@ -168,6 +170,7 @@ pub async fn get_object_from_s3(s3_key: &str, config: &Config) -> Result<Vec<u8>
 
 // New function: concurrently download assets from S3 with progress logging.
 // Returns the TempDir (to keep files alive) and a vector of (original filename, file path).
+#[allow(dead_code)]
 pub async fn download_assets(
     assets: Vec<S3Assets>,
     config: &Config,

@@ -1,10 +1,19 @@
+use crate::routes::nucleation_events::models::{
+    DilutionSummary, NucleationEvent, NucleationStatistics,
+};
+use crate::routes::{
+    experiments::{
+        models as experiments, phase_transitions::models as well_phase_transitions,
+        temperatures::models as temperature_readings,
+    },
+    tray_configurations::{regions::models as regions, wells::models as wells},
+};
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use rust_decimal::Decimal;
 use sea_orm::{EntityTrait, entity::prelude::*};
+// Import after EntityToModels to avoid conflicts
 use uuid::Uuid;
-use crate::routes::nucleation_events::models::{NucleationEvent, NucleationStatistics};
-
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "treatments")]
 #[crudcrate(
@@ -17,7 +26,7 @@ use crate::routes::nucleation_events::models::{NucleationEvent, NucleationStatis
 )]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
+    #[crudcrate(primary_key, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
     #[crudcrate(sortable, filterable, enum_field)]
     pub name: TreatmentName,
@@ -37,8 +46,11 @@ pub struct Model {
     #[crudcrate(non_db_attr = true, default = vec![], list_model = false, create_model = false, update_model = false)]
     pub experimental_results: Vec<NucleationEvent>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = NucleationStatistics::default(), list_model = false, create_model = false, update_model = false)]
-    pub statistics: NucleationStatistics,
+    #[crudcrate(non_db_attr = true, default = None, list_model = false, create_model = false, update_model = false)]
+    pub statistics: Option<NucleationStatistics>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model = false, create_model = false, update_model = false)]
+    pub dilution_summaries: Vec<DilutionSummary>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -91,17 +103,6 @@ async fn fetch_experimental_results_for_treatment(
     db: &DatabaseConnection,
     treatment_id: Uuid,
 ) -> Result<Vec<NucleationEvent>, DbErr> {
-    use crate::routes::{
-        experiments::{
-            models as experiments, phase_transitions::models as well_phase_transitions,
-            temperatures::models as temperature_readings,
-        },
-        tray_configurations::{
-            regions::models as regions,
-            wells::models as wells,
-        },
-    };
-
     // Get the treatment information
     let treatment = Entity::find_by_id(treatment_id)
         .one(db)
@@ -143,19 +144,20 @@ async fn fetch_experimental_results_for_treatment(
             for (transition, well_opt) in &phase_transitions_data {
                 if let Some(well) = well_opt {
                     // Check if well is within region bounds
-                    let well_in_region = if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
-                        region.row_min,
-                        region.row_max,
-                        region.col_min,
-                        region.col_max,
-                    ) {
-                        well.row_number >= (row_min + 1) &&
-                        well.row_number <= (row_max + 1) &&
-                        well.column_number >= (col_min + 1) &&
-                        well.column_number <= (col_max + 1)
-                    } else {
-                        false
-                    };
+                    let well_in_region =
+                        if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
+                            region.row_min,
+                            region.row_max,
+                            region.col_min,
+                            region.col_max,
+                        ) {
+                            well.row_number >= (row_min + 1)
+                                && well.row_number <= (row_max + 1)
+                                && well.column_number >= (col_min + 1)
+                                && well.column_number <= (col_max + 1)
+                        } else {
+                            false
+                        };
 
                     if !well_in_region {
                         continue;
@@ -181,7 +183,8 @@ async fn fetch_experimental_results_for_treatment(
                                 temp_reading.probe_8,
                             ];
 
-                            let non_null_values: Vec<Decimal> = probe_values.into_iter().flatten().collect();
+                            let non_null_values: Vec<Decimal> =
+                                probe_values.into_iter().flatten().collect();
                             if non_null_values.is_empty() {
                                 None
                             } else {
@@ -191,7 +194,10 @@ async fn fetch_experimental_results_for_treatment(
                         });
 
                     // Calculate time from experiment start
-                    let nucleation_time_seconds = temp_readings_data.first().map(|tr| tr.timestamp).map(|start_time| (transition.timestamp - start_time).num_seconds());
+                    let nucleation_time_seconds = temp_readings_data
+                        .first()
+                        .map(|tr| tr.timestamp)
+                        .map(|start_time| (transition.timestamp - start_time).num_seconds());
 
                     // Convert well coordinates to string format (A1, B2, etc.)
                     // Row determines letter (A, B, C...), Column determines number (1, 2, 3...)
@@ -210,7 +216,7 @@ async fn fetch_experimental_results_for_treatment(
                         nucleation_time_seconds,
                         nucleation_temperature_avg_celsius: temperature_avg,
                         freezing_time_seconds: nucleation_time_seconds, // UI compatibility
-                        freezing_temperature_avg: temperature_avg, // UI compatibility
+                        freezing_temperature_avg: temperature_avg,      // UI compatibility
                         dilution_factor: region.dilution_factor,
                         final_state: "frozen".to_string(), // Since this is a 0→1 transition
                         treatment_id: Some(treatment_id),
@@ -239,9 +245,15 @@ async fn get_one_treatment(db: &DatabaseConnection, id: Uuid) -> Result<Treatmen
     // Calculate statistics from the results
     let statistics = NucleationStatistics::from_events(&experimental_results);
 
+    // Calculate dilution summaries
+    let dilution_summaries =
+        NucleationStatistics::dilution_summaries_from_events(&experimental_results);
+
     let mut treatment: Treatment = model.into();
     treatment.experimental_results = experimental_results;
     treatment.statistics = statistics;
+    treatment.dilution_summaries = dilution_summaries;
 
     Ok(treatment)
 }
+

@@ -1,7 +1,6 @@
-use super::models_old::{
+use super::models::{
     ExperimentResultsSummary, RegionInput, TemperatureProbeValues, TrayInfo, WellSummary,
 };
-// Structs now imported from models_old
 use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str};
 use crate::routes::{
     experiments::models as experiments,
@@ -75,25 +74,6 @@ async fn load_experiment_assets(
         .all(db)
         .await?;
 
-    println!(
-        "🔍 [DEBUG] Experiment {} has {} image assets",
-        experiment_id,
-        experiment_assets.len()
-    );
-
-    // Show time range of assets
-    if !experiment_assets.is_empty() {
-        let asset_filenames: Vec<&String> = experiment_assets
-            .iter()
-            .map(|a| &a.original_filename)
-            .collect();
-        if let (Some(first), Some(last)) =
-            (asset_filenames.iter().min(), asset_filenames.iter().max())
-        {
-            println!("🔍 [DEBUG] Asset time range: {first} to {last}");
-        }
-    }
-
     // Create filename-to-asset-id mapping (strip .jpg extension for matching)
     let filename_to_asset_id: std::collections::HashMap<String, Uuid> = experiment_assets
         .iter()
@@ -113,15 +93,6 @@ async fn load_experiment_assets(
             Some((filename_without_ext, asset.id))
         })
         .collect();
-
-    println!(
-        "🔍 [DEBUG] Total filename mappings: {}",
-        filename_to_asset_id.len()
-    );
-    println!("🔍 [DEBUG] First 5 filename mappings:");
-    for (filename, asset_id) in filename_to_asset_id.iter().take(5) {
-        println!("🔍 [DEBUG] - {filename}: {asset_id}");
-    }
 
     Ok(filename_to_asset_id)
 }
@@ -666,24 +637,24 @@ pub(super) async fn fetch_tray_info_by_sequence(
 
     if let Some(exp) = experiment {
         if let Some(tray_config_id) = exp.tray_configuration_id {
-        // Find the tray with the matching sequence ID
-        // Note: After schema simplification, all tray data is in the trays table
-        let tray = trays::Entity::find()
-            .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
-            .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
-            .one(db)
-            .await?;
+            // Find the tray with the matching sequence ID
+            // Note: After schema simplification, all tray data is in the trays table
+            let tray = trays::Entity::find()
+                .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
+                .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
+                .one(db)
+                .await?;
 
-        if let Some(tray) = tray {
-            return Ok(Some(TrayInfo {
-                id: tray.id,
-                name: tray.name,
-                sequence_id: tray.order_sequence,
-                qty_x_axis: tray.qty_x_axis,
-                qty_y_axis: tray.qty_y_axis,
-                well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
-            }));
-        }
+            if let Some(tray) = tray {
+                return Ok(Some(TrayInfo {
+                    id: tray.id,
+                    name: tray.name,
+                    sequence_id: tray.order_sequence,
+                    qty_x_axis: tray.qty_x_axis,
+                    qty_y_axis: tray.qty_y_axis,
+                    well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
+                }));
+            }
         }
     }
 

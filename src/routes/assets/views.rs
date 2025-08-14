@@ -1,7 +1,6 @@
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 
-pub mod streaming_hybrid;
 use crate::routes::assets::models as s3_assets;
 use axum::{
     extract::{Multipart, Path, State},
@@ -361,7 +360,7 @@ async fn download_with_token(
 
         // Use hybrid streaming: concurrent downloads + immediate streaming
         let mut response =
-            streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await?;
+            super::services::create_hybrid_streaming_zip_response(assets, &state.config).await?;
 
         // Update filename for experiment
         let headers = response.headers_mut();
@@ -398,7 +397,7 @@ async fn download_with_token(
     }
 
     // Use hybrid streaming: concurrent downloads + immediate streaming
-    streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await
+    super::services::create_hybrid_streaming_zip_response(assets, &state.config).await
 }
 
 /// Bulk download assets as a ZIP file (deprecated - kept for backwards compatibility)
@@ -471,7 +470,7 @@ async fn bulk_download_assets(
     }
 
     // Use hybrid streaming: concurrent downloads + immediate streaming
-    streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await
+    super::services::create_hybrid_streaming_zip_response(assets, &state.config).await
 }
 
 pub fn router(state: &AppState) -> OpenApiRouter

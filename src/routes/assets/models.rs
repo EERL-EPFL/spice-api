@@ -98,7 +98,10 @@ async fn delete_asset(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> 
     }
 }
 
-pub async fn delete_many_assets(db: &DatabaseConnection, ids: Vec<Uuid>) -> Result<Vec<Uuid>, DbErr> {
+pub async fn delete_many_assets(
+    db: &DatabaseConnection,
+    ids: Vec<Uuid>,
+) -> Result<Vec<Uuid>, DbErr> {
     // Fetch the assets to get their S3 keys
     let assets = Entity::find()
         .filter(Column::Id.is_in(ids.clone()))

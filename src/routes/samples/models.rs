@@ -1,10 +1,12 @@
 use crate::routes::treatments::models::TreatmentList;
 use chrono::{DateTime, Utc};
-use crudcrate::{CRUDResource, EntityToModels};
+use crudcrate::{CRUDResource, EntityToModels, traits::MergeIntoActiveModel};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveModelTrait, DatabaseConnection, EntityTrait, QueryOrder, QuerySelect, entity::prelude::*,
+    ActiveModelTrait, DatabaseConnection, EntityTrait, IntoActiveModel, QueryOrder, QuerySelect,
+    entity::prelude::*,
 };
+// Import after EntityToModels to avoid conflicts
 use uuid::Uuid;
 
 #[derive(
@@ -220,43 +222,77 @@ async fn update_sample_with_treatments(
     id: Uuid,
     update_data: SampleUpdate,
 ) -> Result<Sample, DbErr> {
-    // Extract treatments before updating sample
-    let treatments_to_recreate = if update_data.treatments.is_empty() {
-        None
-    } else {
-        Some(update_data.treatments.clone())
-    };
+    // Extract treatments before updating sample (always process treatments, even if empty to handle deletions)
+    let treatments_to_update = Some(update_data.treatments.clone());
 
-    // Use the auto-generated default update logic
-    let _sample = Sample::update(db, id, update_data).await?;
+    // Update the sample using the proper CRUDResource pattern to avoid infinite recursion
+    // First get the existing model, then use merge_into_activemodel like the default CRUDResource::update
+    let existing_model = Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Sample not found".to_string()))?;
 
-    // Handle treatments if provided (delete and recreate approach)
-    if let Some(treatments) = treatments_to_recreate {
-        // Delete existing treatments
-        let _ = crate::routes::treatments::models::Entity::delete_many()
+    let existing_active: ActiveModel = existing_model.into_active_model();
+    let updated_active_model = update_data.merge_into_activemodel(existing_active)?;
+    let _updated_sample = updated_active_model.update(db).await?;
+
+    // Handle complete treatment list replacement: create new, update existing, delete missing
+    if let Some(treatments) = treatments_to_update {
+        // Get current treatment IDs for this sample
+        let current_treatments = crate::routes::treatments::models::Entity::find()
             .filter(crate::routes::treatments::models::Column::SampleId.eq(id))
-            .exec(db)
+            .all(db)
             .await?;
-
-        // Create new treatments
+        let current_treatment_ids: Vec<Uuid> = current_treatments.iter().map(|t| t.id).collect();
+        
+        // Track which treatments are being updated
+        let mut updated_treatment_ids = Vec::new();
+        
         for treatment_update in treatments {
-            let treatment_create = crate::routes::treatments::models::TreatmentCreate {
-                name: treatment_update
-                    .name
-                    .unwrap_or_default()
-                    .unwrap_or(crate::routes::treatments::models::TreatmentName::None),
-                notes: treatment_update.notes.unwrap_or_default(),
-                enzyme_volume_litres: treatment_update.enzyme_volume_litres.unwrap_or_default(),
-                sample_id: Some(id),
-                experimental_results: vec![],
-                statistics: crate::routes::nucleation_events::models::NucleationStatistics::default(
-                ),
-            };
-            let _ =
-                crate::routes::treatments::models::Treatment::create(db, treatment_create).await?;
+            if let Some(Some(treatment_id)) = treatment_update.id {
+                // Update existing treatment
+                let existing_treatment =
+                    crate::routes::treatments::models::Entity::find_by_id(treatment_id)
+                        .one(db)
+                        .await?
+                        .ok_or_else(|| DbErr::RecordNotFound("Treatment not found".to_string()))?;
+
+                let existing_treatment_active = existing_treatment.into_active_model();
+                let updated_treatment_active =
+                    treatment_update.merge_into_activemodel(existing_treatment_active)?;
+                let _ = updated_treatment_active.update(db).await?;
+                updated_treatment_ids.push(treatment_id);
+            } else {
+                // Create new treatment (following the same pattern as create_sample_with_treatments)
+                let treatment_create = crate::routes::treatments::models::TreatmentCreate {
+                    name: treatment_update.name.flatten().unwrap_or(crate::routes::treatments::models::TreatmentName::None),
+                    notes: treatment_update.notes.flatten(),
+                    sample_id: Some(id),
+                    enzyme_volume_litres: treatment_update.enzyme_volume_litres.flatten(),
+                    experimental_results: vec![], // Empty for new treatments
+                    statistics: None, // None for new treatments
+                    dilution_summaries: vec![], // Empty for new treatments
+                };
+                let new_treatment = crate::routes::treatments::models::Treatment::create(db, treatment_create).await?;
+                updated_treatment_ids.push(new_treatment.id);
+            }
+        }
+        
+        // Delete treatments that are no longer in the update list
+        let treatments_to_delete: Vec<Uuid> = current_treatment_ids
+            .into_iter()
+            .filter(|id| !updated_treatment_ids.contains(id))
+            .collect();
+        
+        if !treatments_to_delete.is_empty() {
+            crate::routes::treatments::models::Entity::delete_many()
+                .filter(crate::routes::treatments::models::Column::Id.is_in(treatments_to_delete))
+                .exec(db)
+                .await?;
         }
     }
 
     // Return the updated sample with treatments loaded
     Sample::get_one(db, id).await
 }
+

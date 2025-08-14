@@ -173,6 +173,10 @@ pub(super) async fn treatment_to_treatment_with_results(
     // Calculate statistics from the filtered results
     let statistics = NucleationStatistics::from_events(&experimental_results);
 
+    // Calculate dilution summaries
+    let dilution_summaries =
+        NucleationStatistics::dilution_summaries_from_events(&experimental_results);
+
     Ok(Treatment {
         id: treatment.id,
         sample_id: Some(sample_id),
@@ -183,6 +187,7 @@ pub(super) async fn treatment_to_treatment_with_results(
         enzyme_volume_litres: treatment.enzyme_volume_litres,
         experimental_results,
         statistics,
+        dilution_summaries,
     })
 }
 

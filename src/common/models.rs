@@ -2,6 +2,16 @@ use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Processing status for async operations
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProcessingStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+}
+
 #[derive(ToSchema, Deserialize, Serialize, Default)]
 pub struct UIConfiguration {
     // pub keycloak: Keycloak, // DIsable for now (this is the structure of the BFF)

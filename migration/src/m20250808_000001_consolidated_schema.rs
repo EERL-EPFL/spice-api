@@ -1,5 +1,5 @@
-use sea_orm_migration::prelude::*;
 use sea_orm_migration::prelude::extension::postgres::Type;
+use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;
@@ -50,11 +50,26 @@ impl MigrationTrait for Migration {
         let mut projects_table = Table::create()
             .table(Projects::Table)
             .if_not_exists()
-            .col(ColumnDef::new(Projects::Name).string().not_null().unique_key())
+            .col(
+                ColumnDef::new(Projects::Name)
+                    .string()
+                    .not_null()
+                    .unique_key(),
+            )
             .col(ColumnDef::new(Projects::Note).text())
             .col(ColumnDef::new(Projects::Colour).string())
-            .col(ColumnDef::new(Projects::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Projects::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Projects::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Projects::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .to_owned();
 
         // Add ID column with appropriate type and default based on database backend
@@ -82,11 +97,26 @@ impl MigrationTrait for Migration {
         let mut locations_table = Table::create()
             .table(Locations::Table)
             .if_not_exists()
-            .col(ColumnDef::new(Locations::Name).string().not_null().unique_key())
+            .col(
+                ColumnDef::new(Locations::Name)
+                    .string()
+                    .not_null()
+                    .unique_key(),
+            )
             .col(ColumnDef::new(Locations::Comment).text())
             .col(ColumnDef::new(Locations::ProjectId).uuid())
-            .col(ColumnDef::new(Locations::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Locations::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Locations::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Locations::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_locations_project_id")
@@ -109,7 +139,12 @@ impl MigrationTrait for Migration {
                 );
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                locations_table.col(ColumnDef::new(Locations::Id).uuid().not_null().primary_key());
+                locations_table.col(
+                    ColumnDef::new(Locations::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
             }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
@@ -139,8 +174,18 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(Samples::Longitude).decimal_len(9, 6))
             .col(ColumnDef::new(Samples::Latitude).decimal_len(9, 6))
             .col(ColumnDef::new(Samples::LocationId).uuid())
-            .col(ColumnDef::new(Samples::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Samples::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Samples::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Samples::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("samples_location_id_fkey")
@@ -195,8 +240,18 @@ impl MigrationTrait for Migration {
             .if_not_exists()
             .col(ColumnDef::new(Treatments::Notes).text())
             .col(ColumnDef::new(Treatments::SampleId).uuid())
-            .col(ColumnDef::new(Treatments::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Treatments::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Treatments::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Treatments::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .col(ColumnDef::new(Treatments::EnzymeVolumeLitres).decimal_len(16, 10))
             .foreign_key(
                 ForeignKey::create()
@@ -220,7 +275,12 @@ impl MigrationTrait for Migration {
                 );
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                treatments_table.col(ColumnDef::new(Treatments::Id).uuid().not_null().primary_key());
+                treatments_table.col(
+                    ColumnDef::new(Treatments::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
             }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
@@ -251,9 +311,23 @@ impl MigrationTrait for Migration {
             .table(TrayConfigurations::Table)
             .if_not_exists()
             .col(ColumnDef::new(TrayConfigurations::Name).text().unique_key())
-            .col(ColumnDef::new(TrayConfigurations::ExperimentDefault).boolean().not_null())
-            .col(ColumnDef::new(TrayConfigurations::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(TrayConfigurations::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(TrayConfigurations::ExperimentDefault)
+                    .boolean()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(TrayConfigurations::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(TrayConfigurations::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .to_owned();
 
         // Add ID column with appropriate type and default based on database backend
@@ -268,7 +342,12 @@ impl MigrationTrait for Migration {
                 );
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                tray_configurations_table.col(ColumnDef::new(TrayConfigurations::Id).uuid().not_null().primary_key());
+                tray_configurations_table.col(
+                    ColumnDef::new(TrayConfigurations::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
             }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
@@ -281,17 +360,53 @@ impl MigrationTrait for Migration {
         let mut experiments_table = Table::create()
             .table(Experiments::Table)
             .if_not_exists()
-            .col(ColumnDef::new(Experiments::Name).text().not_null().unique_key())
+            .col(
+                ColumnDef::new(Experiments::Name)
+                    .text()
+                    .not_null()
+                    .unique_key(),
+            )
             .col(ColumnDef::new(Experiments::Username).text().null())
-            .col(ColumnDef::new(Experiments::PerformedAt).timestamp_with_time_zone().null())
-            .col(ColumnDef::new(Experiments::TemperatureRamp).decimal().null())
-            .col(ColumnDef::new(Experiments::TemperatureStart).decimal().null())
+            .col(
+                ColumnDef::new(Experiments::PerformedAt)
+                    .timestamp_with_time_zone()
+                    .null(),
+            )
+            .col(
+                ColumnDef::new(Experiments::TemperatureRamp)
+                    .decimal()
+                    .null(),
+            )
+            .col(
+                ColumnDef::new(Experiments::TemperatureStart)
+                    .decimal()
+                    .null(),
+            )
             .col(ColumnDef::new(Experiments::TemperatureEnd).decimal().null())
-            .col(ColumnDef::new(Experiments::IsCalibration).boolean().not_null().default(false))
+            .col(
+                ColumnDef::new(Experiments::IsCalibration)
+                    .boolean()
+                    .not_null()
+                    .default(false),
+            )
             .col(ColumnDef::new(Experiments::Remarks).text().null())
-            .col(ColumnDef::new(Experiments::TrayConfigurationId).uuid().null())
-            .col(ColumnDef::new(Experiments::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Experiments::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Experiments::TrayConfigurationId)
+                    .uuid()
+                    .null(),
+            )
+            .col(
+                ColumnDef::new(Experiments::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Experiments::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_experiment_tray_configuration")
@@ -314,7 +429,12 @@ impl MigrationTrait for Migration {
                 );
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                experiments_table.col(ColumnDef::new(Experiments::Id).uuid().not_null().primary_key());
+                experiments_table.col(
+                    ColumnDef::new(Experiments::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
             }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
@@ -330,8 +450,18 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(Trays::TrayConfigurationId).uuid().not_null())
             .col(ColumnDef::new(Trays::OrderSequence).integer().not_null())
             .col(ColumnDef::new(Trays::RotationDegrees).integer().not_null())
-            .col(ColumnDef::new(Trays::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Trays::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Trays::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Trays::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .col(ColumnDef::new(Trays::Name).text())
             .col(ColumnDef::new(Trays::QtyXAxis).integer())
             .col(ColumnDef::new(Trays::QtyYAxis).integer())
@@ -345,7 +475,13 @@ impl MigrationTrait for Migration {
                     .on_update(ForeignKeyAction::NoAction),
             )
             // Add composite unique constraint for SQLite compatibility
-            .index(Index::create().name("trays_config_sequence_unique").col(Trays::TrayConfigurationId).col(Trays::OrderSequence).unique())
+            .index(
+                Index::create()
+                    .name("trays_config_sequence_unique")
+                    .col(Trays::TrayConfigurationId)
+                    .col(Trays::OrderSequence)
+                    .unique(),
+            )
             .to_owned();
 
         // Note: trays table does not have UUID primary key, it uses composite key or no explicit primary key in the SQL
@@ -378,8 +514,18 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(Wells::TrayId).uuid().not_null())
             .col(ColumnDef::new(Wells::ColumnNumber).integer().not_null())
             .col(ColumnDef::new(Wells::RowNumber).integer().not_null())
-            .col(ColumnDef::new(Wells::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Wells::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(Wells::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Wells::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_wells_tray_id")
@@ -425,9 +571,24 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(Regions::ColMax).integer())
             .col(ColumnDef::new(Regions::RowMax).integer())
             .col(ColumnDef::new(Regions::DilutionFactor).integer())
-            .col(ColumnDef::new(Regions::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Regions::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(Regions::IsBackgroundKey).boolean().not_null().default(false))
+            .col(
+                ColumnDef::new(Regions::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Regions::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Regions::IsBackgroundKey)
+                    .boolean()
+                    .not_null()
+                    .default(false),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("regions_experiment_id_fkey")
@@ -473,13 +634,38 @@ impl MigrationTrait for Migration {
             .if_not_exists()
             .col(ColumnDef::new(S3Assets::ExperimentId).uuid())
             .col(ColumnDef::new(S3Assets::OriginalFilename).text().not_null())
-            .col(ColumnDef::new(S3Assets::S3Key).text().not_null().unique_key())
+            .col(
+                ColumnDef::new(S3Assets::S3Key)
+                    .text()
+                    .not_null()
+                    .unique_key(),
+            )
             .col(ColumnDef::new(S3Assets::SizeBytes).big_integer())
             .col(ColumnDef::new(S3Assets::UploadedBy).text())
-            .col(ColumnDef::new(S3Assets::UploadedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(S3Assets::IsDeleted).boolean().not_null().default(false))
-            .col(ColumnDef::new(S3Assets::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
-            .col(ColumnDef::new(S3Assets::LastUpdated).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(S3Assets::UploadedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(S3Assets::IsDeleted)
+                    .boolean()
+                    .not_null()
+                    .default(false),
+            )
+            .col(
+                ColumnDef::new(S3Assets::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(S3Assets::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .col(ColumnDef::new(S3Assets::Type).text().not_null())
             .col(ColumnDef::new(S3Assets::Role).text())
             .col(ColumnDef::new(S3Assets::ProcessingStatus).text())
@@ -519,8 +705,16 @@ impl MigrationTrait for Migration {
         let mut temperature_readings_table = Table::create()
             .table(TemperatureReadings::Table)
             .if_not_exists()
-            .col(ColumnDef::new(TemperatureReadings::ExperimentId).uuid().not_null())
-            .col(ColumnDef::new(TemperatureReadings::Timestamp).timestamp_with_time_zone().not_null())
+            .col(
+                ColumnDef::new(TemperatureReadings::ExperimentId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(TemperatureReadings::Timestamp)
+                    .timestamp_with_time_zone()
+                    .not_null(),
+            )
             .col(ColumnDef::new(TemperatureReadings::ImageFilename).text())
             .col(ColumnDef::new(TemperatureReadings::Probe_1).decimal())
             .col(ColumnDef::new(TemperatureReadings::Probe_2).decimal())
@@ -530,11 +724,19 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(TemperatureReadings::Probe_6).decimal())
             .col(ColumnDef::new(TemperatureReadings::Probe_7).decimal())
             .col(ColumnDef::new(TemperatureReadings::Probe_8).decimal())
-            .col(ColumnDef::new(TemperatureReadings::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(TemperatureReadings::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_temperature_readings_experiment")
-                    .from(TemperatureReadings::Table, TemperatureReadings::ExperimentId)
+                    .from(
+                        TemperatureReadings::Table,
+                        TemperatureReadings::ExperimentId,
+                    )
                     .to(Experiments::Table, Experiments::Id)
                     .on_delete(ForeignKeyAction::Cascade)
                     .on_update(ForeignKeyAction::NoAction),
@@ -553,7 +755,12 @@ impl MigrationTrait for Migration {
                 );
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                temperature_readings_table.col(ColumnDef::new(TemperatureReadings::Id).uuid().not_null().primary_key());
+                temperature_readings_table.col(
+                    ColumnDef::new(TemperatureReadings::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
             }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
@@ -566,13 +773,42 @@ impl MigrationTrait for Migration {
         let mut well_phase_transitions_table = Table::create()
             .table(WellPhaseTransitions::Table)
             .if_not_exists()
-            .col(ColumnDef::new(WellPhaseTransitions::WellId).uuid().not_null())
-            .col(ColumnDef::new(WellPhaseTransitions::ExperimentId).uuid().not_null())
-            .col(ColumnDef::new(WellPhaseTransitions::TemperatureReadingId).uuid().not_null())
-            .col(ColumnDef::new(WellPhaseTransitions::Timestamp).timestamp_with_time_zone().not_null())
-            .col(ColumnDef::new(WellPhaseTransitions::PreviousState).integer().not_null())
-            .col(ColumnDef::new(WellPhaseTransitions::NewState).integer().not_null())
-            .col(ColumnDef::new(WellPhaseTransitions::CreatedAt).timestamp_with_time_zone().not_null().default(Expr::current_timestamp()))
+            .col(
+                ColumnDef::new(WellPhaseTransitions::WellId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(WellPhaseTransitions::ExperimentId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(WellPhaseTransitions::TemperatureReadingId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(WellPhaseTransitions::Timestamp)
+                    .timestamp_with_time_zone()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(WellPhaseTransitions::PreviousState)
+                    .integer()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(WellPhaseTransitions::NewState)
+                    .integer()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(WellPhaseTransitions::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_well_phase_transitions_well")
@@ -584,7 +820,10 @@ impl MigrationTrait for Migration {
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_well_phase_transitions_experiment")
-                    .from(WellPhaseTransitions::Table, WellPhaseTransitions::ExperimentId)
+                    .from(
+                        WellPhaseTransitions::Table,
+                        WellPhaseTransitions::ExperimentId,
+                    )
                     .to(Experiments::Table, Experiments::Id)
                     .on_delete(ForeignKeyAction::Cascade)
                     .on_update(ForeignKeyAction::NoAction),
@@ -592,7 +831,10 @@ impl MigrationTrait for Migration {
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_well_phase_transitions_temperature_reading")
-                    .from(WellPhaseTransitions::Table, WellPhaseTransitions::TemperatureReadingId)
+                    .from(
+                        WellPhaseTransitions::Table,
+                        WellPhaseTransitions::TemperatureReadingId,
+                    )
                     .to(TemperatureReadings::Table, TemperatureReadings::Id)
                     .on_delete(ForeignKeyAction::Cascade)
                     .on_update(ForeignKeyAction::NoAction),
@@ -611,7 +853,12 @@ impl MigrationTrait for Migration {
                 );
             }
             sea_orm::DatabaseBackend::Sqlite => {
-                well_phase_transitions_table.col(ColumnDef::new(WellPhaseTransitions::Id).uuid().not_null().primary_key());
+                well_phase_transitions_table.col(
+                    ColumnDef::new(WellPhaseTransitions::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
             }
             _ => {
                 return Err(DbErr::Custom("Unsupported database backend".to_string()));
@@ -748,7 +995,7 @@ impl MigrationTrait for Migration {
             .await?;
 
         // Create performance indexes for experiments table based on crudcrate analysis
-        
+
         // High Priority: Fulltext search index for PostgreSQL (exact match to crudcrate analysis)
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             manager
@@ -760,7 +1007,7 @@ impl MigrationTrait for Migration {
         }
 
         // Medium Priority: Individual column indexes for filterable/sortable fields
-        
+
         // Username index (filterable & sortable)
         manager
             .create_index(
@@ -827,7 +1074,7 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        // Remarks index (filterable & sortable) 
+        // Remarks index (filterable & sortable)
         manager
             .create_index(
                 Index::create()
@@ -865,39 +1112,182 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Drop tables in reverse dependency order
-        manager.drop_table(Table::drop().table(WellPhaseTransitions::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(TemperatureReadings::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(S3Assets::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Regions::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Wells::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Trays::Table).if_exists().to_owned()).await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(WellPhaseTransitions::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(TemperatureReadings::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(S3Assets::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Regions::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Wells::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Trays::Table).if_exists().to_owned())
+            .await?;
         // Drop experiments performance indexes first
-        manager.drop_index(Index::drop().name("idx_experiments_last_updated").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_created_at").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_remarks").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_is_calibration").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_temperature_end").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_temperature_start").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_temperature_ramp").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_performed_at").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        manager.drop_index(Index::drop().name("idx_experiments_username").table(Experiments::Table).if_exists().to_owned()).await.ok();
-        
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_last_updated")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_created_at")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_remarks")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_is_calibration")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_temperature_end")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_temperature_start")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_temperature_ramp")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_performed_at")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_experiments_username")
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
         // Drop PostgreSQL fulltext index if it exists
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
-            manager.get_connection().execute_unprepared("DROP INDEX IF EXISTS idx_experiments_fulltext").await.ok();
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_experiments_fulltext")
+                .await
+                .ok();
         }
-        
-        manager.drop_table(Table::drop().table(Experiments::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(TrayConfigurations::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Treatments::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Samples::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Locations::Table).if_exists().to_owned()).await?;
-        manager.drop_table(Table::drop().table(Projects::Table).if_exists().to_owned()).await?;
+
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(Experiments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(TrayConfigurations::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(Treatments::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Samples::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Locations::Table).if_exists().to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Projects::Table).if_exists().to_owned())
+            .await?;
 
         // Drop enums for PostgreSQL
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
-            manager.drop_type(Type::drop().name(TreatmentName::Table).if_exists().to_owned()).await?;
-            manager.drop_type(Type::drop().name(SampleType::Table).if_exists().to_owned()).await?;
+            manager
+                .drop_type(
+                    Type::drop()
+                        .name(TreatmentName::Table)
+                        .if_exists()
+                        .to_owned(),
+                )
+                .await?;
+            manager
+                .drop_type(Type::drop().name(SampleType::Table).if_exists().to_owned())
+                .await?;
         }
 
         Ok(())
@@ -1057,6 +1447,7 @@ enum S3Assets {
 }
 
 #[derive(DeriveIden)]
+#[allow(non_camel_case_types)]
 enum TemperatureReadings {
     Table,
     Id,

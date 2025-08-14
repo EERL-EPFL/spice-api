@@ -1,10 +1,9 @@
+use super::processing::DirectExcelProcessor;
+use crate::common::models::ProcessingStatus;
 use anyhow::Result;
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
-
-use super::processing::DirectExcelProcessor;
-use crate::services::models::ProcessingStatus;
 
 /// Service for data processing operations (Excel upload, phase changes, results generation)
 #[derive(Clone)]

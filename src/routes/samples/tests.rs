@@ -1561,3 +1561,290 @@ async fn test_sample_complex_workflow() {
     // This test always passes - it's for workflow documentation
     // Documents sample workflow behavior
 }
+
+#[tokio::test]
+async fn test_sample_update_treatment_crud_comprehensive() {
+    let app = setup_test_app().await;
+    
+    // Create dependencies
+    let (_project_id, location_id) = create_test_project_and_location(&app, "TREATMENT_CRUD").await;
+    
+    // Step 1: Create a sample with initial treatments
+    let initial_sample_data = json!({
+        "name": "Treatment CRUD Test Sample",
+        "type": "bulk",
+        "material_description": "Sample for testing treatment CRUD operations",
+        "location_id": location_id,
+        "treatments": [
+            {
+                "name": "none",
+                "notes": "Initial none treatment"
+            },
+            {
+                "name": "heat",
+                "notes": "Initial heat treatment",
+                "enzyme_volume_litres": 0.001
+            }
+        ]
+    });
+    
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(initial_sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    assert_eq!(create_status, StatusCode::CREATED, "Should create sample with treatments");
+    
+    let sample_id = create_body["id"].as_str().unwrap();
+    let initial_treatments = create_body["treatments"].as_array().unwrap();
+    assert_eq!(initial_treatments.len(), 2, "Should have 2 initial treatments");
+    
+    // Extract treatment IDs
+    let none_treatment_id = initial_treatments.iter()
+        .find(|t| t["name"].as_str().unwrap().to_lowercase() == "none")
+        .unwrap()["id"].as_str().unwrap();
+    let heat_treatment_id = initial_treatments.iter()
+        .find(|t| t["name"].as_str().unwrap().to_lowercase() == "heat")
+        .unwrap()["id"].as_str().unwrap();
+    
+    println!("Initial treatments created - None: {}, Heat: {}", none_treatment_id, heat_treatment_id);
+    
+    // Step 2: Update sample with complete treatment list replacement
+    // - Keep the none treatment but update it
+    // - Delete the heat treatment (not included in update)
+    // - Add a new h2o2 treatment
+    let update_data = json!({
+        "name": "Treatment CRUD Test Sample - Updated",
+        "treatments": [
+            {
+                "id": none_treatment_id,
+                "name": "none", 
+                "notes": "Updated none treatment with new notes"
+            },
+            {
+                // No ID = new treatment to be created
+                "name": "h2o2",
+                "notes": "New h2o2 treatment added in update",
+                "enzyme_volume_litres": 0.002
+            }
+        ]
+    });
+    
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/samples/{sample_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (update_status, update_body) = extract_response_body(update_response).await;
+    assert_eq!(update_status, StatusCode::OK, "Sample update should succeed: {update_body:?}");
+    
+    // Step 3: Verify the treatment CRUD operations worked correctly
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    assert_eq!(get_status, StatusCode::OK, "Should retrieve updated sample");
+    
+    let final_treatments = get_body["treatments"].as_array().unwrap();
+    assert_eq!(final_treatments.len(), 2, "Should have exactly 2 treatments after update");
+    
+    // Verify treatment operations
+    let mut found_none = false;
+    let mut found_h2o2 = false;
+    let mut found_heat = false;
+    
+    for treatment in final_treatments {
+        let name = treatment["name"].as_str().unwrap().to_lowercase();
+        match name.as_str() {
+            "none" => {
+                found_none = true;
+                // Verify the none treatment was updated, not recreated
+                assert_eq!(treatment["id"].as_str().unwrap(), none_treatment_id, "None treatment should keep same ID");
+                assert_eq!(treatment["notes"], "Updated none treatment with new notes", "Notes should be updated");
+            },
+            "h2o2" => {
+                found_h2o2 = true;
+                // Verify new treatment was created
+                assert_ne!(treatment["id"].as_str().unwrap(), none_treatment_id, "H2O2 treatment should have new ID");
+                assert_ne!(treatment["id"].as_str().unwrap(), heat_treatment_id, "H2O2 treatment should have new ID");
+                assert_eq!(treatment["notes"], "New h2o2 treatment added in update");
+                assert_eq!(treatment["enzyme_volume_litres"], "0.002");
+            },
+            "heat" => {
+                found_heat = true;
+            },
+            _ => panic!("Unexpected treatment name: {}", name)
+        }
+    }
+    
+    // Verify operations
+    assert!(found_none, "Should find updated none treatment");
+    assert!(found_h2o2, "Should find new h2o2 treatment");
+    assert!(!found_heat, "Heat treatment should be deleted (not in update)");
+    
+    println!("✅ Treatment CRUD operations verified:");
+    println!("   - UPDATE: none treatment updated (same ID, new notes) ✅");
+    println!("   - CREATE: h2o2 treatment created (new ID) ✅");
+    println!("   - DELETE: heat treatment deleted (not in update list) ✅");
+    
+    // Step 4: Test edge case - empty treatments list should delete all treatments
+    let empty_treatments_data = json!({
+        "treatments": []
+    });
+    
+    let empty_update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/samples/{sample_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(empty_treatments_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (empty_update_status, _empty_update_body) = extract_response_body(empty_update_response).await;
+    assert_eq!(empty_update_status, StatusCode::OK, "Empty treatments update should succeed");
+    
+    // Verify all treatments are deleted
+    let final_get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (final_get_status, final_get_body) = extract_response_body(final_get_response).await;
+    assert_eq!(final_get_status, StatusCode::OK, "Should retrieve sample after empty update");
+    
+    let empty_treatments = final_get_body["treatments"].as_array().unwrap();
+    assert_eq!(empty_treatments.len(), 0, "All treatments should be deleted with empty treatments list");
+    
+    println!("✅ Empty treatments list edge case verified:");
+    println!("   - All treatments deleted when treatments: [] ✅");
+}
+
+#[tokio::test] 
+async fn test_sample_update_treatment_validation() {
+    let app = setup_test_app().await;
+    
+    // Create dependencies
+    let (_project_id, location_id) = create_test_project_and_location(&app, "TREATMENT_VALIDATION").await;
+    
+    // Create sample with one treatment
+    let sample_data = json!({
+        "name": "Treatment Validation Test Sample",
+        "type": "bulk", 
+        "location_id": location_id,
+        "treatments": [{
+            "name": "none",
+            "notes": "Initial treatment"
+        }]
+    });
+    
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    assert_eq!(create_status, StatusCode::CREATED, "Should create sample");
+    
+    let sample_id = create_body["id"].as_str().unwrap();
+    
+    // Test invalid treatment name in update
+    let invalid_treatment_data = json!({
+        "treatments": [{
+            "name": "invalid_treatment_name",
+            "notes": "This should fail"
+        }]
+    });
+    
+    let invalid_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/samples/{sample_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(invalid_treatment_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (invalid_status, _invalid_body) = extract_response_body(invalid_response).await;
+    assert!(invalid_status.is_client_error(), "Should reject invalid treatment name");
+    
+    // Test updating non-existent treatment ID  
+    let fake_treatment_id = uuid::Uuid::new_v4();
+    let nonexistent_treatment_data = json!({
+        "treatments": [{
+            "id": fake_treatment_id.to_string(),
+            "name": "heat",
+            "notes": "This should fail - treatment ID doesn't exist"
+        }]
+    });
+    
+    let nonexistent_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/samples/{sample_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(nonexistent_treatment_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (nonexistent_status, _nonexistent_body) = extract_response_body(nonexistent_response).await;
+    // Should fail with 404 or 500 when trying to update non-existent treatment
+    assert!(!nonexistent_status.is_success(), "Should fail when updating non-existent treatment ID");
+    
+    println!("✅ Treatment validation tests passed:");
+    println!("   - Invalid treatment names rejected ✅");
+    println!("   - Non-existent treatment IDs handled ✅");
+}
