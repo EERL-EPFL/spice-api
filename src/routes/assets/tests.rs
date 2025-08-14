@@ -84,7 +84,7 @@ async fn test_asset_crud_operations() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    
+
     // Assets might require S3 configuration, so we document both success and failure cases
     if status == StatusCode::CREATED {
         // Validate response structure
@@ -110,15 +110,20 @@ async fn test_asset_crud_operations() {
             .unwrap();
 
         let (get_status, get_body) = extract_response_body(get_response).await;
-        assert_eq!(get_status, StatusCode::OK, "Failed to get asset: {get_body:?}");
+        assert_eq!(
+            get_status,
+            StatusCode::OK,
+            "Failed to get asset: {get_body:?}"
+        );
         assert_eq!(get_body["id"], asset_id);
         assert_eq!(get_body["original_filename"], "test_image.jpg");
-        
     } else {
         // Asset creation failed (expected - likely requires S3 setup)
         // This is expected if S3 is not configured - document the behavior
-        assert!(status.is_client_error() || status.is_server_error(), 
-               "Asset creation should fail gracefully when S3 is not configured");
+        assert!(
+            status.is_client_error() || status.is_server_error(),
+            "Asset creation should fail gracefully when S3 is not configured"
+        );
     }
 }
 
@@ -140,7 +145,7 @@ async fn test_asset_list_operations() {
         .unwrap();
 
     let (list_status, list_body) = extract_response_body(list_response).await;
-    
+
     if list_status == StatusCode::OK {
         assert!(list_body.is_array(), "Assets list should be an array");
         let assets = list_body.as_array().unwrap();
@@ -150,8 +155,10 @@ async fn test_asset_list_operations() {
         }
     } else {
         // Document the failure case
-        assert!(list_status.is_client_error() || list_status.is_server_error(),
-               "Asset listing should fail gracefully when not properly configured");
+        assert!(
+            list_status.is_client_error() || list_status.is_server_error(),
+            "Asset listing should fail gracefully when not properly configured"
+        );
     }
 }
 
@@ -179,10 +186,12 @@ async fn test_asset_validation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    
+
     // Should reject incomplete asset data
-    assert!(status.is_client_error() || status.is_server_error(), 
-           "Should reject incomplete asset data");
+    assert!(
+        status.is_client_error() || status.is_server_error(),
+        "Should reject incomplete asset data"
+    );
 }
 
 #[tokio::test]
@@ -203,15 +212,16 @@ async fn test_asset_filtering_and_sorting() {
         .unwrap();
 
     let (filter_status, filter_body) = extract_response_body(filter_response).await;
-    
+
     if filter_status == StatusCode::OK {
         let filtered_assets = filter_body.as_array().unwrap();
-        
+
         // Verify filtering works correctly
         for asset in filtered_assets {
             assert_eq!(
                 asset["type"], "image",
-                "Filtering should only return image assets, but got: {:?}", asset["type"]
+                "Filtering should only return image assets, but got: {:?}",
+                asset["type"]
             );
         }
     } else {
@@ -232,7 +242,7 @@ async fn test_asset_filtering_and_sorting() {
         .unwrap();
 
     let (sort_status, _) = extract_response_body(sort_response).await;
-    
+
     if sort_status == StatusCode::OK {
         // Asset sorting endpoint accessible
     } else {
@@ -259,7 +269,11 @@ async fn test_asset_not_found() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "Should return 404 for non-existent asset");
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "Should return 404 for non-existent asset"
+    );
 }
 
 #[tokio::test]
@@ -286,10 +300,12 @@ async fn test_asset_update_operations() {
         .unwrap();
 
     let (update_status, _) = extract_response_body(update_response).await;
-    
+
     // Check if update operations are implemented based on status code
-    assert!(update_status == StatusCode::NOT_FOUND || update_status == StatusCode::METHOD_NOT_ALLOWED,
-           "Update should return 404 (implemented) or 405 (not implemented), got: {update_status}");
+    assert!(
+        update_status == StatusCode::NOT_FOUND || update_status == StatusCode::METHOD_NOT_ALLOWED,
+        "Update should return 404 (implemented) or 405 (not implemented), got: {update_status}"
+    );
 }
 
 #[tokio::test]
@@ -311,13 +327,15 @@ async fn test_asset_delete_operations() {
         .unwrap();
 
     let delete_status = delete_response.status();
-    
+
     // Check if delete operations are implemented based on status code
-    assert!(delete_status == StatusCode::NOT_FOUND || delete_status == StatusCode::METHOD_NOT_ALLOWED,
-           "Delete should return 404 (implemented) or 405 (not implemented), got: {delete_status}");
+    assert!(
+        delete_status == StatusCode::NOT_FOUND || delete_status == StatusCode::METHOD_NOT_ALLOWED,
+        "Delete should return 404 (implemented) or 405 (not implemented), got: {delete_status}"
+    );
 }
 
-#[tokio::test]  
+#[tokio::test]
 async fn test_asset_s3_dependency_documentation() {
     let app = setup_test_app().await;
 
@@ -327,11 +345,11 @@ async fn test_asset_s3_dependency_documentation() {
     // - Asset creation may fail with 500/400 errors
     // - File upload operations will not work
     // - Asset deletion may need S3 cleanup
-    
+
     // Test if S3 endpoints are configured by trying a simple operation
     let simple_asset = json!({
         "original_filename": "test.txt",
-        "s3_key": "test/test.txt", 
+        "s3_key": "test/test.txt",
         "type": "text",
         "size_bytes": 100
     });
@@ -350,13 +368,15 @@ async fn test_asset_s3_dependency_documentation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    
+
     // S3 configuration check:
     // Success = S3 configured, Failure = S3 not configured (expected in test env)
     // Document the behavior regardless of outcome
-    assert!(status.is_success() || status.is_client_error() || status.is_server_error(),
-           "S3 test should return a valid HTTP status code: {status}");
-    
+    assert!(
+        status.is_success() || status.is_client_error() || status.is_server_error(),
+        "S3 test should return a valid HTTP status code: {status}"
+    );
+
     // This test always passes - it's just for documentation
     // Documents S3 dependencies
 }
@@ -401,7 +421,7 @@ async fn test_asset_download_and_view_endpoints() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(&format!("/api/assets/{}/download", asset_id))
+                    .uri(format!("/api/assets/{asset_id}/download"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -412,7 +432,8 @@ async fn test_asset_download_and_view_endpoints() {
         // but this confirms the endpoint exists and is routed correctly
         let download_status = download_response.status();
         assert!(
-            download_status == StatusCode::INTERNAL_SERVER_ERROR || download_status == StatusCode::NOT_FOUND,
+            download_status == StatusCode::INTERNAL_SERVER_ERROR
+                || download_status == StatusCode::NOT_FOUND,
             "Download endpoint should be accessible but fail due to S3 config, got: {download_status}"
         );
 
@@ -422,7 +443,7 @@ async fn test_asset_download_and_view_endpoints() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(&format!("/api/assets/{}/view", asset_id))
+                    .uri(format!("/api/assets/{asset_id}/view"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -433,7 +454,8 @@ async fn test_asset_download_and_view_endpoints() {
         // but this confirms the endpoint exists and is routed correctly
         let view_status = view_response.status();
         assert!(
-            view_status == StatusCode::INTERNAL_SERVER_ERROR || view_status == StatusCode::NOT_FOUND,
+            view_status == StatusCode::INTERNAL_SERVER_ERROR
+                || view_status == StatusCode::NOT_FOUND,
             "View endpoint should be accessible but fail due to S3 config, got: {view_status}"
         );
     }
@@ -455,7 +477,8 @@ async fn test_asset_download_and_view_endpoints() {
     let not_found_status = not_found_response.status();
     // Should return 404 for non-existent assets
     assert!(
-        not_found_status == StatusCode::NOT_FOUND || not_found_status == StatusCode::INTERNAL_SERVER_ERROR,
+        not_found_status == StatusCode::NOT_FOUND
+            || not_found_status == StatusCode::INTERNAL_SERVER_ERROR,
         "Non-existent asset should return 404 or 500, got: {not_found_status}"
     );
 }

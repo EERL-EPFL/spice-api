@@ -166,14 +166,16 @@ pub async fn create_tray_configuration(
 ) -> Result<TrayConfiguration, DbErr> {
     // Simple validation
     for tray in &data.trays {
-        if let Some(qty_x) = tray.qty_x_axis
-            && qty_x < 1 {
+        if let Some(qty_x) = tray.qty_x_axis {
+            if qty_x < 1 {
                 return Err(DbErr::Custom("qty_x_axis must be positive".to_string()));
             }
-        if let Some(qty_y) = tray.qty_y_axis
-            && qty_y < 1 {
+        }
+        if let Some(qty_y) = tray.qty_y_axis {
+            if qty_y < 1 {
                 return Err(DbErr::Custom("qty_y_axis must be positive".to_string()));
             }
+        }
     }
 
     // If this is being set as experiment default, unset all other defaults first
@@ -227,14 +229,16 @@ pub async fn update_tray_configuration(
 ) -> Result<TrayConfiguration, DbErr> {
     // Simple validation for trays
     for tray in &update_data.trays {
-        if let Some(qty_x) = tray.qty_x_axis
-            && qty_x < 1 {
+        if let Some(qty_x) = tray.qty_x_axis {
+            if qty_x < 1 {
                 return Err(DbErr::Custom("qty_x_axis must be positive".to_string()));
             }
-        if let Some(qty_y) = tray.qty_y_axis
-            && qty_y < 1 {
+        }
+        if let Some(qty_y) = tray.qty_y_axis {
+            if qty_y < 1 {
                 return Err(DbErr::Custom("qty_y_axis must be positive".to_string()));
             }
+        }
     }
 
     // If being set as experiment default, unset all other defaults first

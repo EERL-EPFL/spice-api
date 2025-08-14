@@ -1,6 +1,5 @@
 use super::models_old::{
-    ExperimentResultsSummary, RegionInput, TemperatureProbeValues, TrayInfo,
-    WellSummary,
+    ExperimentResultsSummary, RegionInput, TemperatureProbeValues, TrayInfo, WellSummary,
 };
 // Structs now imported from models_old
 use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str};
@@ -20,13 +19,16 @@ use uuid::Uuid;
 async fn load_temperature_data(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
-) -> Result<(
-    Vec<temperature_readings::Model>,
-    std::collections::HashMap<Uuid, temperature_readings::Model>,
-    Option<DateTime<Utc>>,
-    Option<DateTime<Utc>>,
-    usize,
-), DbErr> {
+) -> Result<
+    (
+        Vec<temperature_readings::Model>,
+        std::collections::HashMap<Uuid, temperature_readings::Model>,
+        Option<DateTime<Utc>>,
+        Option<DateTime<Utc>>,
+        usize,
+    ),
+    DbErr,
+> {
     let temp_readings_data = temperature_readings::Entity::find()
         .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
         .order_by_asc(temperature_readings::Column::Timestamp)
@@ -48,7 +50,10 @@ async fn load_temperature_data(
 
     // Create temperature readings lookup map by ID
     let temp_readings_map: std::collections::HashMap<Uuid, temperature_readings::Model> =
-        temp_readings_data.iter().map(|tr| (tr.id, tr.clone())).collect();
+        temp_readings_data
+            .iter()
+            .map(|tr| (tr.id, tr.clone()))
+            .collect();
 
     Ok((
         temp_readings_data,
@@ -70,12 +75,21 @@ async fn load_experiment_assets(
         .all(db)
         .await?;
 
-    println!("🔍 [DEBUG] Experiment {} has {} image assets", experiment_id, experiment_assets.len());
+    println!(
+        "🔍 [DEBUG] Experiment {} has {} image assets",
+        experiment_id,
+        experiment_assets.len()
+    );
 
     // Show time range of assets
     if !experiment_assets.is_empty() {
-        let asset_filenames: Vec<&String> = experiment_assets.iter().map(|a| &a.original_filename).collect();
-        if let (Some(first), Some(last)) = (asset_filenames.iter().min(), asset_filenames.iter().max()) {
+        let asset_filenames: Vec<&String> = experiment_assets
+            .iter()
+            .map(|a| &a.original_filename)
+            .collect();
+        if let (Some(first), Some(last)) =
+            (asset_filenames.iter().min(), asset_filenames.iter().max())
+        {
             println!("🔍 [DEBUG] Asset time range: {first} to {last}");
         }
     }
@@ -86,8 +100,13 @@ async fn load_experiment_assets(
         .filter_map(|asset| {
             let filename_without_ext = if std::path::Path::new(&asset.original_filename)
                 .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg")) {
-                asset.original_filename.strip_suffix(".jpg").unwrap_or(&asset.original_filename).to_string()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg"))
+            {
+                asset
+                    .original_filename
+                    .strip_suffix(".jpg")
+                    .unwrap_or(&asset.original_filename)
+                    .to_string()
             } else {
                 asset.original_filename.clone()
             };
@@ -95,7 +114,10 @@ async fn load_experiment_assets(
         })
         .collect();
 
-    println!("🔍 [DEBUG] Total filename mappings: {}", filename_to_asset_id.len());
+    println!(
+        "🔍 [DEBUG] Total filename mappings: {}",
+        filename_to_asset_id.len()
+    );
     println!("🔍 [DEBUG] First 5 filename mappings:");
     for (filename, asset_id) in filename_to_asset_id.iter().take(5) {
         println!("🔍 [DEBUG] - {filename}: {asset_id}");
@@ -108,14 +130,17 @@ async fn load_experiment_assets(
 async fn process_phase_transitions(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
-) -> Result<(
-    Vec<(well_phase_transitions::Model, Option<wells::Model>)>,
-    std::collections::HashMap<Uuid, i32>,
-    std::collections::HashSet<Uuid>,
-    usize,
-    usize,
-    usize,
-), DbErr> {
+) -> Result<
+    (
+        Vec<(well_phase_transitions::Model, Option<wells::Model>)>,
+        std::collections::HashMap<Uuid, i32>,
+        std::collections::HashSet<Uuid>,
+        usize,
+        usize,
+        usize,
+    ),
+    DbErr,
+> {
     let phase_transitions_data = well_phase_transitions::Entity::find()
         .filter(well_phase_transitions::Column::ExperimentId.eq(experiment_id))
         .find_also_related(wells::Entity)
@@ -161,10 +186,13 @@ async fn load_experiment_wells_and_trays(
     wells_with_transitions: &std::collections::HashSet<Uuid>,
     phase_transitions_data: &[(well_phase_transitions::Model, Option<wells::Model>)],
     db: &impl ConnectionTrait,
-) -> Result<(
-    Vec<wells::Model>,
-    std::collections::HashMap<Uuid, trays::Model>,
-), DbErr> {
+) -> Result<
+    (
+        Vec<wells::Model>,
+        std::collections::HashMap<Uuid, trays::Model>,
+    ),
+    DbErr,
+> {
     // Get wells for this experiment
     let experiment_wells = if wells_with_transitions.is_empty() {
         let experiment = experiments::Entity::find_by_id(experiment_id)
@@ -226,13 +254,16 @@ async fn load_experiment_wells_and_trays(
 async fn load_treatment_and_sample_data(
     experiment_regions: &[regions::Model],
     db: &impl ConnectionTrait,
-) -> Result<std::collections::HashMap<
-    Uuid,
-    (
-        crate::routes::treatments::models::Treatment,
-        Option<crate::routes::samples::models::Sample>,
-    ),
->, DbErr> {
+) -> Result<
+    std::collections::HashMap<
+        Uuid,
+        (
+            crate::routes::treatments::models::Treatment,
+            Option<crate::routes::samples::models::Sample>,
+        ),
+    >,
+    DbErr,
+> {
     let treatment_ids: Vec<Uuid> = experiment_regions
         .iter()
         .filter_map(|r| r.treatment_id)
@@ -280,32 +311,28 @@ async fn load_treatment_and_sample_data(
     let location_map: std::collections::HashMap<Uuid, &locations::Model> =
         locations_data.iter().map(|l| (l.id, l)).collect();
 
-    let sample_map: std::collections::HashMap<
-        Uuid,
-        (&samples::Model, Option<&locations::Model>),
-    > = samples_data
-        .iter()
-        .map(|s| {
-            let location = s
-                .location_id
-                .and_then(|loc_id| location_map.get(&loc_id))
-                .copied();
-            (s.id, (s, location))
-        })
-        .collect();
+    let sample_map: std::collections::HashMap<Uuid, (&samples::Model, Option<&locations::Model>)> =
+        samples_data
+            .iter()
+            .map(|s| {
+                let location = s
+                    .location_id
+                    .and_then(|loc_id| location_map.get(&loc_id))
+                    .copied();
+                (s.id, (s, location))
+            })
+            .collect();
 
     // Build treatment info map
     for treatment in &treatments_data {
         let sample_info = treatment.sample_id.and_then(|sample_id| {
             sample_map.get(&sample_id).map(|(sample, _location)| {
-                let sample_api: crate::routes::samples::models::Sample =
-                    (*sample).clone().into();
+                let sample_api: crate::routes::samples::models::Sample = (*sample).clone().into();
                 sample_api
             })
         });
 
-        let treatment_info: crate::routes::treatments::models::Treatment =
-            treatment.clone().into();
+        let treatment_info: crate::routes::treatments::models::Treatment = treatment.clone().into();
 
         treatment_map.insert(treatment.id, (treatment_info, sample_info));
     }
@@ -322,7 +349,13 @@ fn build_well_summaries(
     first_timestamp: Option<DateTime<Utc>>,
     well_final_states: &std::collections::HashMap<Uuid, i32>,
     experiment_regions: &[regions::Model],
-    treatment_map: &std::collections::HashMap<Uuid, (crate::routes::treatments::models::Treatment, Option<crate::routes::samples::models::Sample>)>,
+    treatment_map: &std::collections::HashMap<
+        Uuid,
+        (
+            crate::routes::treatments::models::Treatment,
+            Option<crate::routes::samples::models::Sample>,
+        ),
+    >,
     tray_map: &std::collections::HashMap<Uuid, trays::Model>,
 ) -> Result<Vec<WellSummary>, DbErr> {
     let mut well_summaries = Vec::new();
@@ -400,8 +433,12 @@ fn build_well_summaries(
                 (temperature_probes, temp_reading.image_filename.clone())
             });
 
-        let first_phase_change_temperature_probes = temperature_and_image.as_ref().map(|(temp_probes, _)| temp_probes.clone());
-        let image_filename_at_freeze = temperature_and_image.as_ref().and_then(|(_, image_filename)| image_filename.clone());
+        let first_phase_change_temperature_probes = temperature_and_image
+            .as_ref()
+            .map(|(temp_probes, _)| temp_probes.clone());
+        let image_filename_at_freeze = temperature_and_image
+            .as_ref()
+            .and_then(|(_, image_filename)| image_filename.clone());
 
         // Look up asset ID for this image filename
         let image_asset_id = image_filename_at_freeze
@@ -445,7 +482,7 @@ fn build_well_summaries(
         });
 
         // Get treatment and sample info if region exists
-        let (treatment, sample) = region
+        let (_treatment, sample) = region
             .and_then(|r| r.treatment_id)
             .and_then(|treatment_id| treatment_map.get(&treatment_id))
             .map_or((None, None), |(t, s)| (Some(t.clone()), s.clone()));
@@ -485,8 +522,13 @@ pub(super) async fn build_results_summary(
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsSummary>, DbErr> {
     // Load all required data using helper functions
-    let (_temp_readings_data, temp_readings_map, first_timestamp, last_timestamp, total_time_points) =
-        load_temperature_data(experiment_id, db).await?;
+    let (
+        _temp_readings_data,
+        temp_readings_map,
+        first_timestamp,
+        last_timestamp,
+        total_time_points,
+    ) = load_temperature_data(experiment_id, db).await?;
 
     let filename_to_asset_id = load_experiment_assets(experiment_id, db).await?;
 
@@ -495,11 +537,22 @@ pub(super) async fn build_results_summary(
         .all(db)
         .await?;
 
-    let (phase_transitions_data, well_final_states, wells_with_transitions, wells_with_data, wells_frozen, wells_liquid) =
-        process_phase_transitions(experiment_id, db).await?;
+    let (
+        phase_transitions_data,
+        well_final_states,
+        wells_with_transitions,
+        wells_with_data,
+        wells_frozen,
+        wells_liquid,
+    ) = process_phase_transitions(experiment_id, db).await?;
 
-    let (experiment_wells, tray_map) =
-        load_experiment_wells_and_trays(experiment_id, &wells_with_transitions, &phase_transitions_data, db).await?;
+    let (experiment_wells, tray_map) = load_experiment_wells_and_trays(
+        experiment_id,
+        &wells_with_transitions,
+        &phase_transitions_data,
+        db,
+    )
+    .await?;
 
     let treatment_map = load_treatment_and_sample_data(&experiment_regions, db).await?;
 
@@ -526,7 +579,7 @@ pub(super) async fn build_results_summary(
         first_timestamp,
         last_timestamp,
         sample_results: vec![], // No longer return sample results - fetch via /samples endpoint
-        well_summaries, // Keep for backwards compatibility
+        well_summaries,         // Keep for backwards compatibility
     }))
 }
 
@@ -611,27 +664,28 @@ pub(super) async fn fetch_tray_info_by_sequence(
         .one(db)
         .await?;
 
-    if let Some(exp) = experiment
-        && let Some(tray_config_id) = exp.tray_configuration_id {
-            // Find the tray with the matching sequence ID
-            // Note: After schema simplification, all tray data is in the trays table
-            let tray = trays::Entity::find()
-                .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
-                .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
-                .one(db)
-                .await?;
+    if let Some(exp) = experiment {
+        if let Some(tray_config_id) = exp.tray_configuration_id {
+        // Find the tray with the matching sequence ID
+        // Note: After schema simplification, all tray data is in the trays table
+        let tray = trays::Entity::find()
+            .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
+            .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
+            .one(db)
+            .await?;
 
-            if let Some(tray) = tray {
-                return Ok(Some(TrayInfo {
-                    id: tray.id,
-                    name: tray.name,
-                    sequence_id: tray.order_sequence,
-                    qty_x_axis: tray.qty_x_axis,
-                    qty_y_axis: tray.qty_y_axis,
-                    well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
-                }));
-            }
+        if let Some(tray) = tray {
+            return Ok(Some(TrayInfo {
+                id: tray.id,
+                name: tray.name,
+                sequence_id: tray.order_sequence,
+                qty_x_axis: tray.qty_x_axis,
+                qty_y_axis: tray.qty_y_axis,
+                well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
+            }));
         }
+        }
+    }
 
     Ok(None)
 }
@@ -668,7 +722,7 @@ pub(super) async fn region_model_to_input_with_treatment(
         treatment_id: region.treatment_id,
         is_background_key: Some(region.is_background_key),
         treatment: None, // No longer embed full treatment object - use treatment_id to fetch via /treatments endpoint
-        sample: None,    // No longer embed full sample object - use treatment.sample_id to fetch via /samples endpoint
+        sample: None, // No longer embed full sample object - use treatment.sample_id to fetch via /samples endpoint
         tray: tray_info,
     })
 }

@@ -2,20 +2,23 @@ use crate::common::auth::Role;
 use crate::common::state::AppState;
 
 pub mod streaming_hybrid;
+use crate::routes::assets::models as s3_assets;
 use axum::{
-    extract::{Path, State, Multipart},
-    http::{HeaderMap, StatusCode, header::{CONTENT_TYPE, CONTENT_DISPOSITION}},
+    extract::{Multipart, Path, State},
+    http::{
+        HeaderMap, StatusCode,
+        header::{CONTENT_DISPOSITION, CONTENT_TYPE},
+    },
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::CRUDResource;
-use sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
-use crate::routes::assets::models as s3_assets;
 // crud_handlers!(Asset, AssetUpdate, AssetCreate);
-pub use super::models::{Asset, router as crudrouter, Entity as AssetEntity};
+pub use super::models::{Asset, Entity as AssetEntity, router as crudrouter};
 
 /// Download an asset as an attachment
 #[utoipa::path(
@@ -81,7 +84,7 @@ async fn view_asset_by_filename(
     // Try to find the asset by filename, handling the .jpg extension mismatch
     let base_query = AssetEntity::find()
         .filter(crate::routes::assets::models::Column::ExperimentId.eq(experiment_id));
-    
+
     // First try exact match
     let asset = base_query
         .clone()
@@ -89,7 +92,7 @@ async fn view_asset_by_filename(
         .one(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
     // If not found and filename doesn't end with .jpg, try adding .jpg
     let asset = if asset.is_none() && !filename.to_lowercase().ends_with(".jpg") {
         let filename_with_jpg = format!("{filename}.jpg");
@@ -101,9 +104,9 @@ async fn view_asset_by_filename(
     } else {
         asset
     };
-    
+
     let asset = asset.ok_or(StatusCode::NOT_FOUND)?;
-    
+
     serve_asset_internal(asset.id, &state, false).await
 }
 
@@ -134,9 +137,9 @@ async fn reprocess_asset(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Check if this is a processable Excel file
-    let is_merged_xlsx = (asset.original_filename.eq_ignore_ascii_case("merged.xlsx") 
-        || asset.original_filename.to_lowercase().contains("merged")) 
-        && asset.r#type == "tabular" 
+    let is_merged_xlsx = (asset.original_filename.eq_ignore_ascii_case("merged.xlsx")
+        || asset.original_filename.to_lowercase().contains("merged"))
+        && asset.r#type == "tabular"
         && asset.original_filename.to_lowercase().ends_with(".xlsx");
 
     if !is_merged_xlsx {
@@ -163,14 +166,15 @@ async fn reprocess_asset(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Process Excel file
-    match state.data_processing_service
+    match state
+        .data_processing_service
         .process_excel_file(experiment_id, file_bytes)
-        .await {
+        .await
+    {
         Ok(result) => {
             let success_message = format!(
-                "Reprocessed {} temperature readings in {}ms", 
-                result.temperature_readings_created,
-                result.processing_time_ms
+                "Reprocessed {} temperature readings in {}ms",
+                result.temperature_readings_created, result.processing_time_ms
             );
 
             // Update asset with success status
@@ -202,9 +206,7 @@ async fn reprocess_asset(
                 processing_message: sea_orm::ActiveValue::Set(Some(error_message.clone())),
                 ..Default::default()
             };
-            let _ = AssetEntity::update(update_asset)
-                .exec(&state.db)
-                .await;
+            let _ = AssetEntity::update(update_asset).exec(&state.db).await;
 
             Ok(axum::response::Json(serde_json::json!({
                 "success": false,
@@ -233,11 +235,12 @@ async fn serve_asset_internal(
 
     // Set headers
     let mut headers = HeaderMap::new();
-    
+
     // Set content type based on file extension or stored type
     let content_type = match asset.r#type.as_str() {
         "image" => {
-            let ext = asset.original_filename
+            let ext = asset
+                .original_filename
                 .split('.')
                 .next_back()
                 .unwrap_or("")
@@ -247,16 +250,19 @@ async fn serve_asset_internal(
                 "jpg" | "jpeg" => "image/jpeg",
                 "gif" => "image/gif",
                 "svg" => "image/svg+xml",
-                _ => "image/png",
+                _ => {
+                    // Default to application/octet-stream for unknown image types
+                    "application/octet-stream"
+                }
             }
-        },
+        }
         "tabular" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "netcdf" => "application/x-netcdf",
         _ => "application/octet-stream",
     };
-    
+
     headers.insert(CONTENT_TYPE, content_type.parse().unwrap());
-    
+
     if as_attachment {
         let disposition = format!("attachment; filename=\"{}\"", asset.original_filename);
         headers.insert(CONTENT_DISPOSITION, disposition.parse().unwrap());
@@ -267,7 +273,6 @@ async fn serve_asset_internal(
 
     Ok((headers, body_bytes).into_response())
 }
-
 
 /// Create a download token for bulk asset download
 #[utoipa::path(
@@ -284,22 +289,25 @@ async fn create_bulk_download_token(
     State(state): State<AppState>,
     axum::Json(payload): axum::Json<serde_json::Value>,
 ) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
-    let asset_ids = payload.get("asset_ids")
+    let asset_ids = payload
+        .get("asset_ids")
         .and_then(|v| v.as_array())
         .ok_or((StatusCode::BAD_REQUEST, "Missing asset_ids".to_string()))?;
-    
-    let asset_uuids: Result<Vec<Uuid>, _> = asset_ids.iter()
+
+    let asset_uuids: Result<Vec<Uuid>, _> = asset_ids
+        .iter()
         .map(|v| v.as_str().unwrap_or("").parse::<Uuid>())
         .collect();
-    
-    let asset_uuids = asset_uuids.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid asset IDs".to_string()))?;
-    
+
+    let asset_uuids =
+        asset_uuids.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid asset IDs".to_string()))?;
+
     if asset_uuids.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "No asset IDs provided".to_string()));
     }
-    
+
     let token = state.create_download_token(asset_uuids).await;
-    
+
     Ok(axum::Json(serde_json::json!({
         "token": token,
         "download_url": format!("/api/assets/download/{}", token)
@@ -325,9 +333,11 @@ async fn download_with_token(
     Path(token): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
     // Consume the token (it's single-use)
-    let download_token = state.consume_download_token(&token).await
-        .ok_or((StatusCode::NOT_FOUND, "Invalid or expired token".to_string()))?;
-    
+    let download_token = state.consume_download_token(&token).await.ok_or((
+        StatusCode::NOT_FOUND,
+        "Invalid or expired token".to_string(),
+    ))?;
+
     // Handle experiment download
     if let Some(experiment_id) = download_token.experiment_id {
         // Fetch experiment assets
@@ -335,48 +345,61 @@ async fn download_with_token(
             .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
             .all(&state.db)
             .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
-        
+            .map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Database error".to_string(),
+                )
+            })?;
+
         if assets.is_empty() {
-            return Err((StatusCode::NOT_FOUND, "No assets found for experiment".to_string()));
+            return Err((
+                StatusCode::NOT_FOUND,
+                "No assets found for experiment".to_string(),
+            ));
         }
-        
+
         // Use hybrid streaming: concurrent downloads + immediate streaming
-        let mut response = streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await?;
-        
+        let mut response =
+            streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await?;
+
         // Update filename for experiment
         let headers = response.headers_mut();
         headers.insert(
             CONTENT_DISPOSITION,
             format!("attachment; filename=\"experiment_{experiment_id}.zip\"")
                 .parse()
-                .unwrap()
+                .unwrap(),
         );
-        
+
         return Ok(response);
     }
-    
+
     // Handle regular asset download
     let asset_uuids = download_token.asset_ids;
     if asset_uuids.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "No assets in token".to_string()));
     }
-    
+
     // Fetch assets from database
     let assets: Vec<super::models::Model> = AssetEntity::find()
         .filter(super::models::Column::Id.is_in(asset_uuids))
         .all(&state.db)
         .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
-    
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+
     if assets.is_empty() {
         return Err((StatusCode::NOT_FOUND, "No assets found".to_string()));
     }
-    
+
     // Use hybrid streaming: concurrent downloads + immediate streaming
     streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await
 }
-
 
 /// Bulk download assets as a ZIP file (deprecated - kept for backwards compatibility)
 #[utoipa::path(
@@ -399,28 +422,34 @@ async fn bulk_download_assets(
     let mut _token: Option<String> = None;
 
     // Parse multipart form data
-    while let Some(field) = multipart.next_field().await.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid form data".to_string()))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid form data".to_string()))?
+    {
         let name = field.name().unwrap_or("").to_string();
-        let data = field.text().await.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid field data".to_string()))?;
-        
+        let data = field
+            .text()
+            .await
+            .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid field data".to_string()))?;
+
         match name.as_str() {
             "token" => _token = Some(data),
             "asset_ids" => asset_ids.push(data),
             _ => {} // ignore unknown fields
         }
     }
-    
+
     if asset_ids.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "No asset IDs provided".to_string()));
     }
 
     // Parse asset IDs as UUIDs
-    let asset_uuids: Result<Vec<Uuid>, _> = asset_ids.iter()
-        .map(|s| Uuid::parse_str(s))
-        .collect();
-        
-    let asset_uuids = asset_uuids.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid asset IDs".to_string()))?;
-    
+    let asset_uuids: Result<Vec<Uuid>, _> = asset_ids.iter().map(|s| Uuid::parse_str(s)).collect();
+
+    let asset_uuids =
+        asset_uuids.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid asset IDs".to_string()))?;
+
     if asset_uuids.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "No asset IDs provided".to_string()));
     }
@@ -430,7 +459,12 @@ async fn bulk_download_assets(
         .filter(super::models::Column::Id.is_in(asset_uuids.clone()))
         .all(&state.db)
         .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()))?;
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
 
     if assets.is_empty() {
         return Err((StatusCode::NOT_FOUND, "No assets found".to_string()));
@@ -440,28 +474,39 @@ async fn bulk_download_assets(
     streaming_hybrid::create_hybrid_streaming_zip_response(assets, &state.config).await
 }
 
-
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Asset: CRUDResource,
 {
     // Public routes (no authentication required) - token-based downloads
-    let public_router = OpenApiRouter::new()
-        .route("/download/{token}", get(download_with_token).with_state(state.clone()));
+    let public_router = OpenApiRouter::new().route(
+        "/download/{token}",
+        get(download_with_token).with_state(state.clone()),
+    );
 
     // Authenticated routes - token creation and other operations
     let mut authenticated_router = crudrouter(&state.db.clone())
-        .nest("/{id}", OpenApiRouter::new()
-            .route("/download", get(download_asset))
-            .route("/view", get(view_asset))
-            .route("/reprocess", axum::routing::post(reprocess_asset))
-            .with_state(state.clone())
+        .nest(
+            "/{id}",
+            OpenApiRouter::new()
+                .route("/download", get(download_asset))
+                .route("/view", get(view_asset))
+                .route("/reprocess", axum::routing::post(reprocess_asset))
+                .with_state(state.clone()),
         )
-        .route("/by-experiment/{experiment_id}/{filename}", 
-               get(view_asset_by_filename).with_state(state.clone()))
-        .route("/bulk-download", post(bulk_download_assets).with_state(state.clone()))
-        .route("/bulk-download-token", post(create_bulk_download_token).with_state(state.clone()));
-        
+        .route(
+            "/by-experiment/{experiment_id}/{filename}",
+            get(view_asset_by_filename).with_state(state.clone()),
+        )
+        .route(
+            "/bulk-download",
+            post(bulk_download_assets).with_state(state.clone()),
+        )
+        .route(
+            "/bulk-download-token",
+            post(create_bulk_download_token).with_state(state.clone()),
+        );
+
     // Apply authentication to the authenticated routes only
     if let Some(instance) = state.keycloak_auth_instance.clone() {
         authenticated_router = authenticated_router.layer(
