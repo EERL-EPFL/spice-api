@@ -49,9 +49,10 @@ impl MockS3Store {
     }
 
     pub fn list_objects(&self) -> Result<Vec<String>, String> {
-        Ok(self.files
+        Ok(self
+            .files
             .lock()
-            .map_err(|e| format!("Failed to acquire lock: {}", e))?
+            .map_err(|e| format!("Failed to acquire lock: {e}"))?
             .keys()
             .cloned()
             .collect())
@@ -91,12 +92,12 @@ pub async fn get_client(config: &Config) -> Arc<S3Client> {
 
 pub async fn delete_from_s3(s3_key: &str) -> Result<(), String> {
     let config = Config::from_env();
-    
+
     // Use mock for tests
     if config.tests_running {
         return MOCK_S3_STORE.delete_object(s3_key);
     }
-    
+
     let client = get_client(&config).await;
     let bucket = &config.s3_bucket_id;
 
@@ -118,11 +119,11 @@ pub async fn put_object_to_s3(s3_key: &str, data: Vec<u8>, config: &Config) -> R
     if config.tests_running {
         return MOCK_S3_STORE.put_object(s3_key, data);
     }
-    
+
     // Real S3 operation for production
     let client = get_client(config).await;
     let body = aws_sdk_s3::primitives::ByteStream::from(data);
-    
+
     match client
         .put_object()
         .bucket(&config.s3_bucket_id)
@@ -142,10 +143,10 @@ pub async fn get_object_from_s3(s3_key: &str, config: &Config) -> Result<Vec<u8>
     if config.tests_running {
         return MOCK_S3_STORE.get_object(s3_key);
     }
-    
+
     // Real S3 operation for production
     let client = get_client(config).await;
-    
+
     match client
         .get_object()
         .bucket(&config.s3_bucket_id)
@@ -154,7 +155,10 @@ pub async fn get_object_from_s3(s3_key: &str, config: &Config) -> Result<Vec<u8>
         .await
     {
         Ok(response) => {
-            let body = response.body.collect().await
+            let body = response
+                .body
+                .collect()
+                .await
                 .map_err(|e| format!("Failed to read S3 object body: {}", e))?;
             Ok(body.into_bytes().to_vec())
         }
