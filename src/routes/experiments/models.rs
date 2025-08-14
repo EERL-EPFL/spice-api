@@ -1,7 +1,5 @@
 use super::temperatures::models::TemperatureReading;
-use crate::routes::experiments::services::{
-    build_results_summary, create_region_active_models, region_model_to_input_with_treatment,
-};
+use crate::routes::experiments::services::build_results_summary;
 use chrono::{DateTime, Utc};
 use crudcrate::traits::MergeIntoActiveModel;
 use crudcrate::{CRUDResource, EntityToModels};
@@ -118,19 +116,6 @@ impl Related<crate::routes::experiments::phase_transitions::models::Entity> for 
 
 impl ActiveModelBehavior for ActiveModel {}
 
-// #[derive(ToSchema, Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
-// pub struct TemperatureProbeValues {
-//     pub probe_1: Option<Decimal>,
-//     pub probe_2: Option<Decimal>,
-//     pub probe_3: Option<Decimal>,
-//     pub probe_4: Option<Decimal>,
-//     pub probe_5: Option<Decimal>,
-//     pub probe_6: Option<Decimal>,
-//     pub probe_7: Option<Decimal>,
-//     pub probe_8: Option<Decimal>,
-//     pub average: Option<Decimal>,
-// }
-
 #[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct WellSummary {
     pub row: i32,
@@ -145,8 +130,6 @@ pub struct WellSummary {
     pub tray_id: Option<String>,      // UUID of the tray
     pub tray_name: Option<String>,
     pub dilution_factor: Option<i32>,
-    // Full objects with UUIDs for UI linking
-    // pub treatment: Option<crate::routes::treatments::models::TreatmentList>,
     pub sample: Option<crate::routes::samples::models::Sample>,
 }
 
@@ -174,40 +157,9 @@ pub struct ExperimentResultsSummary {
     pub first_timestamp: Option<DateTime<Utc>>,
     pub last_timestamp: Option<DateTime<Utc>>,
     pub sample_results: Vec<SampleResultsSummary>,
-    // Keep original format for backwards compatibility
     pub well_summaries: Vec<WellSummary>,
 }
 
-#[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct TrayInfo {
-    pub id: Uuid,
-    pub name: Option<String>,
-    pub sequence_id: i32,
-    pub qty_x_axis: Option<i32>,
-    pub qty_y_axis: Option<i32>,
-    pub well_relative_diameter: Option<String>,
-}
-
-// #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-// pub struct RegionInput {
-//     pub name: Option<String>,
-//     pub tray_sequence_id: Option<i32>, // Renamed from tray_id for clarity
-//     pub col_min: Option<i32>,
-//     pub col_max: Option<i32>,
-//     pub row_min: Option<i32>,
-//     pub row_max: Option<i32>,
-//     pub color: Option<String>, // hex color
-//     pub dilution: Option<String>,
-//     pub treatment_id: Option<Uuid>,
-//     pub is_background_key: Option<bool>,
-//     #[serde(skip_serializing_if = "Option::is_none")]
-//     pub treatment: Option<crate::routes::treatments::models::Treatment>,
-//     pub sample: Option<crate::routes::samples::models::Sample>,
-//     #[serde(skip_serializing_if = "Option::is_none")]
-//     pub tray: Option<TrayInfo>,
-// }
-
-// Custom crudcrate functions
 pub(super) async fn get_one_experiment(
     db: &DatabaseConnection,
     id: Uuid,
@@ -222,23 +174,20 @@ pub(super) async fn get_one_experiment(
         .all(db)
         .await?;
 
-    let regions = model
+    let regions: Vec<crate::routes::tray_configurations::regions::models::Region> = model
         .find_related(crate::routes::tray_configurations::regions::models::Entity)
         .all(db)
-        .await?;
-
-    let mut regions_with_treatment = Vec::new();
-    for region in regions {
-        let region_input = region_model_to_input_with_treatment(region, db).await?;
-        regions_with_treatment.push(region_input);
-    }
+        .await?
+        .into_iter()
+        .map(Into::into) // Direct conversion using EntityToModels
+        .collect();
 
     // Build results summary
     let results_summary = build_results_summary(id, db).await?;
 
     let mut experiment: Experiment = model.into();
     experiment.assets = s3_assets.into_iter().map(Into::into).collect();
-    experiment.regions = regions_with_treatment;
+    experiment.regions = regions;
     experiment.results_summary = results_summary;
 
     Ok(experiment)
@@ -285,10 +234,26 @@ pub(super) async fn create_experiment(
 
     // Handle regions if provided
     if !regions_to_create.is_empty() {
-        let region_models = create_region_active_models(experiment.id, regions_to_create, &txn);
+        for region in regions_to_create {
+            // Convert Region to ActiveModel for insertion
+            let region_active = crate::routes::tray_configurations::regions::models::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                experiment_id: Set(experiment.id),
+                treatment_id: Set(region.treatment_id),
+                name: Set(region.name),
+                display_colour_hex: Set(region.display_colour_hex),
+                tray_id: Set(region.tray_id),
+                col_min: Set(region.col_min),
+                row_min: Set(region.row_min),
+                col_max: Set(region.col_max),
+                row_max: Set(region.row_max),
+                dilution_factor: Set(region.dilution_factor),
+                is_background_key: Set(region.is_background_key),
+                created_at: Set(chrono::Utc::now()),
+                last_updated: Set(chrono::Utc::now()),
+            };
 
-        for region_model in region_models {
-            region_model.insert(&txn).await?;
+            region_active.insert(&txn).await?;
         }
     }
 
@@ -329,10 +294,26 @@ pub(super) async fn update_experiment(
             .await?;
 
         // Create new regions
-        let region_models = create_region_active_models(id, regions, &txn);
+        for region in regions {
+            // Convert Region to ActiveModel for insertion
+            let region_active = crate::routes::tray_configurations::regions::models::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                experiment_id: Set(id),
+                treatment_id: Set(region.treatment_id),
+                name: Set(region.name),
+                display_colour_hex: Set(region.display_colour_hex),
+                tray_id: Set(region.tray_id),
+                col_min: Set(region.col_min),
+                row_min: Set(region.row_min),
+                col_max: Set(region.col_max),
+                row_max: Set(region.row_max),
+                dilution_factor: Set(region.dilution_factor),
+                is_background_key: Set(region.is_background_key),
+                created_at: Set(chrono::Utc::now()),
+                last_updated: Set(chrono::Utc::now()),
+            };
 
-        for region_model in region_models {
-            region_model.insert(&txn).await?;
+            region_active.insert(&txn).await?;
         }
     }
 
@@ -366,20 +347,17 @@ pub(super) async fn get_all_experiments(
             .all(db)
             .await?;
 
-        let regions = model
+        let regions: Vec<crate::routes::tray_configurations::regions::models::Region> = model
             .find_related(crate::routes::tray_configurations::regions::models::Entity)
             .all(db)
-            .await?;
-
-        let mut regions_with_treatment = Vec::new();
-        for region in regions {
-            let region_input = region_model_to_input_with_treatment(region, db).await?;
-            regions_with_treatment.push(region_input);
-        }
+            .await?
+            .into_iter()
+            .map(Into::into) // Direct conversion using EntityToModels
+            .collect();
 
         let mut experiment: Experiment = model.into();
         experiment.assets = s3_assets.into_iter().map(Into::into).collect();
-        experiment.regions = regions_with_treatment;
+        experiment.regions = regions;
 
         experiments.push(experiment);
     }

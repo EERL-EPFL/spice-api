@@ -1,15 +1,15 @@
-use super::models::{ExperimentResultsSummary, TrayInfo, WellSummary};
+use super::models::{ExperimentResultsSummary, WellSummary};
 use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str};
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
-    tray_configurations::regions::models as regions, tray_configurations::regions::models::Region,
+    tray_configurations::regions::models as regions,
     tray_configurations::trays::models as trays, tray_configurations::wells::models as wells,
 };
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use sea_orm::{ActiveValue, ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
+use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
 use uuid::Uuid;
 
 // Helper function to load temperature readings and calculate time span
@@ -557,125 +557,6 @@ pub(super) async fn build_results_summary(
     }))
 }
 
-// Convert regions input to active models
-pub(super) fn create_region_active_models(
-    experiment_id: Uuid,
-    regions: Vec<Region>,
-    _db: &impl ConnectionTrait,
-) -> Vec<crate::routes::tray_configurations::regions::models::ActiveModel> {
-    let mut active_models = Vec::new();
 
-    for region in regions {
-        let dilution_factor = region.dilution.as_ref().and_then(|s| s.parse::<i32>().ok());
 
-        let active_model = crate::routes::tray_configurations::regions::models::ActiveModel {
-            id: ActiveValue::Set(Uuid::new_v4()),
-            experiment_id: ActiveValue::Set(experiment_id),
-            treatment_id: ActiveValue::Set(region.treatment_id),
-            name: ActiveValue::Set(region.name),
-            display_colour_hex: ActiveValue::Set(region.color),
-            tray_id: ActiveValue::Set(region.tray_sequence_id), // Use tray_sequence_id from input
-            col_min: ActiveValue::Set(region.col_min),
-            row_min: ActiveValue::Set(region.row_min),
-            col_max: ActiveValue::Set(region.col_max),
-            row_max: ActiveValue::Set(region.row_max),
-            dilution_factor: ActiveValue::Set(dilution_factor),
-            is_background_key: ActiveValue::Set(region.is_background_key.unwrap_or(false)),
-            created_at: ActiveValue::Set(chrono::Utc::now()),
-            last_updated: ActiveValue::Set(chrono::Utc::now()),
-        };
 
-        active_models.push(active_model);
-    }
-
-    active_models
-}
-
-// Fetch treatment information with sample and location data
-pub(super) async fn fetch_treatment_info(
-    treatment_id: Uuid,
-    db: &impl ConnectionTrait,
-) -> Result<
-    Option<(
-        crate::routes::treatments::models::Treatment,
-        Option<crate::routes::samples::models::Sample>,
-    )>,
-    DbErr,
-> {
-    let treatment = crate::routes::treatments::models::Entity::find_by_id(treatment_id)
-        .one(db)
-        .await?;
-
-    if let Some(treatment) = treatment {
-        let sample = if let Some(sample_id) = treatment.sample_id {
-            crate::routes::samples::models::Entity::find_by_id(sample_id)
-                .one(db)
-                .await?
-        } else {
-            None
-        };
-
-        let treatment_api: crate::routes::treatments::models::Treatment = treatment.clone().into();
-        let sample_api = sample.map(std::convert::Into::into);
-        Ok(Some((treatment_api, sample_api)))
-    } else {
-        Ok(None)
-    }
-}
-
-// Fetch tray information by sequence ID for a given experiment
-pub(super) async fn fetch_tray_info_by_sequence(
-    experiment_id: Uuid,
-    tray_sequence_id: i32,
-    db: &impl ConnectionTrait,
-) -> Result<Option<TrayInfo>, DbErr> {
-    use crate::routes::{
-        experiments::models as experiments, tray_configurations::trays::models as trays,
-    };
-
-    // Get the experiment to find its tray configuration
-    let experiment = experiments::Entity::find_by_id(experiment_id)
-        .one(db)
-        .await?;
-
-    if let Some(exp) = experiment {
-        if let Some(tray_config_id) = exp.tray_configuration_id {
-            // Find the tray with the matching sequence ID
-            // Note: After schema simplification, all tray data is in the trays table
-            let tray = trays::Entity::find()
-                .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
-                .filter(trays::Column::OrderSequence.eq(tray_sequence_id))
-                .one(db)
-                .await?;
-
-            if let Some(tray) = tray {
-                return Ok(Some(TrayInfo {
-                    id: tray.id,
-                    name: tray.name,
-                    sequence_id: tray.order_sequence,
-                    qty_x_axis: tray.qty_x_axis,
-                    qty_y_axis: tray.qty_y_axis,
-                    well_relative_diameter: tray.well_relative_diameter.map(|d| d.to_string()),
-                }));
-            }
-        }
-    }
-
-    Ok(None)
-}
-
-// Convert region model back to RegionInput for response
-pub(super) async fn region_model_to_input_with_treatment(
-    region: crate::routes::tray_configurations::regions::models::Model,
-    db: &impl ConnectionTrait,
-) -> Result<Region, DbErr> {
-    let (_treatment, _sample) = if let Some(treatment_id) = region.treatment_id {
-        fetch_treatment_info(treatment_id, db)
-            .await?
-            .map_or((None, None), |(t, s)| (Some(t), s))
-    } else {
-        (None, None)
-    };
-
-    Ok(region.into())
-}

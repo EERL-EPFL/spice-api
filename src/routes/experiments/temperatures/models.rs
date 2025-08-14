@@ -43,7 +43,8 @@ pub struct Model {
     pub probe_8: Option<Decimal>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
-    #[crudcrate(non_db_attr, default=None)]
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = None)]
     pub average: Option<Decimal>,
 }
 

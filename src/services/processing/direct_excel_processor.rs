@@ -191,8 +191,6 @@ impl DirectExcelProcessor {
             probe_8: Set(probe_values[7]),
             image_filename: Set(image_filename),
             created_at: Set(chrono::Utc::now()),
-            // 3.5 in decimal format
-            average: Set(Decimal::from_f64(3.5)),
         }
     }
 
