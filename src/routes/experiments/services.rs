@@ -1,13 +1,11 @@
-use super::models::{
-    ExperimentResultsSummary, RegionInput, TemperatureProbeValues, TrayInfo, WellSummary,
-};
+use super::models::{ExperimentResultsSummary, TrayInfo, WellSummary};
 use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str};
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
-    tray_configurations::regions::models as regions, tray_configurations::trays::models as trays,
-    tray_configurations::wells::models as wells,
+    tray_configurations::regions::models as regions, tray_configurations::regions::models::Region,
+    tray_configurations::trays::models as trays, tray_configurations::wells::models as wells,
 };
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -389,7 +387,12 @@ fn build_well_summaries(
                     Some(avg.round_dp(3))
                 };
 
-                let temperature_probes = TemperatureProbeValues {
+                let temperature_probes = super::temperatures::models::TemperatureReading {
+                    experiment_id: temp_reading.experiment_id,
+                    timestamp: temp_reading.timestamp,
+                    id: temp_reading.id,
+                    image_filename: temp_reading.image_filename.clone(),
+                    created_at: temp_reading.created_at,
                     probe_1: temp_reading.probe_1.map(|d| d.round_dp(3)),
                     probe_2: temp_reading.probe_2.map(|d| d.round_dp(3)),
                     probe_3: temp_reading.probe_3.map(|d| d.round_dp(3)),
@@ -557,7 +560,7 @@ pub(super) async fn build_results_summary(
 // Convert regions input to active models
 pub(super) fn create_region_active_models(
     experiment_id: Uuid,
-    regions: Vec<RegionInput>,
+    regions: Vec<Region>,
     _db: &impl ConnectionTrait,
 ) -> Vec<crate::routes::tray_configurations::regions::models::ActiveModel> {
     let mut active_models = Vec::new();
@@ -665,7 +668,7 @@ pub(super) async fn fetch_tray_info_by_sequence(
 pub(super) async fn region_model_to_input_with_treatment(
     region: crate::routes::tray_configurations::regions::models::Model,
     db: &impl ConnectionTrait,
-) -> Result<RegionInput, DbErr> {
+) -> Result<Region, DbErr> {
     let (_treatment, _sample) = if let Some(treatment_id) = region.treatment_id {
         fetch_treatment_info(treatment_id, db)
             .await?
@@ -674,26 +677,5 @@ pub(super) async fn region_model_to_input_with_treatment(
         (None, None)
     };
 
-    // Get tray information for this region
-    let tray_info = if let Some(tray_sequence_id) = region.tray_id {
-        fetch_tray_info_by_sequence(region.experiment_id, tray_sequence_id, db).await?
-    } else {
-        None
-    };
-
-    Ok(RegionInput {
-        name: region.name,
-        tray_sequence_id: region.tray_id, // Map tray_id from DB to tray_sequence_id in response
-        col_min: region.col_min,
-        col_max: region.col_max,
-        row_min: region.row_min,
-        row_max: region.row_max,
-        color: region.display_colour_hex,
-        dilution: region.dilution_factor.map(|d| d.to_string()),
-        treatment_id: region.treatment_id,
-        is_background_key: Some(region.is_background_key),
-        treatment: None, // No longer embed full treatment object - use treatment_id to fetch via /treatments endpoint
-        sample: None, // No longer embed full sample object - use treatment.sample_id to fetch via /samples endpoint
-        tray: tray_info,
-    })
+    Ok(region.into())
 }

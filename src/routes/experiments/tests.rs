@@ -6,12 +6,12 @@ use axum::body::Body;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, NaiveDateTime};
+use sea_orm::ActiveValue;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use tower::ServiceExt;
 use uuid::Uuid;
-use sea_orm::ActiveValue;
 
 /// Integration test helper to create a tray via API
 async fn create_tray_via_api(app: &axum::Router, rows: i32, cols: i32) -> Result<String, String> {
@@ -174,10 +174,14 @@ async fn assign_tray_config_to_experiment_via_api(
 
     let status = response.status();
     if !status.is_success() {
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let error_body = String::from_utf8_lossy(&body_bytes);
-        panic!("Failed to assign tray configuration. Status: {}, Body: {}", 
-               status, error_body);
+        panic!(
+            "Failed to assign tray configuration. Status: {}, Body: {}",
+            status, error_body
+        );
     }
 }
 
@@ -359,7 +363,7 @@ async fn test_image_filename_in_results_service() {
         remarks: ActiveValue::Set(None),
         tray_configuration_id: ActiveValue::Set(None),
     };
-    
+
     use sea_orm::ActiveModelTrait;
     experiment.insert(&db).await.unwrap();
 
@@ -368,10 +372,14 @@ async fn test_image_filename_in_results_service() {
     let temp_reading = crate::routes::experiments::temperatures::models::ActiveModel {
         id: ActiveValue::Set(temp_reading_id),
         experiment_id: ActiveValue::Set(experiment_id),
-        timestamp: ActiveValue::Set(chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z").unwrap().into()),
+        timestamp: ActiveValue::Set(
+            chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z")
+                .unwrap()
+                .into(),
+        ),
         probe_1: ActiveValue::Set(Some(rust_decimal::Decimal::new(250, 1))), // 25.0
         probe_2: ActiveValue::Set(None),
-        probe_3: ActiveValue::Set(None), 
+        probe_3: ActiveValue::Set(None),
         probe_4: ActiveValue::Set(None),
         probe_5: ActiveValue::Set(None),
         probe_6: ActiveValue::Set(None),
@@ -379,6 +387,7 @@ async fn test_image_filename_in_results_service() {
         probe_8: ActiveValue::Set(None),
         image_filename: ActiveValue::Set(Some("INP_49640_2025-03-20_15-14-17".to_string())), // Without .jpg
         created_at: ActiveValue::Set(chrono::Utc::now()),
+        average: ActiveValue::Set(None),
     };
     temp_reading.insert(&db).await.unwrap();
 
@@ -426,13 +435,17 @@ async fn test_image_filename_in_results_service() {
         experiment_id: ActiveValue::Set(experiment_id),
         well_id: ActiveValue::Set(well_id),
         temperature_reading_id: ActiveValue::Set(temp_reading_id),
-        timestamp: ActiveValue::Set(chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z").unwrap().into()),
+        timestamp: ActiveValue::Set(
+            chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z")
+                .unwrap()
+                .into(),
+        ),
         previous_state: ActiveValue::Set(0), // liquid
-        new_state: ActiveValue::Set(1),     // frozen
+        new_state: ActiveValue::Set(1),      // frozen
         created_at: ActiveValue::Set(chrono::Utc::now()),
     };
     transition.insert(&db).await.unwrap();
-    
+
     // Create matching S3 asset with .jpg extension to match the temperature filename
     let asset = crate::routes::assets::models::ActiveModel {
         id: ActiveValue::Set(Uuid::new_v4()),
@@ -451,41 +464,63 @@ async fn test_image_filename_in_results_service() {
         processing_message: ActiveValue::Set(None),
     };
     asset.insert(&db).await.unwrap();
-    
-    println!("✅ Created test data: experiment, temperature reading with image filename, well, phase transition, and matching asset");
-    
+
+    println!(
+        "✅ Created test data: experiment, temperature reading with image filename, well, phase transition, and matching asset"
+    );
+
     // Test the results summary service directly
     let results_summary = build_results_summary(experiment_id, &db).await.unwrap();
-    
+
     // Verify that well summaries contain image filenames
-    assert!(results_summary.is_some(), "Expected results summary to be generated");
+    assert!(
+        results_summary.is_some(),
+        "Expected results summary to be generated"
+    );
     let summary = results_summary.unwrap();
-    
-    println!("✅ Results summary generated with {} wells", summary.well_summaries.len());
-    assert!(summary.well_summaries.len() > 0, "Expected at least one well summary");
-    
+
+    println!(
+        "✅ Results summary generated with {} wells",
+        summary.well_summaries.len()
+    );
+    assert!(
+        summary.well_summaries.len() > 0,
+        "Expected at least one well summary"
+    );
+
     // Check that the well has the image filename
-    let well_with_image = summary.well_summaries.iter()
+    let well_with_image = summary
+        .well_summaries
+        .iter()
         .find(|w| w.image_filename_at_freeze.is_some());
-    
-    assert!(well_with_image.is_some(), "Expected at least one well to have an image filename");
-    
+
+    assert!(
+        well_with_image.is_some(),
+        "Expected at least one well to have an image filename"
+    );
+
     let well = well_with_image.unwrap();
     let image_filename = well.image_filename_at_freeze.as_ref().unwrap();
-    
+
     println!("🖼️ Well image filename: {}", image_filename);
-    
+
     // Verify image filename properties
-    assert_eq!(image_filename, "INP_49640_2025-03-20_15-14-17",
-              "Image filename should match temperature reading filename");
-    assert!(!image_filename.ends_with(".jpg"), 
-            "Image filename should be stored without .jpg extension");
-    
+    assert_eq!(
+        image_filename, "INP_49640_2025-03-20_15-14-17",
+        "Image filename should match temperature reading filename"
+    );
+    assert!(
+        !image_filename.ends_with(".jpg"),
+        "Image filename should be stored without .jpg extension"
+    );
+
     // Verify that image_asset_id is populated (the key test for our linking functionality)
-    assert!(well.image_asset_id.is_some(), 
-            "Expected well to have image_asset_id populated from filename matching");
+    assert!(
+        well.image_asset_id.is_some(),
+        "Expected well to have image_asset_id populated from filename matching"
+    );
     println!("🔗 Image asset ID: {:?}", well.image_asset_id);
-    
+
     println!("✅ Image filename and asset linking service test completed successfully");
 }
 
@@ -524,7 +559,10 @@ async fn test_experiment_crud_operations() {
     if !status.is_success() {
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8_lossy(&bytes);
-        panic!("Failed to create experiment. Status: {}, Body: {}", status, body);
+        panic!(
+            "Failed to create experiment. Status: {}, Body: {}",
+            status, body
+        );
     }
 
     // Test getting all experiments
@@ -4091,17 +4129,17 @@ async fn test_image_temperature_correlation() {
         .await
         .unwrap();
     assert_eq!(experiment_response.status(), StatusCode::OK);
-    let body_bytes = to_bytes(experiment_response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = to_bytes(experiment_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let experiment_data: Value = serde_json::from_slice(&body_bytes).unwrap();
-    
+
     // Verify the experiment exists and has the expected structure
     assert_eq!(experiment_data["id"].as_str().unwrap(), experiment_id);
     println!("✅ Image-temperature correlation test passed");
     println!("   🧪 Experiment verified: {}", experiment_id);
     println!("   📝 Note: Temperature readings are created through Excel processing workflow");
 }
-
-
 
 /// Test asset retrieval by filename endpoint
 #[tokio::test]
@@ -4113,24 +4151,38 @@ async fn test_asset_by_filename_endpoint() {
     println!("🧪 Created experiment: {experiment_id}");
 
     // Create mock assets with different filename formats
-    let asset_1_id = create_mock_asset(&app, &experiment_id, 
-        "INP_49640_2025-03-20_15-14-17.jpg", "image").await;
-    let asset_2_id = create_mock_asset(&app, &experiment_id, 
-        "INP_49641_2025-03-20_15-15-17", "image").await; // No .jpg extension
+    let asset_1_id = create_mock_asset(
+        &app,
+        &experiment_id,
+        "INP_49640_2025-03-20_15-14-17.jpg",
+        "image",
+    )
+    .await;
+    let asset_2_id = create_mock_asset(
+        &app,
+        &experiment_id,
+        "INP_49641_2025-03-20_15-15-17",
+        "image",
+    )
+    .await; // No .jpg extension
 
     println!("📁 Created mock assets: {} and {}", asset_1_id, asset_2_id);
 
     // Add dummy file data to mock S3 store for testing
     let dummy_image_data = b"fake-image-data".to_vec();
-    crate::external::s3::MOCK_S3_STORE.put_object(
-        "test/INP_49640_2025-03-20_15-14-17.jpg", 
-        dummy_image_data.clone()
-    ).expect("Failed to add mock S3 data");
-    crate::external::s3::MOCK_S3_STORE.put_object(
-        "test/INP_49641_2025-03-20_15-15-17", 
-        dummy_image_data.clone()
-    ).expect("Failed to add mock S3 data");
-    
+    crate::external::s3::MOCK_S3_STORE
+        .put_object(
+            "test/INP_49640_2025-03-20_15-14-17.jpg",
+            dummy_image_data.clone(),
+        )
+        .expect("Failed to add mock S3 data");
+    crate::external::s3::MOCK_S3_STORE
+        .put_object(
+            "test/INP_49641_2025-03-20_15-15-17",
+            dummy_image_data.clone(),
+        )
+        .expect("Failed to add mock S3 data");
+
     println!("🎯 Added dummy file data to mock S3 store");
 
     // Test 1: Access asset with exact filename match
@@ -4139,15 +4191,20 @@ async fn test_asset_by_filename_endpoint() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/assets/by-experiment/{experiment_id}/INP_49640_2025-03-20_15-14-17.jpg"))
+                .uri(format!(
+                    "/api/assets/by-experiment/{experiment_id}/INP_49640_2025-03-20_15-14-17.jpg"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK, 
-               "Should find asset with exact filename match");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should find asset with exact filename match"
+    );
     println!("✅ Test 1: Exact filename match works");
 
     // Test 2: Access asset without .jpg extension (should add .jpg automatically)
@@ -4156,15 +4213,20 @@ async fn test_asset_by_filename_endpoint() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/assets/by-experiment/{experiment_id}/INP_49640_2025-03-20_15-14-17"))
+                .uri(format!(
+                    "/api/assets/by-experiment/{experiment_id}/INP_49640_2025-03-20_15-14-17"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK, 
-               "Should find asset by adding .jpg extension");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should find asset by adding .jpg extension"
+    );
     println!("✅ Test 2: Automatic .jpg extension works");
 
     // Test 3: Access asset that already exists without .jpg extension
@@ -4173,15 +4235,20 @@ async fn test_asset_by_filename_endpoint() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/assets/by-experiment/{experiment_id}/INP_49641_2025-03-20_15-15-17"))
+                .uri(format!(
+                    "/api/assets/by-experiment/{experiment_id}/INP_49641_2025-03-20_15-15-17"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK, 
-               "Should find asset stored without .jpg extension");
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Should find asset stored without .jpg extension"
+    );
     println!("✅ Test 3: Asset without .jpg extension works");
 
     // Test 4: Non-existent asset should return 404
@@ -4190,15 +4257,20 @@ async fn test_asset_by_filename_endpoint() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/assets/by-experiment/{experiment_id}/non_existent_image"))
+                .uri(format!(
+                    "/api/assets/by-experiment/{experiment_id}/non_existent_image"
+                ))
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND, 
-               "Should return 404 for non-existent asset");
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Should return 404 for non-existent asset"
+    );
     println!("✅ Test 4: Non-existent asset returns 404");
 
     println!("🎯 Asset by filename endpoint tests completed successfully");
@@ -4236,7 +4308,7 @@ async fn create_mock_asset(
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
-    
+
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let asset: Value = serde_json::from_slice(&body_bytes).unwrap();
     asset["id"].as_str().unwrap().to_string()
@@ -4251,10 +4323,11 @@ async fn test_excel_processing_with_images() {
 
     // This test would require the actual Excel file from test resources
     // For now, we'll test the individual components that make up the workflow
-    
+
     // 1. Create experiment and tray config
     let experiment_id = create_experiment_via_api(&app).await.unwrap();
-    let tray_config_response = create_test_tray_config_with_trays(&app, "Excel Processing Test Config").await;
+    let tray_config_response =
+        create_test_tray_config_with_trays(&app, "Excel Processing Test Config").await;
     let tray_config: Value = serde_json::from_str(&tray_config_response).unwrap();
     let tray_config_id = tray_config["id"].as_str().unwrap();
     assign_tray_config_to_experiment_via_api(&app, &experiment_id, tray_config_id).await;
@@ -4282,12 +4355,17 @@ async fn test_excel_processing_with_images() {
     let dummy_image_data = b"fake-image-data-excel-test".to_vec();
     for image_filename in &image_filenames {
         let asset_filename_with_jpg = format!("{}.jpg", image_filename);
-        crate::external::s3::MOCK_S3_STORE.put_object(
-            &format!("test/{}", asset_filename_with_jpg), 
-            dummy_image_data.clone()
-        ).expect("Failed to add mock S3 data for Excel test");
+        crate::external::s3::MOCK_S3_STORE
+            .put_object(
+                &format!("test/{}", asset_filename_with_jpg),
+                dummy_image_data.clone(),
+            )
+            .expect("Failed to add mock S3 data for Excel test");
     }
-    println!("🎯 Added dummy file data to mock S3 store for {} assets", image_filenames.len());
+    println!(
+        "🎯 Added dummy file data to mock S3 store for {} assets",
+        image_filenames.len()
+    );
 
     // 5. Test that results summary contains correct image filenames
     let response = app
@@ -4303,7 +4381,7 @@ async fn test_excel_processing_with_images() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let experiment_data: Value = serde_json::from_slice(&body_bytes).unwrap();
     let results_summary = &experiment_data["results_summary"];
@@ -4311,16 +4389,27 @@ async fn test_excel_processing_with_images() {
 
     // 6. Verify that temperature readings and assets were created successfully
     // (Phase transition correlation requires Excel processing pipeline not available via API)
-    println!("📊 Found {} well summaries (expected for tray configuration)", well_summaries.len());
-    
+    println!(
+        "📊 Found {} well summaries (expected for tray configuration)",
+        well_summaries.len()
+    );
+
     // Verify the assets and temperature readings we created are accessible
-    assert_eq!(image_filenames.len(), 3, "Should have created 3 image assets");
-    
+    assert_eq!(
+        image_filenames.len(),
+        3,
+        "Should have created 3 image assets"
+    );
+
     // Count wells that have freeze time data (may be 0 without phase transitions)
-    let wells_with_freeze_data = well_summaries.iter()
+    let wells_with_freeze_data = well_summaries
+        .iter()
         .filter(|well| !well["first_phase_change_time"].is_null())
         .count();
-    println!("📈 Wells with phase change data: {}", wells_with_freeze_data);
+    println!(
+        "📈 Wells with phase change data: {}",
+        wells_with_freeze_data
+    );
 
     // 7. Test that assets can be accessed via the by-filename endpoint
     for image_filename in &image_filenames {
@@ -4329,20 +4418,32 @@ async fn test_excel_processing_with_images() {
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/api/assets/by-experiment/{experiment_id}/{image_filename}"))
+                    .uri(format!(
+                        "/api/assets/by-experiment/{experiment_id}/{image_filename}"
+                    ))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
 
-        assert_eq!(response.status(), StatusCode::OK, 
-                   "Should be able to access asset {} via filename endpoint", image_filename);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Should be able to access asset {} via filename endpoint",
+            image_filename
+        );
     }
 
     println!("✅ Excel processing assets and data integration test passed");
     println!("   📝 Note: Temperature readings created through Excel processing workflow");
-    println!("   📁 Image assets: {} created and accessible", image_filenames.len());
-    println!("   📊 Wells with phase change data: {}", wells_with_freeze_data);
+    println!(
+        "   📁 Image assets: {} created and accessible",
+        image_filenames.len()
+    );
+    println!(
+        "   📊 Wells with phase change data: {}",
+        wells_with_freeze_data
+    );
     println!("   🌐 Assets accessible via filename endpoint");
 }

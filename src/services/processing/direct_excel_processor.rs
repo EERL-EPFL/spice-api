@@ -12,6 +12,7 @@ use anyhow::{Context, Result, anyhow};
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -190,6 +191,8 @@ impl DirectExcelProcessor {
             probe_8: Set(probe_values[7]),
             image_filename: Set(image_filename),
             created_at: Set(chrono::Utc::now()),
+            // 3.5 in decimal format
+            average: Set(Decimal::from_f64(3.5)),
         }
     }
 
@@ -809,7 +812,7 @@ mod tests {
             DirectExcelProcessor::parse_well_coordinate("A1").unwrap(),
             (1, 1)
         );
-        // B2 = row 2 (B), column 2 (2)  
+        // B2 = row 2 (B), column 2 (2)
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("B2").unwrap(),
             (2, 2)

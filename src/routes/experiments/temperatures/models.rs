@@ -43,6 +43,8 @@ pub struct Model {
     pub probe_8: Option<Decimal>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
+    #[crudcrate(non_db_attr, default=None)]
+    pub average: Option<Decimal>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

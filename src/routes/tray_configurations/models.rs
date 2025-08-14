@@ -1,35 +1,12 @@
 use chrono::{DateTime, Utc};
 use crudcrate::traits::MergeIntoActiveModel;
 use crudcrate::{CRUDResource, EntityToModels};
-use rust_decimal::Decimal;
+
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
 use sea_orm::{QueryOrder, QuerySelect, Set};
 use uuid::Uuid;
 
-/// Input type for tray data in create/update requests (excludes server-managed fields)
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
-pub struct TrayInput {
-    pub order_sequence: i32,
-    pub rotation_degrees: i32,
-    pub name: Option<String>,
-    pub qty_x_axis: Option<i32>,
-    pub qty_y_axis: Option<i32>,
-    pub well_relative_diameter: Option<Decimal>,
-}
-
-impl From<crate::routes::tray_configurations::trays::models::Model> for TrayInput {
-    fn from(model: crate::routes::tray_configurations::trays::models::Model) -> Self {
-        Self {
-            order_sequence: model.order_sequence,
-            rotation_degrees: model.rotation_degrees,
-            name: model.name,
-            qty_x_axis: model.qty_x_axis,
-            qty_y_axis: model.qty_y_axis,
-            well_relative_diameter: model.well_relative_diameter,
-        }
-    }
-}
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "tray_configurations")]
 #[crudcrate(
@@ -59,7 +36,7 @@ pub struct Model {
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![])]
-    pub trays: Vec<TrayInput>,
+    pub trays: Vec<super::trays::models::Tray>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
     pub associated_experiments: Vec<crate::routes::experiments::models::Experiment>,
@@ -97,8 +74,10 @@ pub async fn get_one_tray_configuration(
         .find_with_related(crate::routes::tray_configurations::trays::models::Entity)
         .all(db)
         .await?;
-    
-    let (model, mut trays) = results.into_iter().next()
+
+    let (model, mut trays) = results
+        .into_iter()
+        .next()
         .ok_or_else(|| DbErr::RecordNotFound("tray_configuration not found".to_string()))?;
 
     // Load associated experiments
@@ -145,13 +124,13 @@ pub async fn get_all_tray_configurations(
         .into_iter()
         .map(|(model, mut trays)| {
             let mut tray_config: TrayConfigurationList = model.into();
-            
+
             // Sort trays by order_sequence
             trays.sort_by_key(|t| t.order_sequence);
-            
+
             // Convert trays to TrayList
             tray_config.trays = trays.into_iter().map(Into::into).collect();
-            
+
             tray_config
         })
         .collect();
@@ -255,21 +234,27 @@ pub async fn update_tray_configuration(
     let existing: ActiveModel = Entity::find_by_id(id)
         .one(db)
         .await?
-        .ok_or(DbErr::RecordNotFound("tray_configuration not found".to_string()))?
+        .ok_or(DbErr::RecordNotFound(
+            "tray_configuration not found".to_string(),
+        ))?
         .into();
 
     let trays = update_data.trays.clone();
-    let updated_model = <TrayConfigurationUpdate as MergeIntoActiveModel<ActiveModel>>::merge_into_activemodel(
-        update_data,
-        existing,
-    )?;
+    let updated_model =
+        <TrayConfigurationUpdate as MergeIntoActiveModel<ActiveModel>>::merge_into_activemodel(
+            update_data,
+            existing,
+        )?;
     updated_model.update(db).await?;
 
     // Update trays - delete and recreate
     if !trays.is_empty() {
         // Remove old trays
         crate::routes::tray_configurations::trays::models::Entity::delete_many()
-            .filter(crate::routes::tray_configurations::trays::models::Column::TrayConfigurationId.eq(id))
+            .filter(
+                crate::routes::tray_configurations::trays::models::Column::TrayConfigurationId
+                    .eq(id),
+            )
             .exec(db)
             .await?;
 
