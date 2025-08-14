@@ -31,7 +31,7 @@ pub async fn create_hybrid_streaming_zip_response(
         // Process in batches to control memory usage and concurrency
         let chunks: Vec<_> = assets_clone.chunks(MAX_CONCURRENT).collect();
         
-        for batch in chunks.iter() {
+        for batch in &chunks {
             // Start downloads for this batch
             for (file_index, asset) in batch.iter().enumerate() {
                 let s3_client = s3_client_clone.clone();
@@ -137,11 +137,10 @@ pub async fn create_hybrid_streaming_zip_response(
         let cd_len = central_directory.len() as u32;
         let total_files = assets_clone.len();
         
-        if !central_directory.is_empty() {
-            if tx.send(Ok(central_directory)).await.is_err() {
+        if !central_directory.is_empty()
+            && tx.send(Ok(central_directory)).await.is_err() {
                 return;
             }
-        }
         
         let mut end_record = Vec::with_capacity(22);
         end_record.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]); // End of central dir signature

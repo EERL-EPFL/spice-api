@@ -23,13 +23,13 @@ pub struct NucleationEvent {
     pub nucleation_time_seconds: Option<i64>,
     /// Average temperature across all temperature probes at nucleation event, in Celsius
     pub nucleation_temperature_avg_celsius: Option<Decimal>,
-    /// UI compatibility field - same as nucleation_time_seconds
+    /// UI compatibility field - same as `nucleation_time_seconds`
     pub freezing_time_seconds: Option<i64>,
-    /// UI compatibility field - same as nucleation_temperature_avg_celsius  
+    /// UI compatibility field - same as `nucleation_temperature_avg_celsius`  
     pub freezing_temperature_avg: Option<Decimal>,
     /// Dilution factor applied to the sample in this well
     pub dilution_factor: Option<i32>,
-    /// Final state of the well: "frozen", "liquid", or "no_data"
+    /// Final state of the well: "frozen", "liquid", or "`no_data`"
     pub final_state: String,
     /// ID of the treatment applied to this sample
     pub treatment_id: Option<Uuid>,
@@ -89,13 +89,13 @@ impl NucleationStatistics {
                 .iter()
                 .filter_map(|e| e.nucleation_time_seconds)
                 .collect();
-            times.sort();
+            times.sort_unstable();
             
             if times.is_empty() {
                 None
-            } else if times.len() % 2 == 0 {
+            } else if times.len().is_multiple_of(2) {
                 let mid = times.len() / 2;
-                Some((times[mid - 1] + times[mid]) / 2)
+                Some(i64::midpoint(times[mid - 1], times[mid]))
             } else {
                 Some(times[times.len() / 2])
             }

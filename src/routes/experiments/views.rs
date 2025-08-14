@@ -291,8 +291,7 @@ pub async fn upload_file(
         // Check if overwrite is allowed
         let allow_overwrite = headers.get("x-allow-overwrite")
             .and_then(|v| v.to_str().ok())
-            .map(|s| s == "true")
-            .unwrap_or(false);
+            .is_some_and(|s| s == "true");
 
         // Check if file already exists in database
         let existing_asset = s3_assets::Entity::find()
@@ -327,7 +326,7 @@ pub async fn upload_file(
         if let Err(e) = crate::external::s3::put_object_to_s3(&s3_key, file_bytes.clone(), &state.config).await {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to upload to S3: {}", e),
+                format!("Failed to upload to S3: {e}"),
             ));
         }
 
@@ -365,7 +364,7 @@ pub async fn upload_file(
                                   asset_role == "analysis_data";
         
         let (auto_processed, processing_message) = if should_auto_process {
-            println!("🔄 Auto-processing Excel file: {}", file_name);
+            println!("🔄 Auto-processing Excel file: {file_name}");
             
             // Create processing service and trigger processing
             let processing_service = crate::services::data_processing_service::DataProcessingService::new(state.db.clone());
@@ -383,7 +382,7 @@ pub async fn upload_file(
                         Some(format!("✅ Processed {} temperature readings in {}ms", 
                                    result.temperature_readings_created, result.processing_time_ms))
                     } else if let Some(error) = result.error {
-                        Some(format!("❌ Processing failed: {}", error))
+                        Some(format!("❌ Processing failed: {error}"))
                     } else {
                         Some("Processing completed".to_string())
                     };
@@ -398,14 +397,14 @@ pub async fn upload_file(
                         .exec(&state.db)
                         .await 
                     {
-                        println!("✅ Updated asset {} with processing status: {:?}", asset_id, processing_status);
+                        println!("✅ Updated asset {asset_id} with processing status: {processing_status:?}");
                     }
                     
                     (true, message)
                 },
                 Err(e) => {
-                    let error_msg = format!("❌ Auto-processing failed: {}", e);
-                    println!("{}", error_msg);
+                    let error_msg = format!("❌ Auto-processing failed: {e}");
+                    println!("{error_msg}");
                     
                     // Update asset with error status
                     let _ = crate::routes::assets::models::Entity::update_many()
@@ -500,7 +499,7 @@ pub async fn download_experiment_assets(
             let headers = response.headers_mut();
             headers.insert(
                 axum::http::header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"experiment_{}.zip\"", experiment_id)
+                format!("attachment; filename=\"experiment_{experiment_id}.zip\"")
                     .parse()
                     .unwrap()
             );
@@ -730,7 +729,7 @@ pub async fn process_asset_data(
     let asset = s3_assets::Entity::find_by_id(asset_id)
         .one(&app_state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {e}")))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Asset not found".to_string()))?;
 
     // Update asset status to processing
@@ -743,12 +742,12 @@ pub async fn process_asset_data(
     let _ = s3_assets::Entity::update(update_asset)
         .exec(&app_state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update asset: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update asset: {e}")))?;
 
     // Download the file from S3 to get bytes for processing (uses mock for tests)
     let file_bytes = crate::external::s3::get_object_from_s3(&asset.s3_key, &app_state.config)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to download from S3: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to download from S3: {e}")))?;
 
     // Validate file can be processed - only allow Excel files with appropriate names
     let filename = asset.original_filename.to_lowercase();
@@ -872,7 +871,7 @@ pub async fn process_asset_data(
             }
         }
         Err(e) => {
-            let error_message = format!("Processing failed: {}", e);
+            let error_message = format!("Processing failed: {e}");
 
             // Update asset with error status
             let update_asset = s3_assets::ActiveModel {
@@ -910,7 +909,7 @@ pub async fn clear_experiment_results(
         .filter(temp_models::Column::ExperimentId.eq(experiment_id))
         .exec(&app_state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clear temperature readings: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clear temperature readings: {e}")))?;
 
     // Delete phase transitions
     use crate::routes::experiments::phase_transitions::models as phase_models;
@@ -918,7 +917,7 @@ pub async fn clear_experiment_results(
         .filter(phase_models::Column::ExperimentId.eq(experiment_id))
         .exec(&app_state.db)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clear phase transitions: {}", e)))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to clear phase transitions: {e}")))?;
 
     // Update asset to remove processing status
     let update_asset = s3_assets::ActiveModel {

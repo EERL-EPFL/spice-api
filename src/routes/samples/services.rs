@@ -157,7 +157,7 @@ async fn fetch_experimental_results_for_sample(
     Ok(nucleation_events)
 }
 
-/// Convert treatment model to TreatmentWithResults by fetching experimental data
+/// Convert treatment model to `TreatmentWithResults` by fetching experimental data
 pub(super) async fn treatment_to_treatment_with_results(
     treatment: crate::routes::treatments::models::Model,
     sample_id: Uuid,

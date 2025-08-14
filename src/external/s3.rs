@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
-/// In-memory S3 mock for testing - stores files as byte arrays in a HashMap
+/// In-memory S3 mock for testing - stores files as byte arrays in a `HashMap`
 /// This provides fast, reliable testing without external dependencies
 pub struct MockS3Store {
     files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
@@ -26,7 +26,7 @@ impl MockS3Store {
     pub fn put_object(&self, key: &str, data: Vec<u8>) -> Result<(), String> {
         self.files
             .lock()
-            .map_err(|e| format!("Failed to acquire lock: {}", e))?
+            .map_err(|e| format!("Failed to acquire lock: {e}"))?
             .insert(key.to_string(), data);
         Ok(())
     }
@@ -34,16 +34,16 @@ impl MockS3Store {
     pub fn get_object(&self, key: &str) -> Result<Vec<u8>, String> {
         self.files
             .lock()
-            .map_err(|e| format!("Failed to acquire lock: {}", e))?
+            .map_err(|e| format!("Failed to acquire lock: {e}"))?
             .get(key)
             .cloned()
-            .ok_or_else(|| format!("Object not found: {}", key))
+            .ok_or_else(|| format!("Object not found: {key}"))
     }
 
     pub fn delete_object(&self, key: &str) -> Result<(), String> {
         self.files
             .lock()
-            .map_err(|e| format!("Failed to acquire lock: {}", e))?
+            .map_err(|e| format!("Failed to acquire lock: {e}"))?
             .remove(key);
         Ok(())
     }
@@ -113,7 +113,7 @@ pub async fn delete_from_s3(s3_key: &str) -> Result<(), String> {
     }
 }
 
-/// Mock-aware S3 put_object operation
+/// Mock-aware S3 `put_object` operation
 pub async fn put_object_to_s3(s3_key: &str, data: Vec<u8>, config: &Config) -> Result<(), String> {
     // Use mock for tests
     if config.tests_running {
@@ -137,7 +137,7 @@ pub async fn put_object_to_s3(s3_key: &str, data: Vec<u8>, config: &Config) -> R
     }
 }
 
-/// Mock-aware S3 get_object operation
+/// Mock-aware S3 `get_object` operation
 pub async fn get_object_from_s3(s3_key: &str, config: &Config) -> Result<Vec<u8>, String> {
     // Use mock for tests
     if config.tests_running {
@@ -159,7 +159,7 @@ pub async fn get_object_from_s3(s3_key: &str, config: &Config) -> Result<Vec<u8>
                 .body
                 .collect()
                 .await
-                .map_err(|e| format!("Failed to read S3 object body: {}", e))?;
+                .map_err(|e| format!("Failed to read S3 object body: {e}"))?;
             Ok(body.into_bytes().to_vec())
         }
         Err(err) => Err(format!("Failed to get object from S3: {err}")),

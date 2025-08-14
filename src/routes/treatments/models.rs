@@ -191,11 +191,7 @@ async fn fetch_experimental_results_for_treatment(
                         });
 
                     // Calculate time from experiment start
-                    let nucleation_time_seconds = if let Some(start_time) = temp_readings_data.first().map(|tr| tr.timestamp) {
-                        Some((transition.timestamp - start_time).num_seconds())
-                    } else {
-                        None
-                    };
+                    let nucleation_time_seconds = temp_readings_data.first().map(|tr| tr.timestamp).map(|start_time| (transition.timestamp - start_time).num_seconds());
 
                     // Convert well coordinates to string format (A1, B2, etc.)
                     // Row determines letter (A, B, C...), Column determines number (1, 2, 3...)
@@ -230,7 +226,7 @@ async fn fetch_experimental_results_for_treatment(
     Ok(nucleation_events)
 }
 
-/// Custom get_one that loads experimental results and statistics
+/// Custom `get_one` that loads experimental results and statistics
 async fn get_one_treatment(db: &DatabaseConnection, id: Uuid) -> Result<Treatment, DbErr> {
     let model = Entity::find_by_id(id)
         .one(db)

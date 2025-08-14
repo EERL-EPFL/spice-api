@@ -92,7 +92,7 @@ async fn view_asset_by_filename(
     
     // If not found and filename doesn't end with .jpg, try adding .jpg
     let asset = if asset.is_none() && !filename.to_lowercase().ends_with(".jpg") {
-        let filename_with_jpg = format!("{}.jpg", filename);
+        let filename_with_jpg = format!("{filename}.jpg");
         base_query
             .filter(crate::routes::assets::models::Column::OriginalFilename.eq(filename_with_jpg))
             .one(&state.db)
@@ -193,7 +193,7 @@ async fn reprocess_asset(
             })))
         }
         Err(e) => {
-            let error_message = format!("Reprocessing failed: {}", e);
+            let error_message = format!("Reprocessing failed: {e}");
 
             // Update asset with error status
             let update_asset = super::models::ActiveModel {
@@ -239,7 +239,7 @@ async fn serve_asset_internal(
         "image" => {
             let ext = asset.original_filename
                 .split('.')
-                .last()
+                .next_back()
                 .unwrap_or("")
                 .to_lowercase();
             match ext.as_str() {
@@ -348,7 +348,7 @@ async fn download_with_token(
         let headers = response.headers_mut();
         headers.insert(
             CONTENT_DISPOSITION,
-            format!("attachment; filename=\"experiment_{}.zip\"", experiment_id)
+            format!("attachment; filename=\"experiment_{experiment_id}.zip\"")
                 .parse()
                 .unwrap()
         );

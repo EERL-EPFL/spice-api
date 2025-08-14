@@ -76,7 +76,7 @@ async fn load_experiment_assets(
     if !experiment_assets.is_empty() {
         let asset_filenames: Vec<&String> = experiment_assets.iter().map(|a| &a.original_filename).collect();
         if let (Some(first), Some(last)) = (asset_filenames.iter().min(), asset_filenames.iter().max()) {
-            println!("🔍 [DEBUG] Asset time range: {} to {}", first, last);
+            println!("🔍 [DEBUG] Asset time range: {first} to {last}");
         }
     }
 
@@ -98,7 +98,7 @@ async fn load_experiment_assets(
     println!("🔍 [DEBUG] Total filename mappings: {}", filename_to_asset_id.len());
     println!("🔍 [DEBUG] First 5 filename mappings:");
     for (filename, asset_id) in filename_to_asset_id.iter().take(5) {
-        println!("🔍 [DEBUG] - {}: {}", filename, asset_id);
+        println!("🔍 [DEBUG] - {filename}: {asset_id}");
     }
 
     Ok(filename_to_asset_id)
@@ -611,8 +611,8 @@ pub(super) async fn fetch_tray_info_by_sequence(
         .one(db)
         .await?;
 
-    if let Some(exp) = experiment {
-        if let Some(tray_config_id) = exp.tray_configuration_id {
+    if let Some(exp) = experiment
+        && let Some(tray_config_id) = exp.tray_configuration_id {
             // Find the tray with the matching sequence ID
             // Note: After schema simplification, all tray data is in the trays table
             let tray = trays::Entity::find()
@@ -632,7 +632,6 @@ pub(super) async fn fetch_tray_info_by_sequence(
                 }));
             }
         }
-    }
 
     Ok(None)
 }
