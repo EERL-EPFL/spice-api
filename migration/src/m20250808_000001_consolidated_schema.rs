@@ -512,8 +512,8 @@ impl MigrationTrait for Migration {
             .table(Wells::Table)
             .if_not_exists()
             .col(ColumnDef::new(Wells::TrayId).uuid().not_null())
+            .col(ColumnDef::new(Wells::RowLetter).string_len(2).not_null())
             .col(ColumnDef::new(Wells::ColumnNumber).integer().not_null())
-            .col(ColumnDef::new(Wells::RowNumber).integer().not_null())
             .col(
                 ColumnDef::new(Wells::CreatedAt)
                     .timestamp_with_time_zone()
@@ -1402,8 +1402,8 @@ enum Wells {
     Table,
     Id,
     TrayId,
+    RowLetter,
     ColumnNumber,
-    RowNumber,
     CreatedAt,
     LastUpdated,
 }

@@ -118,8 +118,8 @@ impl ActiveModelBehavior for ActiveModel {}
 
 #[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct WellSummary {
-    pub row: i32,
-    pub col: i32,
+    pub row_letter: String,
+    pub column_number: i32,
     pub coordinate: String, // e.g., "A1", "B2"
     pub first_phase_change_time: Option<DateTime<Utc>>,
     pub first_phase_change_seconds: Option<i64>, // seconds from experiment start

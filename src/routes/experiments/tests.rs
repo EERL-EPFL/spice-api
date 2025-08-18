@@ -421,7 +421,7 @@ async fn test_image_filename_in_results_service() {
     let well = crate::routes::tray_configurations::wells::models::ActiveModel {
         id: ActiveValue::Set(well_id),
         tray_id: ActiveValue::Set(tray_id),
-        row_number: ActiveValue::Set(1),
+        row_letter: ActiveValue::Set("A".to_string()),
         column_number: ActiveValue::Set(1),
         created_at: ActiveValue::Set(chrono::Utc::now()),
         last_updated: ActiveValue::Set(chrono::Utc::now()),

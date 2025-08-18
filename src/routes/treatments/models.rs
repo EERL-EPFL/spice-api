@@ -151,8 +151,8 @@ async fn fetch_experimental_results_for_treatment(
                             region.col_min,
                             region.col_max,
                         ) {
-                            well.row_number >= (row_min + 1)
-                                && well.row_number <= (row_max + 1)
+                            well.row_letter.chars().next().map(|c| (c as u8 - b'A') as i32).unwrap_or(0) >= row_min
+                                && well.row_letter.chars().next().map(|c| (c as u8 - b'A') as i32).unwrap_or(0) <= row_max
                                 && well.column_number >= (col_min + 1)
                                 && well.column_number <= (col_max + 1)
                         } else {
@@ -199,13 +199,8 @@ async fn fetch_experimental_results_for_treatment(
                         .map(|tr| tr.timestamp)
                         .map(|start_time| (transition.timestamp - start_time).num_seconds());
 
-                    // Convert well coordinates to string format (A1, B2, etc.)
-                    // Row determines letter (A, B, C...), Column determines number (1, 2, 3...)
-                    let well_coordinate = format!(
-                        "{}{}",
-                        char::from(b'A' + u8::try_from(well.row_number - 1).unwrap_or(0)),
-                        well.column_number
-                    );
+                    // Well coordinates are already in alphanumeric format
+                    let well_coordinate = format!("{}{}", well.row_letter, well.column_number);
 
                     let nucleation_event = NucleationEvent {
                         experiment_id: experiment.id,

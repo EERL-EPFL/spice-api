@@ -21,9 +21,9 @@ pub struct Model {
     #[crudcrate(sortable, filterable)]
     pub tray_id: Uuid,
     #[crudcrate(sortable, filterable)]
-    pub column_number: i32,
+    pub row_letter: String,
     #[crudcrate(sortable, filterable)]
-    pub row_number: i32,
+    pub column_number: i32,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]

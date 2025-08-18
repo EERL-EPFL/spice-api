@@ -1290,7 +1290,7 @@ async fn test_sample_experimental_results_comprehensive() {
     let well_1 = wells::ActiveModel {
         id: Set(well_1_id),
         tray_id: Set(tray_id),
-        row_number: Set(1), // A (1st row)
+        row_letter: Set("A".to_string()), // A row
         column_number: Set(1), // 1 (1st column) -> A1
         ..Default::default()
     };
@@ -1299,7 +1299,7 @@ async fn test_sample_experimental_results_comprehensive() {
     let well_2 = wells::ActiveModel {
         id: Set(well_2_id),
         tray_id: Set(tray_id),
-        row_number: Set(1), // A (1st row)  
+        row_letter: Set("A".to_string()), // A row  
         column_number: Set(2), // 2 (2nd column) -> A2
         ..Default::default()
     };

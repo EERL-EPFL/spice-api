@@ -1,5 +1,5 @@
 use super::models::{ExperimentResultsSummary, SampleResultsSummary, TreatmentResultsSummary, WellSummary};
-use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str, transform_coordinates_for_rotation};
+// Coordinate transformation functions no longer needed - wells store alphanumeric coordinates directly
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
@@ -330,31 +330,12 @@ fn build_well_summaries(
     let mut well_summaries = Vec::new();
 
     for well in experiment_wells {
-        // Get tray information for rotation transformation
+        // Get tray information for tray_name lookup later
         let tray_info = tray_map.get(&well.tray_id);
-        let rotation_degrees = tray_info.map(|t| t.rotation_degrees).unwrap_or(0);
         
-        // Convert row/col to coordinate (A1, B2, etc.) with rotation transformation
-        let logical_coordinate = WellCoordinate {
-            column: u8::try_from(well.column_number)
-                .map_err(|_| DbErr::Custom("Column number out of range for u8".to_string()))?,
-            row: u8::try_from(well.row_number)
-                .map_err(|_| DbErr::Custom("Row number out of range for u8".to_string()))?,
-        };
-        
-        // Apply rotation transformation to match UI display
-        let display_coordinate = if rotation_degrees != 0 && tray_info.is_some() {
-            let tray = tray_info.unwrap();
-            let qty_x_axis = tray.qty_x_axis.unwrap_or(12) as u8;
-            let qty_y_axis = tray.qty_y_axis.unwrap_or(8) as u8;
-            
-            transform_coordinates_for_rotation(&logical_coordinate, rotation_degrees, qty_x_axis, qty_y_axis)
-                .map_err(DbErr::Custom)?
-        } else {
-            logical_coordinate
-        };
-        
-        let coordinate = coordinates_to_str(&display_coordinate).map_err(DbErr::Custom)?;
+        // Coordinates are now stored directly as alphanumeric format
+        // No transformation needed - wells store exactly what should be displayed
+        let coordinate = format!("{}{}", well.row_letter, well.column_number);
 
         // Get phase transitions for this well
         let well_transitions: Vec<&well_phase_transitions::Model> = phase_transitions_data
@@ -456,7 +437,10 @@ fn build_well_summaries(
             .or_else(|| Some("no_data".to_string()));
 
         // Find region for this well to get sample/treatment info
-        let well_row_0based = well.row_number - 1;
+        // Convert row letter to 0-based index (A=0, B=1, etc.)
+        let well_row_0based = well.row_letter.chars().next()
+            .map(|c| (c as u8 - b'A') as i32)
+            .unwrap_or(0);
         let well_col_0based = well.column_number - 1;
 
         let region = experiment_regions.iter().find(|r| {
@@ -483,8 +467,8 @@ fn build_well_summaries(
         let tray_name = tray_info.and_then(|t| t.name.clone());
 
         let well_summary = WellSummary {
-            row: well.row_number,
-            col: well.column_number,
+            row_letter: well.row_letter.clone(),
+            column_number: well.column_number,
             coordinate,
             first_phase_change_time,
             first_phase_change_seconds,

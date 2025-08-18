@@ -39,8 +39,8 @@ pub struct DirectProcessingResult {
 #[derive(Debug, Clone)]
 struct WellMapping {
     col_idx: usize,
-    row: i32,
-    col: i32,
+    row_letter: String,
+    column_number: i32,
     tray_name: String,
     well_coordinate: String,
 }
@@ -400,14 +400,14 @@ impl DirectExcelProcessor {
                                 if Self::is_valid_tray_name(tray_name)
                                     && Self::is_valid_well_coordinate(well_coordinate)
                                 {
-                                    // Convert well coordinate to (row, col) - A1 = (1,1), B2 = (2,2), etc.
-                                    if let Ok((row, col)) =
+                                    // Parse well coordinate to alphanumeric format
+                                    if let Ok((row_letter, column_number)) =
                                         Self::parse_well_coordinate(well_coordinate)
                                     {
                                         headers.wells.push(WellMapping {
                                             col_idx,
-                                            row,
-                                            col,
+                                            row_letter,
+                                            column_number,
                                             tray_name: tray_name.clone(),
                                             well_coordinate: well_coordinate.clone(),
                                         });
@@ -500,14 +500,18 @@ impl DirectExcelProcessor {
         Err(anyhow!("Could not parse timestamp: {}", timestamp))
     }
 
-    fn parse_well_coordinate(coordinate: &str) -> Result<(i32, i32)> {
+    fn parse_well_coordinate(coordinate: &str) -> Result<(String, i32)> {
         let well_coord = str_to_coordinates(coordinate)
             .map_err(|e| anyhow!("Invalid well coordinate '{}': {}", coordinate, e))?;
 
-        // WellCoordinate now correctly maps: row=letter(A=1,B=2), column=number(1,2,12)
-        // Return (row, column) for database storage
-        // For H12: WellCoordinate{row=8, column=12} -> return (8, 12)
-        Ok((i32::from(well_coord.row), i32::from(well_coord.column)))
+        // Convert numeric row to letter: row=1 -> "A", row=2 -> "B", etc.
+        let row_letter = char::from_u32(u32::from(well_coord.row) + 64)
+            .ok_or_else(|| anyhow!("Invalid row number: {}", well_coord.row))?
+            .to_string();
+        
+        // Return (row_letter, column_number) for database storage
+        // For H12: WellCoordinate{row=8, column=12} -> return ("H", 12)
+        Ok((row_letter, i32::from(well_coord.column)))
     }
 
     fn is_valid_tray_name(tray_name: &str) -> bool {
@@ -613,16 +617,16 @@ impl DirectExcelProcessor {
             .filter(|w| w.tray_name == tray_name)
             .collect();
 
-        let (max_row, max_col) = Self::get_required_dimensions(&wells_for_tray);
-        let (existing_max_row, existing_max_col) = Self::get_existing_dimensions(&existing_wells);
+        let (max_row_letter, max_col) = Self::get_required_dimensions(&wells_for_tray);
+        let (existing_max_row_letter, existing_max_col) = Self::get_existing_dimensions(&existing_wells);
 
         if existing_wells.is_empty() {
             println!("   🔧 Creating wells for tray {tray_name} ({tray_id})");
             self.create_wells_from_excel_headers(tray_id, &wells_for_tray)
                 .await?;
-        } else if max_row > existing_max_row || max_col > existing_max_col {
+        } else if max_row_letter > existing_max_row_letter || max_col > existing_max_col {
             println!(
-                "   🔄 Recreating wells for tray {tray_name} - Excel needs row {max_row} col {max_col}, but max existing is row {existing_max_row} col {existing_max_col}"
+                "   🔄 Recreating wells for tray {tray_name} - Excel needs row {max_row_letter} col {max_col}, but max existing is row {existing_max_row_letter} col {existing_max_col}"
             );
             self.recreate_wells(tray_id, &wells_for_tray).await?;
         } else {
@@ -637,25 +641,31 @@ impl DirectExcelProcessor {
     }
 
     /// Get required dimensions from Excel well mappings
-    fn get_required_dimensions(wells_for_tray: &[&WellMapping]) -> (i32, i32) {
-        let max_row = wells_for_tray.iter().map(|w| w.row).max().unwrap_or(0);
-        let max_col = wells_for_tray.iter().map(|w| w.col).max().unwrap_or(0);
-        (max_row, max_col)
+    fn get_required_dimensions(wells_for_tray: &[&WellMapping]) -> (String, i32) {
+        let max_row_letter = wells_for_tray
+            .iter()
+            .map(|w| &w.row_letter)
+            .max()
+            .cloned()
+            .unwrap_or_else(|| "A".to_string());
+        let max_col = wells_for_tray.iter().map(|w| w.column_number).max().unwrap_or(0);
+        (max_row_letter, max_col)
     }
 
     /// Get existing dimensions from database wells
-    fn get_existing_dimensions(existing_wells: &[wells::Model]) -> (i32, i32) {
-        let existing_max_row = existing_wells
+    fn get_existing_dimensions(existing_wells: &[wells::Model]) -> (String, i32) {
+        let existing_max_row_letter = existing_wells
             .iter()
-            .map(|w| w.row_number)
+            .map(|w| &w.row_letter)
             .max()
-            .unwrap_or(0);
+            .cloned()
+            .unwrap_or_else(|| "A".to_string());
         let existing_max_col = existing_wells
             .iter()
             .map(|w| w.column_number)
             .max()
             .unwrap_or(0);
-        (existing_max_row, existing_max_col)
+        (existing_max_row_letter, existing_max_col)
     }
 
     /// Recreate wells by deleting existing ones and creating new ones
@@ -694,8 +704,8 @@ impl DirectExcelProcessor {
     ) -> Result<()> {
         if let Some(well) = wells::Entity::find()
             .filter(wells::Column::TrayId.eq(tray_id))
-            .filter(wells::Column::RowNumber.eq(well_mapping.row))
-            .filter(wells::Column::ColumnNumber.eq(well_mapping.col))
+            .filter(wells::Column::RowLetter.eq(&well_mapping.row_letter))
+            .filter(wells::Column::ColumnNumber.eq(well_mapping.column_number))
             .one(&self.db)
             .await
             .context("Failed to query well")?
@@ -727,8 +737,8 @@ impl DirectExcelProcessor {
         println!(
             "   ❌ Well not found: {} (row {}, col {}) in tray {}",
             well_mapping.well_coordinate,
-            well_mapping.row,
-            well_mapping.col,
+            well_mapping.row_letter,
+            well_mapping.column_number,
             well_mapping.tray_name
         );
         println!(
@@ -743,7 +753,7 @@ impl DirectExcelProcessor {
                 existing_wells
                     .iter()
                     .take(5)
-                    .map(|w| format!("row{},col{}", w.row_number, w.column_number))
+                    .map(|w| format!("row{},col{}", w.row_letter, w.column_number))
                     .collect::<Vec<_>>()
             );
         }
@@ -751,8 +761,8 @@ impl DirectExcelProcessor {
         Err(anyhow!(
             "Well not found: {} row {} col {} in tray {}. Found {} wells in tray.",
             well_mapping.well_coordinate,
-            well_mapping.row,
-            well_mapping.col,
+            well_mapping.row_letter,
+            well_mapping.column_number,
             well_mapping.tray_name,
             existing_wells.len()
         ))
@@ -770,8 +780,8 @@ impl DirectExcelProcessor {
             let well = wells::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tray_id: Set(tray_id),
-                row_number: Set(well_mapping.row),
-                column_number: Set(well_mapping.col),
+                row_letter: Set(well_mapping.row_letter.clone()),
+                column_number: Set(well_mapping.column_number),
                 created_at: Set(Utc::now()),
                 last_updated: Set(Utc::now()),
             };
@@ -803,21 +813,21 @@ mod tests {
     fn test_parse_well_coordinate() {
         let _processor = DirectExcelProcessor::new(sea_orm::DatabaseConnection::Disconnected);
 
-        // Test coordinates with corrected WellCoordinate mapping
-        // A1 = row 1 (A), column 1 (1)
+        // Test coordinates with alphanumeric format
+        // A1 = row "A", column 1
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("A1").unwrap(),
-            (1, 1)
+            ("A".to_string(), 1)
         );
-        // B2 = row 2 (B), column 2 (2)
+        // B2 = row "B", column 2
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("B2").unwrap(),
-            (2, 2)
+            ("B".to_string(), 2)
         );
-        // H12 = row 8 (H), column 12 (12)
+        // H12 = row "H", column 12
         assert_eq!(
             DirectExcelProcessor::parse_well_coordinate("H12").unwrap(),
-            (8, 12)
+            ("H".to_string(), 12)
         );
 
         // Test invalid coordinates
