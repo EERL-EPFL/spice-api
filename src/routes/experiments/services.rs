@@ -1,5 +1,5 @@
-use super::models::{ExperimentResultsSummary, WellSummary};
-use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str};
+use super::models::{ExperimentResultsSummary, SampleResultsSummary, TreatmentResultsSummary, WellSummary};
+use crate::routes::tray_configurations::services::{WellCoordinate, coordinates_to_str, transform_coordinates_for_rotation};
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
@@ -330,14 +330,31 @@ fn build_well_summaries(
     let mut well_summaries = Vec::new();
 
     for well in experiment_wells {
-        // Convert row/col to coordinate (A1, B2, etc.)
-        let coordinate = WellCoordinate {
+        // Get tray information for rotation transformation
+        let tray_info = tray_map.get(&well.tray_id);
+        let rotation_degrees = tray_info.map(|t| t.rotation_degrees).unwrap_or(0);
+        
+        // Convert row/col to coordinate (A1, B2, etc.) with rotation transformation
+        let logical_coordinate = WellCoordinate {
             column: u8::try_from(well.column_number)
                 .map_err(|_| DbErr::Custom("Column number out of range for u8".to_string()))?,
             row: u8::try_from(well.row_number)
                 .map_err(|_| DbErr::Custom("Row number out of range for u8".to_string()))?,
         };
-        let coordinate = coordinates_to_str(&coordinate).map_err(DbErr::Custom)?;
+        
+        // Apply rotation transformation to match UI display
+        let display_coordinate = if rotation_degrees != 0 && tray_info.is_some() {
+            let tray = tray_info.unwrap();
+            let qty_x_axis = tray.qty_x_axis.unwrap_or(12) as u8;
+            let qty_y_axis = tray.qty_y_axis.unwrap_or(8) as u8;
+            
+            transform_coordinates_for_rotation(&logical_coordinate, rotation_degrees, qty_x_axis, qty_y_axis)
+                .map_err(DbErr::Custom)?
+        } else {
+            logical_coordinate
+        };
+        
+        let coordinate = coordinates_to_str(&display_coordinate).map_err(DbErr::Custom)?;
 
         // Get phase transitions for this well
         let well_transitions: Vec<&well_phase_transitions::Model> = phase_transitions_data
@@ -543,6 +560,9 @@ pub(super) async fn build_results_summary(
         &tray_map,
     )?;
 
+    // Build hierarchical sample results from well summaries
+    let sample_results = build_sample_results_from_wells(&well_summaries);
+
     // Always return a summary, even if empty
     Ok(Some(ExperimentResultsSummary {
         total_wells: experiment_wells.len(),
@@ -552,9 +572,85 @@ pub(super) async fn build_results_summary(
         total_time_points,
         first_timestamp,
         last_timestamp,
-        sample_results: vec![], // No longer return sample results - fetch via /samples endpoint
-        well_summaries,         // Keep for backwards compatibility
+        sample_results,
     }))
+}
+
+/// Build hierarchical sample results from flat well summaries
+fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<SampleResultsSummary> {
+    use std::collections::HashMap;
+    
+    // Group wells by sample, then by treatment
+    let mut sample_map: HashMap<String, HashMap<String, Vec<WellSummary>>> = HashMap::new();
+    
+    for well in well_summaries {
+        // Use sample info if available, otherwise create placeholder
+        let sample_key = well.sample.as_ref()
+            .map(|s| s.id.to_string())
+            .unwrap_or_else(|| "unknown_sample".to_string());
+        
+        // For treatment, we need to extract from the well somehow
+        // Since WellSummary doesn't directly have treatment info, we'll need to group by sample only for now
+        let treatment_key = "default_treatment".to_string();
+        
+        sample_map.entry(sample_key)
+            .or_insert_with(HashMap::new)
+            .entry(treatment_key)
+            .or_insert_with(Vec::new)
+            .push(well.clone());
+    }
+    
+    // Convert to the expected structure
+    let mut sample_results = Vec::new();
+    
+    for (sample_key, treatment_map) in sample_map {
+        // Get sample info from first well
+        let sample_info = well_summaries.iter()
+            .find(|w| w.sample.as_ref().map(|s| s.id.to_string()).unwrap_or_else(|| "unknown_sample".to_string()) == sample_key)
+            .and_then(|w| w.sample.clone());
+        
+        if let Some(sample) = sample_info {
+            let mut treatments = Vec::new();
+            
+            for (_, wells) in treatment_map {
+                // Count frozen and liquid wells
+                let wells_frozen = wells.iter().filter(|w| w.final_state.as_ref().map(|s| s == "frozen").unwrap_or(false)).count();
+                let wells_liquid = wells.iter().filter(|w| w.final_state.as_ref().map(|s| s == "liquid").unwrap_or(false)).count();
+                
+                // Create a placeholder treatment since we don't have treatment info in WellSummary
+                let treatment = crate::routes::treatments::models::Treatment {
+                    id: uuid::Uuid::new_v4(),
+                    name: crate::routes::treatments::models::TreatmentName::None,
+                    notes: None,
+                    sample_id: Some(sample.id),
+                    created_at: chrono::Utc::now(),
+                    last_updated: chrono::Utc::now(),
+                    enzyme_volume_litres: None,
+                    experimental_results: vec![],
+                    statistics: None,
+                    dilution_summaries: vec![],
+                };
+                
+                let treatment_summary = TreatmentResultsSummary {
+                    treatment,
+                    wells,
+                    wells_frozen,
+                    wells_liquid,
+                };
+                
+                treatments.push(treatment_summary);
+            }
+            
+            let sample_summary = SampleResultsSummary {
+                sample,
+                treatments,
+            };
+            
+            sample_results.push(sample_summary);
+        }
+    }
+    
+    sample_results
 }
 
 

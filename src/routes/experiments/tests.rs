@@ -387,7 +387,6 @@ async fn test_image_filename_in_results_service() {
         probe_8: ActiveValue::Set(None),
         image_filename: ActiveValue::Set(Some("INP_49640_2025-03-20_15-14-17".to_string())), // Without .jpg
         created_at: ActiveValue::Set(chrono::Utc::now()),
-        average: ActiveValue::Set(None),
     };
     temp_reading.insert(&db).await.unwrap();
 
@@ -479,18 +478,24 @@ async fn test_image_filename_in_results_service() {
     );
     let summary = results_summary.unwrap();
 
+    // Flatten sample_results to get all wells  
+    let all_wells: Vec<_> = summary.sample_results
+        .iter()
+        .flat_map(|sr| sr.treatments.iter())
+        .flat_map(|tr| tr.wells.iter())
+        .collect();
+
     println!(
         "✅ Results summary generated with {} wells",
-        summary.well_summaries.len()
+        all_wells.len()
     );
     assert!(
-        summary.well_summaries.len() > 0,
+        all_wells.len() > 0,
         "Expected at least one well summary"
     );
 
     // Check that the well has the image filename
-    let well_with_image = summary
-        .well_summaries
+    let well_with_image = all_wells
         .iter()
         .find(|w| w.image_filename_at_freeze.is_some());
 

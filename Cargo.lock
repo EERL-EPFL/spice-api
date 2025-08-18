@@ -1514,7 +1514,7 @@ dependencies = [
 
 [[package]]
 name = "crudcrate-derive"
-version = "0.2.3"
+version = "0.2.5"
 dependencies = [
  "convert_case",
  "proc-macro2",

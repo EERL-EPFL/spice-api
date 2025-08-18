@@ -12,7 +12,6 @@ use anyhow::{Context, Result, anyhow};
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
 use chrono::{NaiveDateTime, TimeZone, Utc};
 use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

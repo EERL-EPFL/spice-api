@@ -1471,6 +1471,61 @@ async fn test_validation_errors() {
 }
 
 #[tokio::test]
+async fn test_debug_500_error_user_payload() {
+    let app = setup_test_app().await;
+    
+    // Test the exact payload that the user is sending
+    let user_payload = json!({
+        "experiment_default": true,
+        "trays": [
+            {
+                "name": "P1",
+                "rotation_degrees": 90,
+                "qty_x_axis": 12,
+                "qty_y_axis": 8,
+                "well_relative_diameter": 2.5,
+                "order_sequence": 1
+            },
+            {
+                "name": "P2",
+                "rotation_degrees": 270,
+                "qty_x_axis": 12,
+                "qty_y_axis": 8,
+                "well_relative_diameter": 2.5,
+                "order_sequence": 2
+            }
+        ],
+        "name": "INP"
+    });
+    
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tray_configurations")
+                .header("content-type", "application/json")
+                .body(Body::from(user_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    
+    // Debug the response
+    eprintln!("DEBUG USER PAYLOAD TEST:");
+    eprintln!("Status: {create_status}");
+    eprintln!("Body: {create_body:?}");
+    
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "User payload should create successfully. Status: {create_status}, Body: {create_body:?}"
+    );
+}
+
+#[tokio::test]
 async fn test_tray_configurations_have_id_fields() {
     let app = setup_test_app().await;
     

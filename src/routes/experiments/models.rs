@@ -36,31 +36,31 @@ pub struct Model {
     pub username: Option<String>,
     #[crudcrate(sortable, filterable)]
     pub performed_at: Option<DateTime<Utc>>,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, list_model = false)]
     pub temperature_ramp: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, list_model = false)]
     pub temperature_start: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, list_model = false)]
     pub temperature_end: Option<Decimal>,
     #[crudcrate(filterable)]
     pub is_calibration: bool,
     #[sea_orm(column_type = "Text", nullable)]
-    #[crudcrate(sortable, filterable, fulltext)]
+    #[crudcrate(sortable, filterable, fulltext, list_model = false)]
     pub remarks: Option<String>,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, list_model = false)]
     pub tray_configuration_id: Option<Uuid>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![])]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
     pub assets: Vec<crate::routes::assets::models::Asset>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![])]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false, use_target_models)]
     pub regions: Vec<crate::routes::tray_configurations::regions::models::Region>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = None)]
+    #[crudcrate(non_db_attr = true, default = None, list_model=false)]
     pub results_summary: Option<super::models::ExperimentResultsSummary>,
 }
 
@@ -157,7 +157,6 @@ pub struct ExperimentResultsSummary {
     pub first_timestamp: Option<DateTime<Utc>>,
     pub last_timestamp: Option<DateTime<Utc>>,
     pub sample_results: Vec<SampleResultsSummary>,
-    pub well_summaries: Vec<WellSummary>,
 }
 
 pub(super) async fn get_one_experiment(
@@ -299,16 +298,16 @@ pub(super) async fn update_experiment(
             let region_active = crate::routes::tray_configurations::regions::models::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 experiment_id: Set(id),
-                treatment_id: Set(region.treatment_id),
-                name: Set(region.name),
-                display_colour_hex: Set(region.display_colour_hex),
-                tray_id: Set(region.tray_id),
-                col_min: Set(region.col_min),
-                row_min: Set(region.row_min),
-                col_max: Set(region.col_max),
-                row_max: Set(region.row_max),
-                dilution_factor: Set(region.dilution_factor),
-                is_background_key: Set(region.is_background_key),
+                treatment_id: Set(region.treatment_id.flatten()),
+                name: Set(region.name.flatten()),
+                display_colour_hex: Set(region.display_colour_hex.flatten()),
+                tray_id: Set(region.tray_id.flatten()),
+                col_min: Set(region.col_min.flatten()),
+                row_min: Set(region.row_min.flatten()),
+                col_max: Set(region.col_max.flatten()),
+                row_max: Set(region.row_max.flatten()),
+                dilution_factor: Set(region.dilution_factor.flatten()),
+                is_background_key: Set(region.is_background_key.flatten().unwrap_or_default()),
                 created_at: Set(chrono::Utc::now()),
                 last_updated: Set(chrono::Utc::now()),
             };
@@ -342,11 +341,6 @@ pub(super) async fn get_all_experiments(
     let mut experiments = Vec::new();
 
     for model in models {
-        let s3_assets = model
-            .find_related(crate::routes::assets::models::Entity)
-            .all(db)
-            .await?;
-
         let regions: Vec<crate::routes::tray_configurations::regions::models::Region> = model
             .find_related(crate::routes::tray_configurations::regions::models::Entity)
             .all(db)
@@ -356,7 +350,6 @@ pub(super) async fn get_all_experiments(
             .collect();
 
         let mut experiment: Experiment = model.into();
-        experiment.assets = s3_assets.into_iter().map(Into::into).collect();
         experiment.regions = regions;
 
         experiments.push(experiment);

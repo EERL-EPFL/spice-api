@@ -12,13 +12,13 @@ use uuid::Uuid;
     api_struct = "Region",
     name_singular = "region",
     name_plural = "regions",
-    description = "Regions define coordinate-based areas within trays for organizing experimental treatments.",
+    description = "Regions define coordinate-based areas within trays for organizing experimental treatments."
 )]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
-    #[crudcrate(sortable, filterable)]
+    #[crudcrate(sortable, filterable, create_model = false)]
     pub experiment_id: Uuid,
     #[crudcrate(sortable, filterable)]
     pub treatment_id: Option<Uuid>,

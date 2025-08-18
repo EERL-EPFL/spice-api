@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use crudcrate::traits::MergeIntoActiveModel;
 use crudcrate::{CRUDResource, EntityToModels};
-
 use sea_orm::entity::prelude::*;
 use sea_orm::sea_query::Expr;
 use sea_orm::{QueryOrder, QuerySelect, Set};
@@ -35,10 +34,10 @@ pub struct Model {
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![])]
+    #[crudcrate(non_db_attr = true, default = vec![], use_target_models)]
     pub trays: Vec<super::trays::models::Tray>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false, create_model=false)]
     pub associated_experiments: Vec<crate::routes::experiments::models::Experiment>,
 }
 
@@ -209,12 +208,12 @@ pub async fn update_tray_configuration(
     // Simple validation for trays
     for tray in &update_data.trays {
         if let Some(qty_x) = tray.qty_x_axis {
-            if qty_x < 1 {
+            if qty_x.unwrap() < 1 {
                 return Err(DbErr::Custom("qty_x_axis must be positive".to_string()));
             }
         }
         if let Some(qty_y) = tray.qty_y_axis {
-            if qty_y < 1 {
+            if qty_y.unwrap() < 1 {
                 return Err(DbErr::Custom("qty_y_axis must be positive".to_string()));
             }
         }
@@ -264,12 +263,15 @@ pub async fn update_tray_configuration(
             let tray_active = crate::routes::tray_configurations::trays::models::ActiveModel {
                 id: Set(Uuid::new_v4()),
                 tray_configuration_id: Set(id),
-                order_sequence: Set(tray.order_sequence),
-                rotation_degrees: Set(tray.rotation_degrees),
-                name: Set(tray.name.clone()),
-                qty_x_axis: Set(tray.qty_x_axis),
-                qty_y_axis: Set(tray.qty_y_axis),
-                well_relative_diameter: Set(tray.well_relative_diameter),
+                order_sequence: Set(tray.order_sequence.unwrap_or_default().unwrap_or_default()),
+                rotation_degrees: Set(tray
+                    .rotation_degrees
+                    .unwrap_or_default()
+                    .unwrap_or_default()),
+                name: Set(tray.name.clone().unwrap_or_default()),
+                qty_x_axis: Set(tray.qty_x_axis.unwrap_or_default()),
+                qty_y_axis: Set(tray.qty_y_axis.unwrap_or_default()),
+                well_relative_diameter: Set(tray.well_relative_diameter.unwrap_or_default()),
                 created_at: Set(now),
                 last_updated: Set(now),
             };

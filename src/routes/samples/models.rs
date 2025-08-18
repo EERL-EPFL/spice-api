@@ -244,10 +244,10 @@ async fn update_sample_with_treatments(
             .all(db)
             .await?;
         let current_treatment_ids: Vec<Uuid> = current_treatments.iter().map(|t| t.id).collect();
-        
+
         // Track which treatments are being updated
         let mut updated_treatment_ids = Vec::new();
-        
+
         for treatment_update in treatments {
             if let Some(Some(treatment_id)) = treatment_update.id {
                 // Update existing treatment
@@ -265,25 +265,27 @@ async fn update_sample_with_treatments(
             } else {
                 // Create new treatment (following the same pattern as create_sample_with_treatments)
                 let treatment_create = crate::routes::treatments::models::TreatmentCreate {
-                    name: treatment_update.name.flatten().unwrap_or(crate::routes::treatments::models::TreatmentName::None),
+                    name: treatment_update
+                        .name
+                        .flatten()
+                        .unwrap_or(crate::routes::treatments::models::TreatmentName::None),
                     notes: treatment_update.notes.flatten(),
                     sample_id: Some(id),
                     enzyme_volume_litres: treatment_update.enzyme_volume_litres.flatten(),
-                    experimental_results: vec![], // Empty for new treatments
-                    statistics: None, // None for new treatments
-                    dilution_summaries: vec![], // Empty for new treatments
                 };
-                let new_treatment = crate::routes::treatments::models::Treatment::create(db, treatment_create).await?;
+                let new_treatment =
+                    crate::routes::treatments::models::Treatment::create(db, treatment_create)
+                        .await?;
                 updated_treatment_ids.push(new_treatment.id);
             }
         }
-        
+
         // Delete treatments that are no longer in the update list
         let treatments_to_delete: Vec<Uuid> = current_treatment_ids
             .into_iter()
             .filter(|id| !updated_treatment_ids.contains(id))
             .collect();
-        
+
         if !treatments_to_delete.is_empty() {
             crate::routes::treatments::models::Entity::delete_many()
                 .filter(crate::routes::treatments::models::Column::Id.is_in(treatments_to_delete))
@@ -295,4 +297,3 @@ async fn update_sample_with_treatments(
     // Return the updated sample with treatments loaded
     Sample::get_one(db, id).await
 }
-

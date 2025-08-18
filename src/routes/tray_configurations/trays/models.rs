@@ -4,24 +4,14 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
-// This will become the new 'trays' table after migration
-#[derive(
-    Clone,
-    Debug,
-    PartialEq,
-    DeriveEntityModel,
-    Eq,
-    EntityToModels,
-    serde::Serialize,
-    serde::Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "trays")]
 #[crudcrate(api_struct = "Tray")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
-    #[crudcrate(sortable, filterable, list_model = false)]
+    #[crudcrate(sortable, filterable, list_model = false, create_model = false)]
     pub tray_configuration_id: Uuid,
     #[crudcrate(sortable, filterable)]
     pub order_sequence: i32,
