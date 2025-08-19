@@ -222,9 +222,9 @@ mod tests {
         assert_eq!(stats.total_wells, 3);
         assert_eq!(stats.frozen_count, 2);
         assert_eq!(stats.liquid_count, 1);
-        assert_eq!(stats.success_rate, 2.0 / 3.0);
+        assert!((stats.success_rate - 2.0 / 3.0).abs() < f64::EPSILON);
         assert!(stats.mean_nucleation_temp_celsius.is_some());
-        assert_eq!(stats.mean_nucleation_temp_celsius.unwrap(), -16.5);
+        assert!((stats.mean_nucleation_temp_celsius.unwrap() - (-16.5)).abs() < f64::EPSILON);
         assert_eq!(stats.median_nucleation_time_seconds, Some(1500)); // (1000 + 2000) / 2
     }
 

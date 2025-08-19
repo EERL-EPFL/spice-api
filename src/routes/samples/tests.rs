@@ -1135,7 +1135,18 @@ async fn test_sample_experimental_results_structure() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_sample_experimental_results_comprehensive() {
+    use crate::routes::{
+        experiments::models as experiments,
+        experiments::phase_transitions::models as well_phase_transitions,
+        experiments::temperatures::models as temperature_readings,
+        tray_configurations::{models as tray_configs, regions::models as regions, trays::models as trays, wells::models as wells},
+    };
+    use chrono::{Duration, Utc};
+    use rust_decimal::Decimal;
+    use sea_orm::{ActiveModelTrait, Set};
+
     let db = setup_test_db().await;
     let mut config = crate::config::Config::for_tests();
     config.keycloak_url = String::new(); // Disable Keycloak for tests
@@ -1208,15 +1219,6 @@ async fn test_sample_experimental_results_comprehensive() {
     let heat_treatment_id = uuid::Uuid::parse_str(heat_treatment_id_str).unwrap();
 
     // 2. Create test data directly in database (experiment, regions, wells, temperatures, phase transitions)
-    use crate::routes::{
-        experiments::models as experiments,
-        experiments::phase_transitions::models as well_phase_transitions,
-        experiments::temperatures::models as temperature_readings,
-        tray_configurations::{regions::models as regions, wells::models as wells},
-    };
-    use chrono::{Duration, Utc};
-    use rust_decimal::Decimal;
-    use sea_orm::{ActiveModelTrait, Set};
 
     // Create experiment
     let experiment_id = uuid::Uuid::new_v4();
@@ -1268,7 +1270,6 @@ async fn test_sample_experimental_results_comprehensive() {
     temp_2.insert(&db).await.unwrap();
 
     // Create tray configuration and tray first (needed for foreign key constraint)
-    use crate::routes::tray_configurations::{models as tray_configs, trays::models as trays};
     let tray_config_id = uuid::Uuid::new_v4();
     let tray_config = tray_configs::ActiveModel {
         id: Set(tray_config_id),
@@ -1464,8 +1465,8 @@ async fn test_sample_experimental_results_comprehensive() {
             .unwrap()
             .parse()
             .unwrap();
-        assert_eq!(
-            temp_celsius, temp_ui,
+        assert!(
+            (temp_celsius - temp_ui).abs() < f64::EPSILON,
             "Both temperature fields should have same value"
         );
 
@@ -1554,7 +1555,7 @@ async fn test_sample_complex_workflow() {
     // Step 2: Create comprehensive sample
     let sample_data = json!({
         "name": format!("Complex Workflow Sample {}", uuid::Uuid::new_v4()),
-        "type": "Environmental",
+        "type": "filter",
         "material_description": "Comprehensive sample for workflow testing",
         "extraction_procedure": "Standard filtration and extraction",
         "filter_substrate": "0.22μm cellulose nitrate",
@@ -1578,8 +1579,8 @@ async fn test_sample_complex_workflow() {
                 "enzyme_volume_litres": 0.0002
             },
             {
-                "name": "filteronly",
-                "notes": "Filter-only control treatment"
+                "name": "none",
+                "notes": "Control treatment"
             }
         ]
     });
@@ -1619,8 +1620,8 @@ async fn test_sample_complex_workflow() {
         if get_status == StatusCode::OK {
             // Validate comprehensive data
             assert_eq!(get_body["location_id"], location_id);
-            assert_eq!(get_body["latitude"], 45.5017);
-            assert_eq!(get_body["longitude"], -73.5673);
+            assert_eq!(get_body["latitude"], "45.5017");
+            assert_eq!(get_body["longitude"], "-73.5673");
             assert_eq!(get_body["start_time"], "2025-01-01T10:00:00Z");
             assert_eq!(get_body["stop_time"], "2025-01-01T12:00:00Z");
 

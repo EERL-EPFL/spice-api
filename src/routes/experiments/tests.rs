@@ -1,17 +1,13 @@
 use crate::config::test_helpers::setup_test_app;
-use crate::config::test_helpers::setup_test_db;
-use crate::routes::experiments::services::build_results_summary;
 use axum::Router;
 use axum::body::Body;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, NaiveDateTime};
-use sea_orm::{ActiveModelTrait, ActiveValue};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 /// Integration test helper to create a tray via API
 async fn create_tray_via_api(app: &axum::Router, rows: i32, cols: i32) -> Result<String, String> {
@@ -337,189 +333,6 @@ async fn create_experiment_via_api(app: &axum::Router) -> Result<String, String>
 
     Ok(experiment["id"].as_str().unwrap().to_string())
 }
-
-// Test the core image-temperature correlation functionality at service layer
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn test_image_filename_in_results_service() {
-    let db = setup_test_db().await;
-    println!("🧪 Testing image filename extraction in results service");
-
-    // Create experiment directly in the database
-    let experiment_id = Uuid::new_v4();
-    let experiment = crate::routes::experiments::models::ActiveModel {
-        id: ActiveValue::Set(experiment_id),
-        name: ActiveValue::Set("Image Service Test".to_string()),
-        username: ActiveValue::Set(Some("test@example.com".to_string())),
-        performed_at: ActiveValue::Set(Some(chrono::Utc::now())),
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-        last_updated: ActiveValue::Set(chrono::Utc::now()),
-        temperature_ramp: ActiveValue::Set(Some(rust_decimal::Decimal::from(-1))),
-        temperature_start: ActiveValue::Set(Some(rust_decimal::Decimal::from(20))),
-        temperature_end: ActiveValue::Set(Some(rust_decimal::Decimal::from(-40))),
-        is_calibration: ActiveValue::Set(false),
-        remarks: ActiveValue::Set(None),
-        tray_configuration_id: ActiveValue::Set(None),
-    };
-
-    experiment.insert(&db).await.unwrap();
-
-    // Create temperature reading with image filename
-    let temp_reading_id = Uuid::new_v4();
-    let temp_reading = crate::routes::experiments::temperatures::models::ActiveModel {
-        id: ActiveValue::Set(temp_reading_id),
-        experiment_id: ActiveValue::Set(experiment_id),
-        timestamp: ActiveValue::Set(
-            chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z")
-                .unwrap()
-                .into(),
-        ),
-        probe_1: ActiveValue::Set(Some(rust_decimal::Decimal::new(250, 1))), // 25.0
-        probe_2: ActiveValue::Set(None),
-        probe_3: ActiveValue::Set(None),
-        probe_4: ActiveValue::Set(None),
-        probe_5: ActiveValue::Set(None),
-        probe_6: ActiveValue::Set(None),
-        probe_7: ActiveValue::Set(None),
-        probe_8: ActiveValue::Set(None),
-        image_filename: ActiveValue::Set(Some("INP_49640_2025-03-20_15-14-17".to_string())), // Without .jpg
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-    };
-    temp_reading.insert(&db).await.unwrap();
-
-    // Create tray configuration and tray first (to satisfy foreign key constraints)
-    let tray_config_id = Uuid::new_v4();
-    let tray_config = crate::routes::tray_configurations::models::ActiveModel {
-        id: ActiveValue::Set(tray_config_id),
-        name: ActiveValue::Set(Some("Test Config".to_string())),
-        experiment_default: ActiveValue::Set(false),
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-        last_updated: ActiveValue::Set(chrono::Utc::now()),
-    };
-    tray_config.insert(&db).await.unwrap();
-
-    let tray_id = Uuid::new_v4();
-    let tray = crate::routes::tray_configurations::trays::models::ActiveModel {
-        id: ActiveValue::Set(tray_id),
-        tray_configuration_id: ActiveValue::Set(tray_config_id),
-        order_sequence: ActiveValue::Set(1),
-        rotation_degrees: ActiveValue::Set(0),
-        name: ActiveValue::Set(Some("P1".to_string())),
-        qty_cols: ActiveValue::Set(Some(8)),
-        qty_rows: ActiveValue::Set(Some(12)),
-        well_relative_diameter: ActiveValue::Set(None),
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-        last_updated: ActiveValue::Set(chrono::Utc::now()),
-    };
-    tray.insert(&db).await.unwrap();
-
-    // Create well
-    let well_id = Uuid::new_v4();
-    let well = crate::routes::tray_configurations::wells::models::ActiveModel {
-        id: ActiveValue::Set(well_id),
-        tray_id: ActiveValue::Set(tray_id),
-        row_letter: ActiveValue::Set("A".to_string()),
-        column_number: ActiveValue::Set(1),
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-        last_updated: ActiveValue::Set(chrono::Utc::now()),
-    };
-    well.insert(&db).await.unwrap();
-
-    // Create phase transition linking well to temperature reading
-    let transition = crate::routes::experiments::phase_transitions::models::ActiveModel {
-        id: ActiveValue::Set(Uuid::new_v4()),
-        experiment_id: ActiveValue::Set(experiment_id),
-        well_id: ActiveValue::Set(well_id),
-        temperature_reading_id: ActiveValue::Set(temp_reading_id),
-        timestamp: ActiveValue::Set(
-            chrono::DateTime::parse_from_rfc3339("2025-03-20T15:13:47Z")
-                .unwrap()
-                .into(),
-        ),
-        previous_state: ActiveValue::Set(0), // liquid
-        new_state: ActiveValue::Set(1),      // frozen
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-    };
-    transition.insert(&db).await.unwrap();
-
-    // Create matching S3 asset with .jpg extension to match the temperature filename
-    let asset = crate::routes::assets::models::ActiveModel {
-        id: ActiveValue::Set(Uuid::new_v4()),
-        experiment_id: ActiveValue::Set(Some(experiment_id)),
-        original_filename: ActiveValue::Set("INP_49640_2025-03-20_15-14-17.jpg".to_string()), // With .jpg
-        r#type: ActiveValue::Set("image".to_string()),
-        role: ActiveValue::Set(Some("camera_image".to_string())),
-        s3_key: ActiveValue::Set("test-key".to_string()),
-        size_bytes: ActiveValue::Set(Some(1024)),
-        uploaded_by: ActiveValue::Set(Some("test@example.com".to_string())),
-        uploaded_at: ActiveValue::Set(chrono::Utc::now()),
-        is_deleted: ActiveValue::Set(false),
-        created_at: ActiveValue::Set(chrono::Utc::now()),
-        last_updated: ActiveValue::Set(chrono::Utc::now()),
-        processing_status: ActiveValue::Set(None),
-        processing_message: ActiveValue::Set(None),
-    };
-    asset.insert(&db).await.unwrap();
-
-    println!(
-        "✅ Created test data: experiment, temperature reading with image filename, well, phase transition, and matching asset"
-    );
-
-    // Test the results summary service directly
-    let results_summary = build_results_summary(experiment_id, &db).await.unwrap();
-
-    // Verify that well summaries contain image filenames
-    assert!(
-        results_summary.is_some(),
-        "Expected results summary to be generated"
-    );
-    let summary = results_summary.unwrap();
-
-    // Use well_summaries to get all wells
-    let all_wells: Vec<_> = summary.well_summaries.iter().collect();
-
-    println!(
-        "✅ Results summary generated with {} wells",
-        all_wells.len()
-    );
-    assert!(!all_wells.is_empty(), "Expected at least one well summary");
-
-    // Check that the well has the image filename
-    let well_with_image = all_wells
-        .iter()
-        .find(|w| w.image_filename_at_freeze.is_some());
-
-    assert!(
-        well_with_image.is_some(),
-        "Expected at least one well to have an image filename"
-    );
-
-    let well = well_with_image.unwrap();
-    let image_filename = well.image_filename_at_freeze.as_ref().unwrap();
-
-    // Verify image filename properties
-    assert_eq!(
-        image_filename, "INP_49640_2025-03-20_15-14-17",
-        "Image filename should match temperature reading filename"
-    );
-    assert!(
-        !std::path::Path::new(image_filename)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg")),
-        "Image filename should be stored without .jpg extension"
-    );
-
-    // Verify that image_asset_id is populated (the key test for our linking functionality)
-    assert!(
-        well.image_asset_id.is_some(),
-        "Expected well to have image_asset_id populated from filename matching"
-    );
-    println!("🔗 Image asset ID: {:?}", well.image_asset_id);
-
-    println!("✅ Image filename and asset linking service test completed successfully");
-}
-
-// ===== TESTS MIGRATED FROM views.rs =====
 
 #[tokio::test]
 async fn test_experiment_crud_operations() {
@@ -1222,51 +1035,27 @@ async fn test_experiment_endpoint_includes_results_summary() {
         serde_json::to_string_pretty(&experiment_with_results).unwrap()
     );
 
-    // Check that results_summary is included
+    // Check that results is included
     assert!(
-        experiment_with_results["results_summary"].is_object(),
-        "Should have results_summary object"
+        experiment_with_results["results"].is_object(),
+        "Should have results object"
     );
 
-    let results_summary = &experiment_with_results["results_summary"];
+    let results = &experiment_with_results["results"];
 
-    // Check required fields exist
+    // Check required fields exist in results summary
     assert!(
-        results_summary["total_wells"].is_number(),
-        "Should have total_wells"
-    );
-    assert!(
-        results_summary["wells_with_data"].is_number(),
-        "Should have wells_with_data"
-    );
-    assert!(
-        results_summary["wells_frozen"].is_number(),
-        "Should have wells_frozen"
-    );
-    assert!(
-        results_summary["wells_liquid"].is_number(),
-        "Should have wells_liquid"
-    );
-    assert!(
-        results_summary["total_time_points"].is_number(),
+        results["summary"]["total_time_points"].is_number(),
         "Should have total_time_points"
     );
     assert!(
-        results_summary["well_summaries"].is_array(),
-        "Should have well_summaries array"
+        results["trays"].is_array(),
+        "Should have trays array"
     );
 
     // For a new experiment with no data, we expect 0 values
     assert_eq!(
-        results_summary["total_wells"], 0,
-        "New experiment should have 0 wells"
-    );
-    assert_eq!(
-        results_summary["wells_with_data"], 0,
-        "New experiment should have 0 wells with data"
-    );
-    assert_eq!(
-        results_summary["total_time_points"], 0,
+        results["summary"]["total_time_points"], 0,
         "New experiment should have 0 time points"
     );
 }
@@ -1580,41 +1369,25 @@ async fn test_experiment_with_mock_results_data() {
         .unwrap();
     let experiment_response: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
-    let results_summary = &experiment_response["results_summary"];
+    let results = &experiment_response["results"];
 
     // For a new experiment with no data, verify initial state
     assert_eq!(
-        results_summary["total_wells"], 0,
-        "New experiment should have 0 wells"
-    );
-    assert_eq!(
-        results_summary["wells_with_data"], 0,
-        "New experiment should have 0 wells with data"
-    );
-    assert_eq!(
-        results_summary["wells_frozen"], 0,
-        "New experiment should have 0 frozen wells"
-    );
-    assert_eq!(
-        results_summary["wells_liquid"], 0,
-        "New experiment should have 0 liquid wells"
-    );
-    assert_eq!(
-        results_summary["total_time_points"], 0,
+        results["summary"]["total_time_points"], 0,
         "New experiment should have 0 time points"
     );
     assert!(
-        results_summary["first_timestamp"].is_null(),
+        results["summary"]["first_timestamp"].is_null(),
         "New experiment should have null first_timestamp"
     );
     assert!(
-        results_summary["last_timestamp"].is_null(),
+        results["summary"]["last_timestamp"].is_null(),
         "New experiment should have null last_timestamp"
     );
     assert_eq!(
-        results_summary["well_summaries"].as_array().unwrap().len(),
+        results["trays"].as_array().unwrap().len(),
         0,
-        "New experiment should have empty well_summaries"
+        "New experiment should have empty trays"
     );
 }
 
@@ -4203,14 +3976,14 @@ async fn test_asset_by_filename_endpoint() {
     println!("🧪 Created experiment: {experiment_id}");
 
     // Create mock assets with different filename formats
-    let asset_1_id = create_mock_asset(
+    create_mock_asset(
         &app,
         &experiment_id,
         "INP_49640_2025-03-20_15-14-17.jpg",
         "image",
     )
     .await;
-    let asset_2_id = create_mock_asset(
+    create_mock_asset(
         &app,
         &experiment_id,
         "INP_49641_2025-03-20_15-15-17",

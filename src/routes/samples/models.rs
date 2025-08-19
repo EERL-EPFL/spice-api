@@ -147,7 +147,8 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
     let mut sample: Sample = model.into();
 
     sample.treatments = treatments_with_results;
-    sample.experimental_results = super::services::fetch_experimental_results_for_sample(db, id).await?;
+    sample.experimental_results =
+        super::services::fetch_experimental_results_for_sample(db, id).await?;
 
     Ok(sample)
 }
