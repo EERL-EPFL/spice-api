@@ -159,7 +159,6 @@ pub struct ExperimentResultsSummary {
     pub sample_results: Vec<SampleResultsSummary>,
 }
 
-// NEW TRAY-CENTRIC MODELS
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct TrayWellSummary {
     pub row_letter: String,
@@ -169,8 +168,8 @@ pub struct TrayWellSummary {
     pub treatment_name: Option<String>,
     pub dilution_factor: Option<i32>,
     pub first_phase_change_time: Option<DateTime<Utc>>,
-    pub final_state: Option<String>, // "frozen", "liquid", "no_data"
-    pub total_phase_changes: i32,
+    pub temperatures: Option<TemperatureReading>,
+    pub total_phase_changes: usize,
     pub image_asset_id: Option<Uuid>, // Asset ID for the image at freeze time
 }
 
@@ -220,7 +219,7 @@ pub(super) async fn get_one_experiment(
     let results = build_tray_centric_results(id, db).await?;
 
     let mut experiment: Experiment = model.into();
-    experiment.assets = s3_assets.into_iter().map(Into::into).collect();
+    // experiment.assets = s3_assets.into_iter().map(Into::into).collect();
     experiment.regions = regions;
     experiment.results = results;
 

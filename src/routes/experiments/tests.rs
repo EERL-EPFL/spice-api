@@ -1516,19 +1516,19 @@ async fn create_experiment_get_results_summary() -> Result<serde_json::Value, St
         "Full experiment response: {}",
         serde_json::to_string_pretty(&experiment_response).unwrap()
     );
-    let results_summary = &experiment_response["results_summary"];
-    if !results_summary.is_object() {
-        println!("Results summary is: {results_summary:?}");
-        return Err("Results summary is not an object".to_string());
+    let results = &experiment_response["results"];
+    if !results.is_object() {
+        println!("Results is: {results:?}");
+        return Err("Results is not an object".to_string());
     }
-    Ok(results_summary.clone())
+    Ok(results.clone())
 }
 
 #[tokio::test]
 async fn test_experiment_results_summary_structure() {
-    let results_summary = create_experiment_get_results_summary().await.unwrap();
-    validate_experiment_results_structure(&results_summary);
-    validate_well_summaries_structure(&results_summary["well_summaries"]);
+    let results = create_experiment_get_results_summary().await.unwrap();
+    validate_experiment_results_structure(&results);
+    validate_well_summaries_structure(&results);
 
     println!("Results summary structure validation passed!");
 }
@@ -1998,48 +1998,54 @@ async fn test_experiment_process_status_endpoint() {
 }
 
 /// Validate experiment results structure
-fn validate_experiment_results_structure(results_summary: &serde_json::Value) {
+fn validate_experiment_results_structure(results: &serde_json::Value) {
     assert!(
-        results_summary.is_object(),
-        "results_summary should be an object"
+        results.is_object(),
+        "results should be an object"
     );
     assert!(
-        results_summary["total_wells"].is_number(),
-        "total_wells should be a number"
+        results["summary"].is_object(),
+        "results.summary should be an object"
     );
     assert!(
-        results_summary["wells_with_data"].is_number(),
-        "wells_with_data should be a number"
+        results["summary"]["total_time_points"].is_number(),
+        "summary.total_time_points should be a number"
     );
     assert!(
-        results_summary["total_time_points"].is_number(),
-        "total_time_points should be a number"
+        results["trays"].is_array(),
+        "results.trays should be an array"
     );
     assert!(
-        results_summary["well_summaries"].is_array(),
-        "well_summaries should be an array"
-    );
-    assert!(
-        results_summary.get("first_timestamp").is_some(),
+        results["summary"].get("first_timestamp").is_some(),
         "first_timestamp field should exist"
     );
     assert!(
-        results_summary.get("last_timestamp").is_some(),
+        results["summary"].get("last_timestamp").is_some(),
         "last_timestamp field should exist"
     );
 }
 
-/// Validate well summaries structure
-fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
-    if let Some(summaries) = well_summaries.as_array() {
-        // If no summaries, this might be before upload - just return
-        if summaries.is_empty() {
+/// Validate tray-centric well structure
+fn validate_well_summaries_structure(results: &serde_json::Value) {
+    if let Some(trays) = results["trays"].as_array() {
+        let mut total_wells = 0;
+        let mut all_wells = Vec::new();
+        
+        for tray in trays {
+            if let Some(wells) = tray["wells"].as_array() {
+                total_wells += wells.len();
+                all_wells.extend(wells.iter());
+            }
+        }
+        
+        // If no wells, this might be before upload - just return
+        if total_wells == 0 {
             return;
         }
 
         // Core success criteria - we expect 192 wells (8x12 x 2 trays)
         assert_eq!(
-            summaries.len(),
+            total_wells,
             192,
             "Should have exactly 192 well summaries (8x12 x 2 trays)"
         );
@@ -2050,39 +2056,41 @@ fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
         let mut wells_with_phase_changes = 0;
         let mut frozen_wells = 0;
 
-        for (i, summary) in summaries.iter().enumerate() {
-            assert!(summary.is_object(), "well_summary[{i}] should be an object");
-            assert!(
-                summary.get("coordinate").is_some(),
-                "well_summary[{i}] should have coordinate"
-            );
-            assert!(
-                summary.get("tray_name").is_some(),
-                "well_summary[{i}] should have tray_name"
-            );
-            assert!(
-                summary.get("final_state").is_some(),
-                "well_summary[{i}] should have final_state"
-            );
+        for (tray_idx, tray) in trays.iter().enumerate() {
+            let tray_name = tray["tray_name"].as_str();
+            
+            if let Some(wells) = tray["wells"].as_array() {
+                for (well_idx, summary) in wells.iter().enumerate() {
+                    assert!(summary.is_object(), "tray[{tray_idx}].wells[{well_idx}] should be an object");
+                    assert!(
+                        summary.get("coordinate").is_some(),
+                        "tray[{tray_idx}].wells[{well_idx}] should have coordinate"
+                    );
+                    assert!(
+                        summary.get("final_state").is_some(),
+                        "tray[{tray_idx}].wells[{well_idx}] should have final_state"
+                    );
 
-            // Count by tray
-            if let Some(tray_name) = summary["tray_name"].as_str() {
-                match tray_name {
-                    "P1" => p1_wells += 1,
-                    "P2" => p2_wells += 1,
-                    _ => panic!("Unexpected tray name: {tray_name}"),
-                }
-            }
+                    // Count by tray
+                    if let Some(tray_name) = tray_name {
+                        match tray_name {
+                            "P1" => p1_wells += 1,
+                            "P2" => p2_wells += 1,
+                            _ => panic!("Unexpected tray name: {tray_name}"),
+                        }
+                    }
 
-            // Count phase transitions (wells that have phase change data)
-            if summary.get("first_phase_change_time").is_some() {
-                wells_with_phase_changes += 1;
-            }
+                    // Count phase transitions (wells that have phase change data)
+                    if summary.get("first_phase_change_time").is_some() {
+                        wells_with_phase_changes += 1;
+                    }
 
-            // Count frozen wells
-            if let Some(final_state) = summary["final_state"].as_str() {
-                if final_state == "frozen" {
-                    frozen_wells += 1;
+                    // Count frozen wells
+                    if let Some(final_state) = summary["final_state"].as_str() {
+                        if final_state == "frozen" {
+                            frozen_wells += 1;
+                        }
+                    }
                 }
             }
         }
@@ -2109,7 +2117,7 @@ fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
 
         println!(
             "   - Total wells: {} (P1: {}, P2: {})",
-            summaries.len(),
+            total_wells,
             p1_wells,
             p2_wells
         );
@@ -2117,7 +2125,7 @@ fn validate_well_summaries_structure(well_summaries: &serde_json::Value) {
         println!("   - Frozen wells: {frozen_wells}");
 
         // Validate a few specific coordinates to ensure proper formatting
-        for summary in summaries.iter().take(3) {
+        for summary in all_wells.iter().take(3) {
             if let Some(coord) = summary["coordinate"].as_str() {
                 assert!(
                     coord.len() >= 2 && coord.chars().next().unwrap().is_alphabetic(),
@@ -3834,10 +3842,10 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
         .await
         .unwrap();
     let experiment_with_results: Value = serde_json::from_slice(&results_body).unwrap();
-    let results_summary = &experiment_with_results["results_summary"];
+    let results = &experiment_with_results["results"];
 
     // Step 4: Validate high-level counts
-    validate_experiment_totals(results_summary);
+    validate_experiment_totals(results);
 
     // Step 5: Validate specific well transitions
     validate_specific_well_transitions(&experiment_with_results);
@@ -3846,18 +3854,42 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
     validate_temperature_readings(&experiment_with_results);
 
     // Step 7: Validate timing accuracy
-    validate_experiment_timing(results_summary);
+    validate_experiment_timing(results);
 
     println!("🎉 All comprehensive validations passed!");
 }
 
-fn validate_experiment_totals(results_summary: &Value) {
+fn validate_experiment_totals(results: &Value) {
     println!("🔢 Validating experiment totals...");
 
-    let total_wells = results_summary["total_wells"].as_u64().unwrap_or(0);
-    let wells_with_data = results_summary["wells_with_data"].as_u64().unwrap_or(0);
-    let wells_frozen = results_summary["wells_frozen"].as_u64().unwrap_or(0);
-    let total_time_points = results_summary["total_time_points"].as_u64().unwrap_or(0);
+    // Calculate totals from tray data
+    let mut total_wells = 0;
+    let mut wells_with_data = 0;
+    let mut wells_frozen = 0;
+    
+    if let Some(trays) = results["trays"].as_array() {
+        for tray in trays {
+            if let Some(wells) = tray["wells"].as_array() {
+                for well in wells {
+                    total_wells += 1;
+                    
+                    // Count as having data if it has phase change time or final state
+                    if well.get("first_phase_change_time").is_some() || well.get("final_state").is_some() {
+                        wells_with_data += 1;
+                    }
+                    
+                    // Count frozen wells
+                    if let Some(final_state) = well["final_state"].as_str() {
+                        if final_state == "frozen" {
+                            wells_frozen += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    let total_time_points = results["summary"]["total_time_points"].as_u64().unwrap_or(0);
 
     assert_eq!(
         total_wells,
@@ -3889,17 +3921,29 @@ fn validate_experiment_totals(results_summary: &Value) {
 fn validate_specific_well_transitions(experiment: &Value) {
     println!("🎯 Validating specific well transitions...");
 
-    let well_summaries = experiment["results_summary"]["well_summaries"]
-        .as_array()
-        .expect("Should have well summaries");
+    // Extract all wells from all trays in the new format
+    let mut all_wells = Vec::new();
+    if let Some(trays) = experiment["results"]["trays"].as_array() {
+        for tray in trays {
+            if let Some(wells) = tray["wells"].as_array() {
+                all_wells.extend(wells.iter());
+            }
+        }
+    }
 
     // Create lookup map by tray and coordinate
     let mut well_lookup: HashMap<String, &Value> = HashMap::new();
-    for well in well_summaries {
-        let tray_name = well["tray_name"].as_str().unwrap_or("unknown");
-        let coordinate = well["coordinate"].as_str().unwrap_or("unknown");
-        let key = format!("{tray_name}_{coordinate}");
-        well_lookup.insert(key, well);
+    if let Some(trays) = experiment["results"]["trays"].as_array() {
+        for tray in trays {
+            let tray_name = tray["tray_name"].as_str().unwrap_or("unknown");
+            if let Some(wells) = tray["wells"].as_array() {
+                for well in wells {
+                    let coordinate = well["coordinate"].as_str().unwrap_or("unknown");
+                    let key = format!("{tray_name}_{coordinate}");
+                    well_lookup.insert(key, well);
+                }
+            }
+        }
     }
 
     println!("   📋 Created lookup for {} wells", well_lookup.len());
@@ -3976,13 +4020,13 @@ fn validate_temperature_readings(_experiment: &Value) {
     println!("   ✅ Temperature probe structure validated");
 }
 
-fn validate_experiment_timing(results_summary: &Value) {
+fn validate_experiment_timing(results: &Value) {
     println!("⏰ Validating experiment timing...");
 
-    let first_timestamp = results_summary["first_timestamp"]
+    let first_timestamp = results["summary"]["first_timestamp"]
         .as_str()
         .expect("Should have first_timestamp");
-    let last_timestamp = results_summary["last_timestamp"]
+    let last_timestamp = results["summary"]["last_timestamp"]
         .as_str()
         .expect("Should have last_timestamp");
 
@@ -4059,43 +4103,56 @@ async fn test_well_coordinate_mapping_accuracy() {
         .await
         .unwrap();
     let experiment_with_results: Value = serde_json::from_slice(&results_body).unwrap();
-    let well_summaries = experiment_with_results["results_summary"]["well_summaries"]
-        .as_array()
-        .expect("Should have well summaries");
+    // Extract all wells from all trays in the new format
+    let mut all_wells = Vec::new();
+    if let Some(trays) = experiment_with_results["results"]["trays"].as_array() {
+        for tray in trays {
+            if let Some(wells) = tray["wells"].as_array() {
+                all_wells.extend(wells.iter());
+            }
+        }
+    }
 
     // Validate that we have exactly 192 wells with proper coordinates
-    assert_eq!(well_summaries.len(), 192, "Should have exactly 192 wells");
+    assert_eq!(all_wells.len(), 192, "Should have exactly 192 wells");
 
     let mut p1_wells = 0;
     let mut p2_wells = 0;
     let mut coordinate_set = std::collections::HashSet::new();
 
-    for well in well_summaries {
-        let tray_name = well["tray_name"].as_str().unwrap_or("unknown");
-        let coordinate = well["coordinate"].as_str().unwrap_or("unknown");
+    // Iterate through trays and their wells to get tray context
+    if let Some(trays) = experiment_with_results["results"]["trays"].as_array() {
+        for tray in trays {
+            let tray_name = tray["tray_name"].as_str().unwrap_or("unknown");
+            if let Some(wells) = tray["wells"].as_array() {
+                for well in wells {
+                    let coordinate = well["coordinate"].as_str().unwrap_or("unknown");
 
-        match tray_name {
-            "P1" => p1_wells += 1,
-            "P2" => p2_wells += 1,
-            _ => panic!("Unexpected tray name: {tray_name}"),
+                    match tray_name {
+                        "P1" => p1_wells += 1,
+                        "P2" => p2_wells += 1,
+                        _ => panic!("Unexpected tray name: {tray_name}"),
+                    }
+
+                    // Validate coordinate format (A1-H12)
+                    assert!(
+                        coordinate.len() >= 2 && coordinate.len() <= 3,
+                        "Coordinate {coordinate} should be 2-3 characters"
+                    );
+                    assert!(
+                        coordinate.chars().next().unwrap().is_ascii_uppercase(),
+                        "Coordinate {coordinate} should start with A-H"
+                    );
+
+                    // Add to set to check for duplicates within tray
+                    let full_coord = format!("{tray_name}_{coordinate}");
+                    assert!(
+                        coordinate_set.insert(full_coord.clone()),
+                        "Duplicate coordinate found: {full_coord}"
+                    );
+                }
+            }
         }
-
-        // Validate coordinate format (A1-H12)
-        assert!(
-            coordinate.len() >= 2 && coordinate.len() <= 3,
-            "Coordinate {coordinate} should be 2-3 characters"
-        );
-        assert!(
-            coordinate.chars().next().unwrap().is_ascii_uppercase(),
-            "Coordinate {coordinate} should start with A-H"
-        );
-
-        // Add to set to check for duplicates within tray
-        let full_coord = format!("{tray_name}_{coordinate}");
-        assert!(
-            coordinate_set.insert(full_coord.clone()),
-            "Duplicate coordinate found: {full_coord}"
-        );
     }
 
     assert_eq!(p1_wells, 96, "Should have 96 P1 wells, got {p1_wells}");
@@ -4389,14 +4446,24 @@ async fn test_excel_processing_with_images() {
 
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let experiment_data: Value = serde_json::from_slice(&body_bytes).unwrap();
-    let results_summary = &experiment_data["results_summary"];
-    let well_summaries = results_summary["well_summaries"].as_array().unwrap();
+    let results = &experiment_data["results"];
+    
+    // Extract all wells from all trays in the new tray-centric format
+    let mut all_wells = Vec::new();
+    if let Some(trays) = results["trays"].as_array() {
+        for tray in trays {
+            if let Some(wells) = tray["wells"].as_array() {
+                all_wells.extend(wells.iter());
+            }
+        }
+    }
 
     // 6. Verify that temperature readings and assets were created successfully
     // (Phase transition correlation requires Excel processing pipeline not available via API)
     println!(
-        "📊 Found {} well summaries (expected for tray configuration)",
-        well_summaries.len()
+        "📊 Found {} well summaries from {} trays (expected for tray configuration)",
+        all_wells.len(),
+        results["trays"].as_array().map(|t| t.len()).unwrap_or(0)
     );
 
     // Verify the assets and temperature readings we created are accessible
@@ -4407,7 +4474,7 @@ async fn test_excel_processing_with_images() {
     );
 
     // Count wells that have freeze time data (may be 0 without phase transitions)
-    let wells_with_freeze_data = well_summaries
+    let wells_with_freeze_data = all_wells
         .iter()
         .filter(|well| !well["first_phase_change_time"].is_null())
         .count();

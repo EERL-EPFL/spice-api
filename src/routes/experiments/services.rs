@@ -1,16 +1,71 @@
-use super::models::{ExperimentResultsSummary, SampleResultsSummary, TreatmentResultsSummary, WellSummary, ExperimentResultsResponse, ExperimentResultsSummaryCompact, TrayResultsSummary, TrayWellSummary};
+use super::models::{
+    ExperimentResultsResponse, ExperimentResultsSummary, ExperimentResultsSummaryCompact,
+    SampleResultsSummary, TrayResultsSummary, TrayWellSummary, TreatmentResultsSummary,
+    WellSummary,
+};
 // Coordinate transformation functions no longer needed - wells store alphanumeric coordinates directly
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
-    tray_configurations::regions::models as regions,
-    tray_configurations::trays::models as trays, tray_configurations::wells::models as wells,
+    tray_configurations::regions::models as regions, tray_configurations::trays::models as trays,
+    tray_configurations::wells::models as wells,
 };
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
 use uuid::Uuid;
+
+// Constants for phase states
+const PHASE_LIQUID: i32 = 0;
+const PHASE_FROZEN: i32 = 1;
+
+// Helper function to convert row letter to 0-based index
+fn row_letter_to_index(row_letter: &str) -> i32 {
+    row_letter
+        .chars()
+        .next()
+        .map(|c| c as i32 - 'A' as i32)
+        .unwrap_or(0)
+}
+
+// Helper to calculate average from temperature probes and create formatted reading
+fn format_temperature_reading(
+    temp_reading: &temperature_readings::Model,
+) -> temperature_readings::Model {
+    let probe_values = [
+        temp_reading.probe_1,
+        temp_reading.probe_2,
+        temp_reading.probe_3,
+        temp_reading.probe_4,
+        temp_reading.probe_5,
+        temp_reading.probe_6,
+        temp_reading.probe_7,
+        temp_reading.probe_8,
+    ];
+
+    let non_null_values: Vec<Decimal> = probe_values.into_iter().flatten().collect();
+    let average = if !non_null_values.is_empty() {
+        Some(
+            (non_null_values.iter().sum::<Decimal>() / Decimal::from(non_null_values.len()))
+                .round_dp(3),
+        )
+    } else {
+        None
+    };
+
+    let mut formatted = temp_reading.clone();
+    formatted.probe_1 = temp_reading.probe_1.map(|d| d.round_dp(3));
+    formatted.probe_2 = temp_reading.probe_2.map(|d| d.round_dp(3));
+    formatted.probe_3 = temp_reading.probe_3.map(|d| d.round_dp(3));
+    formatted.probe_4 = temp_reading.probe_4.map(|d| d.round_dp(3));
+    formatted.probe_5 = temp_reading.probe_5.map(|d| d.round_dp(3));
+    formatted.probe_6 = temp_reading.probe_6.map(|d| d.round_dp(3));
+    formatted.probe_7 = temp_reading.probe_7.map(|d| d.round_dp(3));
+    formatted.probe_8 = temp_reading.probe_8.map(|d| d.round_dp(3));
+    formatted.average = average;
+    formatted
+}
 
 // Helper function to load temperature readings and calculate time span
 async fn load_temperature_data(
@@ -18,7 +73,6 @@ async fn load_temperature_data(
     db: &impl ConnectionTrait,
 ) -> Result<
     (
-        Vec<temperature_readings::Model>,
         std::collections::HashMap<Uuid, temperature_readings::Model>,
         Option<DateTime<Utc>>,
         Option<DateTime<Utc>>,
@@ -53,7 +107,6 @@ async fn load_temperature_data(
             .collect();
 
     Ok((
-        temp_readings_data,
         temp_readings_map,
         first_timestamp,
         last_timestamp,
@@ -131,11 +184,11 @@ async fn process_phase_transitions(
     // Count wells by final state
     let wells_frozen = well_final_states
         .values()
-        .filter(|&&state| state == 1)
+        .filter(|&&state| state == PHASE_FROZEN)
         .count();
     let wells_liquid = well_final_states
         .values()
-        .filter(|&&state| state == 0)
+        .filter(|&&state| state == PHASE_LIQUID)
         .count();
     let wells_with_data = wells_with_transitions.len();
 
@@ -332,7 +385,7 @@ fn build_well_summaries(
     for well in experiment_wells {
         // Get tray information for tray_name lookup later
         let _tray_info = tray_map.get(&well.tray_id);
-        
+
         // Coordinates are now stored directly as alphanumeric format
         // No transformation needed - wells store exactly what should be displayed
         let coordinate = format!("{}{}", well.row_letter, well.column_number);
@@ -350,9 +403,9 @@ fn build_well_summaries(
             .collect();
 
         // Calculate first phase change time (first 0→1 transition) and get temperature reading
-        let first_phase_change_transition = well_transitions
-            .iter()
-            .find(|transition| transition.previous_state == 0 && transition.new_state == 1);
+        let first_phase_change_transition = well_transitions.iter().find(|transition| {
+            transition.previous_state == PHASE_LIQUID && transition.new_state == PHASE_FROZEN
+        });
 
         let first_phase_change_time = first_phase_change_transition
             .map(|transition| transition.timestamp.with_timezone(&Utc));
@@ -361,53 +414,15 @@ fn build_well_summaries(
         let temperature_and_image = first_phase_change_transition
             .and_then(|transition| temp_readings_map.get(&transition.temperature_reading_id))
             .map(|temp_reading| {
-                // Collect all non-null probe values for average calculation
-                let probe_values = [
-                    temp_reading.probe_1,
-                    temp_reading.probe_2,
-                    temp_reading.probe_3,
-                    temp_reading.probe_4,
-                    temp_reading.probe_5,
-                    temp_reading.probe_6,
-                    temp_reading.probe_7,
-                    temp_reading.probe_8,
-                ];
-
-                let non_null_values: Vec<Decimal> = probe_values.into_iter().flatten().collect();
-
-                // Calculate average if we have any values
-                let average = if non_null_values.is_empty() {
-                    None
-                } else {
-                    let sum: Decimal = non_null_values.iter().sum();
-                    let avg = sum / Decimal::from(non_null_values.len());
-                    // Round to 3 decimal places
-                    Some(avg.round_dp(3))
-                };
-
-                let temperature_probes = super::temperatures::models::TemperatureReading {
-                    experiment_id: temp_reading.experiment_id,
-                    timestamp: temp_reading.timestamp,
-                    id: temp_reading.id,
-                    image_filename: temp_reading.image_filename.clone(),
-                    created_at: temp_reading.created_at,
-                    probe_1: temp_reading.probe_1.map(|d| d.round_dp(3)),
-                    probe_2: temp_reading.probe_2.map(|d| d.round_dp(3)),
-                    probe_3: temp_reading.probe_3.map(|d| d.round_dp(3)),
-                    probe_4: temp_reading.probe_4.map(|d| d.round_dp(3)),
-                    probe_5: temp_reading.probe_5.map(|d| d.round_dp(3)),
-                    probe_6: temp_reading.probe_6.map(|d| d.round_dp(3)),
-                    probe_7: temp_reading.probe_7.map(|d| d.round_dp(3)),
-                    probe_8: temp_reading.probe_8.map(|d| d.round_dp(3)),
-                    average,
-                };
-
-                (temperature_probes, temp_reading.image_filename.clone())
+                let formatted = format_temperature_reading(temp_reading);
+                (formatted, temp_reading.image_filename.clone())
             });
 
-        let first_phase_change_temperature_probes = temperature_and_image
+        let first_phase_change_temperature_probes: Option<
+            super::temperatures::models::TemperatureReading,
+        > = temperature_and_image
             .as_ref()
-            .map(|(temp_probes, _)| temp_probes.clone());
+            .map(|(temp_probes, _)| temp_probes.clone().into());
         let image_filename_at_freeze = temperature_and_image
             .as_ref()
             .and_then(|(_, image_filename)| image_filename.clone());
@@ -418,6 +433,7 @@ fn build_well_summaries(
             .and_then(|filename| filename_to_asset_id.get(filename))
             .copied();
 
+
         // Calculate seconds from experiment start to first phase change
         let first_phase_change_seconds = match (first_phase_change_time, first_timestamp) {
             (Some(phase_change_time), Some(start_time)) => {
@@ -426,21 +442,23 @@ fn build_well_summaries(
             _ => None,
         };
 
-        // Determine final state
-        let final_state = well_final_states
-            .get(&well.id)
-            .map(|&state| match state {
-                0 => "liquid".to_string(),
-                1 => "frozen".to_string(),
-                _ => "unknown".to_string(),
-            })
-            .or_else(|| Some("no_data".to_string()));
+        // Simple state mapping
+        let final_state = Some(
+            well_final_states
+                .get(&well.id)
+                .map(|&state| {
+                    if state == PHASE_FROZEN {
+                        "frozen"
+                    } else {
+                        "liquid"
+                    }
+                })
+                .unwrap_or("no_data")
+                .to_string(),
+        );
 
         // Find region for this well to get sample/treatment info
-        // Convert row letter to 0-based index (A=0, B=1, etc.)
-        let well_row_0based = well.row_letter.chars().next()
-            .map(|c| (c as u8 - b'A') as i32)
-            .unwrap_or(0);
+        let well_row_0based = row_letter_to_index(&well.row_letter);
         let well_col_0based = well.column_number - 1;
 
         let region = experiment_regions.iter().find(|r| {
@@ -497,13 +515,8 @@ pub(super) async fn build_results_summary(
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsSummary>, DbErr> {
     // Load all required data using helper functions
-    let (
-        _temp_readings_data,
-        temp_readings_map,
-        first_timestamp,
-        last_timestamp,
-        total_time_points,
-    ) = load_temperature_data(experiment_id, db).await?;
+    let (temp_readings_map, first_timestamp, last_timestamp, total_time_points) =
+        load_temperature_data(experiment_id, db).await?;
 
     let filename_to_asset_id = load_experiment_assets(experiment_id, db).await?;
 
@@ -563,44 +576,70 @@ pub(super) async fn build_results_summary(
 /// Build hierarchical sample results from flat well summaries
 fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<SampleResultsSummary> {
     use std::collections::HashMap;
-    
+
     // Group wells by sample, then by treatment
     let mut sample_map: HashMap<String, HashMap<String, Vec<WellSummary>>> = HashMap::new();
-    
+
     for well in well_summaries {
         // Use sample info if available, otherwise create placeholder
-        let sample_key = well.sample.as_ref()
+        let sample_key = well
+            .sample
+            .as_ref()
             .map(|s| s.id.to_string())
             .unwrap_or_else(|| "unknown_sample".to_string());
-        
+
         // For treatment, we need to extract from the well somehow
         // Since WellSummary doesn't directly have treatment info, we'll need to group by sample only for now
         let treatment_key = "default_treatment".to_string();
-        
-        sample_map.entry(sample_key)
+
+        sample_map
+            .entry(sample_key)
             .or_insert_with(HashMap::new)
             .entry(treatment_key)
             .or_insert_with(Vec::new)
             .push(well.clone());
     }
-    
+
     // Convert to the expected structure
     let mut sample_results = Vec::new();
-    
+
     for (sample_key, treatment_map) in sample_map {
         // Get sample info from first well
-        let sample_info = well_summaries.iter()
-            .find(|w| w.sample.as_ref().map(|s| s.id.to_string()).unwrap_or_else(|| "unknown_sample".to_string()) == sample_key)
+        let sample_info = well_summaries
+            .iter()
+            .find(|w| {
+                w.sample
+                    .as_ref()
+                    .map(|s| s.id.to_string())
+                    .unwrap_or_else(|| "unknown_sample".to_string())
+                    == sample_key
+            })
             .and_then(|w| w.sample.clone());
-        
+
         if let Some(sample) = sample_info {
             let mut treatments = Vec::new();
-            
+
             for (_, wells) in treatment_map {
                 // Count frozen and liquid wells
-                let wells_frozen = wells.iter().filter(|w| w.final_state.as_ref().map(|s| s == "frozen").unwrap_or(false)).count();
-                let wells_liquid = wells.iter().filter(|w| w.final_state.as_ref().map(|s| s == "liquid").unwrap_or(false)).count();
-                
+                let wells_frozen = wells
+                    .iter()
+                    .filter(|w| {
+                        w.final_state
+                            .as_ref()
+                            .map(|s| s == "frozen")
+                            .unwrap_or(false)
+                    })
+                    .count();
+                let wells_liquid = wells
+                    .iter()
+                    .filter(|w| {
+                        w.final_state
+                            .as_ref()
+                            .map(|s| s == "liquid")
+                            .unwrap_or(false)
+                    })
+                    .count();
+
                 // Create a placeholder treatment since we don't have treatment info in WellSummary
                 let treatment = crate::routes::treatments::models::Treatment {
                     id: uuid::Uuid::new_v4(),
@@ -614,51 +653,35 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
                     statistics: None,
                     dilution_summaries: vec![],
                 };
-                
+
                 let treatment_summary = TreatmentResultsSummary {
                     treatment,
                     wells,
                     wells_frozen,
                     wells_liquid,
                 };
-                
+
                 treatments.push(treatment_summary);
             }
-            
-            let sample_summary = SampleResultsSummary {
-                sample,
-                treatments,
-            };
-            
+
+            let sample_summary = SampleResultsSummary { sample, treatments };
+
             sample_results.push(sample_summary);
         }
     }
-    
+
     sample_results
 }
 
-// NEW TRAY-CENTRIC RESULTS BUILDER
 pub(super) async fn build_tray_centric_results(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsResponse>, DbErr> {
     // Load all required data using existing helper functions
-    let (
-        _temp_readings_data,
-        temp_readings_map,
-        first_timestamp,
-        last_timestamp,
-        total_time_points,
-    ) = load_temperature_data(experiment_id, db).await?;
+    let (temp_readings_map, first_timestamp, last_timestamp, total_time_points) =
+        load_temperature_data(experiment_id, db).await?;
 
     let filename_to_asset_id = load_experiment_assets(experiment_id, db).await?;
-    
-    // Debug: Log asset mapping for tray-centric results
-    println!("🔍 [TRAY-CENTRIC] Asset filename mapping for experiment {}:", experiment_id);
-    for (filename, asset_id) in &filename_to_asset_id {
-        println!("  {} → {}", filename, asset_id);
-    }
-    println!("Total assets mapped: {}", filename_to_asset_id.len());
 
     let experiment_regions = regions::Entity::find()
         .filter(regions::Column::ExperimentId.eq(experiment_id))
@@ -695,7 +718,7 @@ pub(super) async fn build_tray_centric_results(
         &experiment_regions,
         &treatment_map,
         &tray_map,
-    )?;
+    );
 
     // Create compact summary
     let summary = ExperimentResultsSummaryCompact {
@@ -726,15 +749,14 @@ fn build_tray_summaries(
         ),
     >,
     tray_map: &std::collections::HashMap<Uuid, trays::Model>,
-) -> Result<Vec<TrayResultsSummary>, DbErr> {
-    println!("🔍 [TRAY-SUMMARIES] Building tray summaries for {} wells, {} transitions, {} temp readings", 
-        experiment_wells.len(), phase_transitions_data.len(), temp_readings_map.len());
-    
+) -> Vec<TrayResultsSummary> {
     // Group wells by tray
-    let mut tray_wells: std::collections::HashMap<Uuid, Vec<&wells::Model>> = std::collections::HashMap::new();
-    
+    let mut tray_wells: std::collections::HashMap<Uuid, Vec<&wells::Model>> =
+        std::collections::HashMap::new();
+
     for well in experiment_wells {
-        tray_wells.entry(well.tray_id)
+        tray_wells
+            .entry(well.tray_id)
             .or_insert_with(Vec::new)
             .push(well);
     }
@@ -742,7 +764,6 @@ fn build_tray_summaries(
     let mut tray_results = Vec::new();
 
     for (tray_id, wells_in_tray) in tray_wells {
-        println!("🔍 [TRAY {}] Processing {} wells", tray_id, wells_in_tray.len());
         let tray_info = tray_map.get(&tray_id);
         let tray_name = tray_info.and_then(|t| t.name.clone());
 
@@ -765,75 +786,32 @@ fn build_tray_summaries(
                 .collect();
 
             // Calculate first phase change time (first 0→1 transition)
-            let first_phase_change_transition = well_transitions
-                .iter()
-                .find(|transition| transition.previous_state == 0 && transition.new_state == 1);
-            
-            if first_phase_change_transition.is_none() && !well_transitions.is_empty() {
-                println!("⚠️ [{}] No 0→1 transition found, but has {} transitions", coordinate, well_transitions.len());
-                for (i, transition) in well_transitions.iter().enumerate() {
-                    println!("  {}→{} at temp_reading_id: {}", transition.previous_state, transition.new_state, transition.temperature_reading_id);
-                }
-            }
-
+            let first_phase_change_transition = well_transitions.iter().find(|transition| {
+                transition.previous_state == PHASE_LIQUID && transition.new_state == PHASE_FROZEN
+            });
             let first_phase_change_time = first_phase_change_transition
                 .map(|transition| transition.timestamp.with_timezone(&Utc));
 
             // Count total phase changes
-            let total_phase_changes = well_transitions.len() as i32;
+            let total_phase_changes = well_transitions.len();
 
-            // Get image asset ID at first phase change
-            let image_asset_id = first_phase_change_transition
-                .and_then(|transition| {
-                    let temp_reading = temp_readings_map.get(&transition.temperature_reading_id);
-                    if temp_reading.is_none() {
-                        println!("⚠️ [{}] No temp reading found for transition ID: {}", coordinate, transition.temperature_reading_id);
-                    }
-                    temp_reading
-                })
-                .and_then(|temp_reading| {
-                    let filename = temp_reading.image_filename.as_ref();
-                    if filename.is_none() {
-                        println!("⚠️ [{}] Temp reading has no image filename", coordinate);
-                    } else {
-                        println!("📷 [{}] Found temp reading image filename: {:?}", coordinate, filename);
-                    }
-                    filename
-                })
-                .and_then(|filename| {
-                    // Strip .jpg extension from temperature reading filename for matching
-                    let filename_for_lookup = if filename.ends_with(".jpg") {
-                        filename.strip_suffix(".jpg").unwrap_or(filename)
-                    } else {
-                        filename
-                    };
-                    println!("🔍 [{}] Looking up asset with filename: '{}' (original: '{}')", coordinate, filename_for_lookup, filename);
-                    
-                    let asset_id = filename_to_asset_id.get(filename_for_lookup);
-                    if asset_id.is_none() {
-                        println!("⚠️ [{}] No asset ID found for filename: '{}'", coordinate, filename_for_lookup);
-                        println!("🔍 Available asset filenames: {:?}", filename_to_asset_id.keys().collect::<Vec<_>>());
-                    } else {
-                        println!("✅ [{}] Found asset ID: {:?} for filename: '{}'", coordinate, asset_id, filename_for_lookup);
-                    }
-                    asset_id
-                })
-                .copied();
-
-            // Determine final state
-            let final_state = well_final_states
-                .get(&well.id)
-                .map(|&state| match state {
-                    0 => "liquid".to_string(),
-                    1 => "frozen".to_string(),
-                    _ => "unknown".to_string(),
-                })
-                .or_else(|| Some("no_data".to_string()));
+            // Get temperature probe data at first phase change
+            let temperatures: Option<temperature_readings::TemperatureReading> =
+                first_phase_change_transition
+                    .and_then(|transition| {
+                        temp_readings_map.get(&transition.temperature_reading_id)
+                    })
+                    .map(|temp_reading| format_temperature_reading(temp_reading).into());
+            let image_filename: Option<String> =
+                temperatures.clone().and_then(|t| t.image_filename);
+            let image_asset_id = match image_filename {
+                Some(filename) => filename_to_asset_id.get(&filename).copied(),
+                None => None,
+            };
+            // Simple state mapping
 
             // Find region for this well to get sample/treatment info
-            let well_row_0based = well.row_letter.chars().next()
-                .map(|c| (c as u8 - b'A') as i32)
-                .unwrap_or(0);
+            let well_row_0based = row_letter_to_index(&well.row_letter);
             let well_col_0based = well.column_number - 1;
 
             let region = experiment_regions.iter().find(|r| {
@@ -869,7 +847,7 @@ fn build_tray_summaries(
                 treatment_name,
                 dilution_factor: region.and_then(|r| r.dilution_factor),
                 first_phase_change_time,
-                final_state,
+                temperatures,
                 total_phase_changes,
                 image_asset_id,
             };
@@ -889,9 +867,5 @@ fn build_tray_summaries(
     // Sort trays by their sequence or name
     tray_results.sort_by(|a, b| a.tray_name.cmp(&b.tray_name));
 
-    Ok(tray_results)
+    tray_results
 }
-
-
-
-
