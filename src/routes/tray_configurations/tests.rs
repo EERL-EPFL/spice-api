@@ -29,8 +29,8 @@ async fn create_test_tray_crud(app: &axum::Router) -> (StatusCode, Value) {
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "CRUD Test Tray",
-                "qty_x_axis": 12,
-                "qty_y_axis": 8,
+                "qty_cols": 12,
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5
             }
         ]
@@ -214,8 +214,8 @@ async fn test_tray_validation() {
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "Invalid Tray",
-                "qty_x_axis": -5,  // Should be positive
-                "qty_y_axis": 8,
+                "qty_cols": -5,  // Should be positive
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5
             }
         ]
@@ -250,8 +250,8 @@ async fn test_tray_validation() {
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "Zero Dimensions Tray",
-                "qty_x_axis": 0,
-                "qty_y_axis": 0,
+                "qty_cols": 0,
+                "qty_rows": 0,
                 "well_relative_diameter": 0.0
             }
         ]
@@ -300,8 +300,8 @@ async fn test_tray_filtering_and_sorting() {
                     "order_sequence": 1,
                     "rotation_degrees": 0,
                     "name": format!("{} {}", name, &uuid::Uuid::new_v4().to_string()[..8]),
-                    "qty_x_axis": x_axis,
-                    "qty_y_axis": y_axis,
+                    "qty_cols": x_axis,
+                    "qty_rows": y_axis,
                     "well_relative_diameter": 2.0
                 }
             ]
@@ -420,8 +420,8 @@ async fn create_tray_configuration(
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "Primary Plate",
-                "qty_x_axis": 12,
-                "qty_y_axis": 8,
+                "qty_cols": 12,
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5
             }
         ]
@@ -470,11 +470,11 @@ async fn test_tray_configuration_crud_operations() {
                 if !assignment["name"].is_null() {
                     assert!(assignment["name"].is_string());
                 }
-                if !assignment["qty_x_axis"].is_null() {
-                    assert!(assignment["qty_x_axis"].is_number());
+                if !assignment["qty_cols"].is_null() {
+                    assert!(assignment["qty_cols"].is_number());
                 }
-                if !assignment["qty_y_axis"].is_null() {
-                    assert!(assignment["qty_y_axis"].is_number());
+                if !assignment["qty_rows"].is_null() {
+                    assert!(assignment["qty_rows"].is_number());
                 }
             }
         }
@@ -607,8 +607,8 @@ async fn test_tray_configuration_default_behavior() {
                 "trays": [
                     {
                         "name": "Default Plate",
-                        "qty_x_axis": 12,
-                        "qty_y_axis": 8,
+                        "qty_cols": 12,
+                        "qty_rows": 8,
                         "well_relative_diameter": 2.0
                     }
                 ]
@@ -647,8 +647,8 @@ async fn test_tray_configuration_default_behavior() {
                     "trays": [
                         {
                             "name": "Second Default Plate",
-                            "qty_x_axis": 8,
-                            "qty_y_axis": 6,
+                            "qty_cols": 8,
+                            "qty_rows": 6,
                             "well_relative_diameter": 1.8
                         }
                     ]
@@ -727,8 +727,8 @@ async fn test_tray_dimensions_validation() {
                     "trays": [
                         {
                             "name": format!("{} Test {}", description, &uuid::Uuid::new_v4().to_string()[..8]),
-                            "qty_x_axis": x_axis,
-                            "qty_y_axis": y_axis,
+                            "qty_cols": x_axis,
+                            "qty_rows": y_axis,
                             "well_relative_diameter": 2.0
                         }
                     ]
@@ -770,32 +770,32 @@ async fn create_tray_configuration_complex_structure(app: &axum::Router) -> axum
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "Top Left Plate",
-                "qty_x_axis": 12,
-                "qty_y_axis": 8,
+                "qty_cols": 12,
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5
             },
             {
                 "order_sequence": 2,
                 "rotation_degrees": 0,
                 "name": "Top Right Plate",
-                "qty_x_axis": 12,
-                "qty_y_axis": 8,
+                "qty_cols": 12,
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5
             },
             {
                 "order_sequence": 3,
                 "rotation_degrees": 90,
                 "name": "Bottom Plate",
-                "qty_x_axis": 24,
-                "qty_y_axis": 16,
+                "qty_cols": 24,
+                "qty_rows": 16,
                 "well_relative_diameter": 1.5
             },
             {
                 "order_sequence": 4,
                 "rotation_degrees": 180,
                 "name": "Rotated Plate",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 3.0
             }
         ]
@@ -841,8 +841,8 @@ async fn test_tray_configuration_complex_structure() {
             // Each assignment should have tray details directly embedded (flattened structure)
             for assignment in assignments {
                 assert!(assignment["name"].is_string(), "Each assignment should have tray details directly embedded");
-                assert!(assignment["qty_x_axis"].is_number(), "qty_x_axis should be directly in assignment");
-                assert!(assignment["qty_y_axis"].is_number(), "qty_y_axis should be directly in assignment");
+                assert!(assignment["qty_cols"].is_number(), "qty_cols should be directly in assignment");
+                assert!(assignment["qty_rows"].is_number(), "qty_rows should be directly in assignment");
             }
 
             // Check order sequence sorting
@@ -890,8 +890,8 @@ async fn test_tray_configuration_complex_structure() {
                         "Assignment should have tray name directly embedded"
                     );
                     assert!(
-                        assignment["qty_x_axis"].is_number() || assignment["qty_x_axis"].is_null(),
-                        "Assignment should have qty_x_axis directly embedded"
+                        assignment["qty_cols"].is_number() || assignment["qty_cols"].is_null(),
+                        "Assignment should have qty_cols directly embedded"
                     );
                 }
             }
@@ -938,8 +938,8 @@ async fn create_test_tray_comprehensive(app: &axum::Router) -> (StatusCode, Valu
                 "trays": [
                     {
                         "name": "Individual Workflow Tray",
-                        "qty_x_axis": 8,
-                        "qty_y_axis": 12,
+                        "qty_cols": 8,
+                        "qty_rows": 12,
                         "well_relative_diameter": 2.2
                     }
                 ]
@@ -984,8 +984,8 @@ async fn test_tray_workflow_comprehensive() {
                 "trays": [
                     {
                         "name": "Primary Analysis Plate",
-                        "qty_x_axis": 12,
-                        "qty_y_axis": 8,
+                        "qty_cols": 12,
+                        "qty_rows": 8,
                         "well_relative_diameter": 2.5
                     }
                 ]
@@ -996,8 +996,8 @@ async fn test_tray_workflow_comprehensive() {
                 "trays": [
                     {
                         "name": "Secondary Control Plate",
-                        "qty_x_axis": 16,
-                        "qty_y_axis": 10,
+                        "qty_cols": 16,
+                        "qty_rows": 10,
                         "well_relative_diameter": 2.0
                     }
                 ]
@@ -1071,16 +1071,16 @@ async fn create_test_tray_via_api(app: &axum::Router) -> Result<Value, Box<dyn s
         "trays": [
             {
                 "name": "P1",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 0.6,
                 "rotation_degrees": 0,
                 "order_sequence": 1
             },
             {
                 "name": "P2",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 0.6,
                 "rotation_degrees": 180,
                 "order_sequence": 2
@@ -1119,16 +1119,16 @@ async fn test_create_tray() {
         "trays": [
             {
                 "name": "P1",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 0.6,
                 "rotation_degrees": 0,
                 "order_sequence": 1
             },
             {
                 "name": "P2",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 0.6,
                 "rotation_degrees": 180,
                 "order_sequence": 2
@@ -1274,8 +1274,8 @@ async fn test_update_tray() {
         "trays": [
             {
                 "name": "UpdatedP1",
-                "qty_x_axis": 10,
-                "qty_y_axis": 14,
+                "qty_cols": 10,
+                "qty_rows": 14,
                 "well_relative_diameter": 0.8,
                 "rotation_degrees": 90,
                 "order_sequence": 1
@@ -1481,16 +1481,16 @@ async fn test_debug_500_error_user_payload() {
             {
                 "name": "P1",
                 "rotation_degrees": 90,
-                "qty_x_axis": 12,
-                "qty_y_axis": 8,
+                "qty_cols": 12,
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5,
                 "order_sequence": 1
             },
             {
                 "name": "P2",
                 "rotation_degrees": 270,
-                "qty_x_axis": 12,
-                "qty_y_axis": 8,
+                "qty_cols": 12,
+                "qty_rows": 8,
                 "well_relative_diameter": 2.5,
                 "order_sequence": 2
             }
@@ -1538,16 +1538,16 @@ async fn test_tray_configurations_have_id_fields() {
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "Test Tray P1",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 2.5
             },
             {
                 "order_sequence": 2,
                 "rotation_degrees": 180,
                 "name": "Test Tray P2",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 2.5
             }
         ]

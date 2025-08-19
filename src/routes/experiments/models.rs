@@ -1,5 +1,5 @@
 use super::temperatures::models::TemperatureReading;
-use crate::routes::experiments::services::build_results_summary;
+use crate::routes::experiments::services::build_tray_centric_results;
 use chrono::{DateTime, Utc};
 use crudcrate::traits::MergeIntoActiveModel;
 use crudcrate::{CRUDResource, EntityToModels};
@@ -61,7 +61,7 @@ pub struct Model {
     pub regions: Vec<crate::routes::tray_configurations::regions::models::Region>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = None, list_model=false)]
-    pub results_summary: Option<super::models::ExperimentResultsSummary>,
+    pub results: Option<super::models::ExperimentResultsResponse>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -159,6 +159,41 @@ pub struct ExperimentResultsSummary {
     pub sample_results: Vec<SampleResultsSummary>,
 }
 
+// NEW TRAY-CENTRIC MODELS
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TrayWellSummary {
+    pub row_letter: String,
+    pub column_number: i32,
+    pub coordinate: String, // e.g., "A1", "B2"
+    pub sample: Option<crate::routes::samples::models::Sample>,
+    pub treatment_name: Option<String>,
+    pub dilution_factor: Option<i32>,
+    pub first_phase_change_time: Option<DateTime<Utc>>,
+    pub final_state: Option<String>, // "frozen", "liquid", "no_data"
+    pub total_phase_changes: i32,
+    pub image_asset_id: Option<Uuid>, // Asset ID for the image at freeze time
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TrayResultsSummary {
+    pub tray_id: String,
+    pub tray_name: Option<String>,
+    pub wells: Vec<TrayWellSummary>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentResultsSummaryCompact {
+    pub total_time_points: usize,
+    pub first_timestamp: Option<DateTime<Utc>>,
+    pub last_timestamp: Option<DateTime<Utc>>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentResultsResponse {
+    pub summary: ExperimentResultsSummaryCompact,
+    pub trays: Vec<TrayResultsSummary>,
+}
+
 pub(super) async fn get_one_experiment(
     db: &DatabaseConnection,
     id: Uuid,
@@ -181,13 +216,13 @@ pub(super) async fn get_one_experiment(
         .map(Into::into) // Direct conversion using EntityToModels
         .collect();
 
-    // Build results summary
-    let results_summary = build_results_summary(id, db).await?;
+    // Build tray-centric results
+    let results = build_tray_centric_results(id, db).await?;
 
     let mut experiment: Experiment = model.into();
     experiment.assets = s3_assets.into_iter().map(Into::into).collect();
     experiment.regions = regions;
-    experiment.results_summary = results_summary;
+    experiment.results = results;
 
     Ok(experiment)
 }

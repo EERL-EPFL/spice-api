@@ -144,14 +144,14 @@ pub async fn create_tray_configuration(
 ) -> Result<TrayConfiguration, DbErr> {
     // Simple validation
     for tray in &data.trays {
-        if let Some(qty_x) = tray.qty_x_axis {
-            if qty_x < 1 {
-                return Err(DbErr::Custom("qty_x_axis must be positive".to_string()));
+        if let Some(qty_cols) = tray.qty_cols {
+            if qty_cols < 1 {
+                return Err(DbErr::Custom("qty_cols must be positive".to_string()));
             }
         }
-        if let Some(qty_y) = tray.qty_y_axis {
-            if qty_y < 1 {
-                return Err(DbErr::Custom("qty_y_axis must be positive".to_string()));
+        if let Some(qty_rows) = tray.qty_rows {
+            if qty_rows < 1 {
+                return Err(DbErr::Custom("qty_rows must be positive".to_string()));
             }
         }
     }
@@ -186,8 +186,8 @@ pub async fn create_tray_configuration(
             order_sequence: Set(tray.order_sequence),
             rotation_degrees: Set(tray.rotation_degrees),
             name: Set(tray.name.clone()),
-            qty_x_axis: Set(tray.qty_x_axis),
-            qty_y_axis: Set(tray.qty_y_axis),
+            qty_cols: Set(tray.qty_cols),
+            qty_rows: Set(tray.qty_rows),
             well_relative_diameter: Set(tray.well_relative_diameter),
             created_at: Set(now),
             last_updated: Set(now),
@@ -207,14 +207,14 @@ pub async fn update_tray_configuration(
 ) -> Result<TrayConfiguration, DbErr> {
     // Simple validation for trays
     for tray in &update_data.trays {
-        if let Some(qty_x) = tray.qty_x_axis {
-            if qty_x.unwrap() < 1 {
-                return Err(DbErr::Custom("qty_x_axis must be positive".to_string()));
+        if let Some(qty_cols) = tray.qty_cols {
+            if qty_cols.unwrap() < 1 {
+                return Err(DbErr::Custom("qty_cols must be positive".to_string()));
             }
         }
-        if let Some(qty_y) = tray.qty_y_axis {
-            if qty_y.unwrap() < 1 {
-                return Err(DbErr::Custom("qty_y_axis must be positive".to_string()));
+        if let Some(qty_rows) = tray.qty_rows {
+            if qty_rows.unwrap() < 1 {
+                return Err(DbErr::Custom("qty_rows must be positive".to_string()));
             }
         }
     }
@@ -269,8 +269,8 @@ pub async fn update_tray_configuration(
                     .unwrap_or_default()
                     .unwrap_or_default()),
                 name: Set(tray.name.clone().unwrap_or_default()),
-                qty_x_axis: Set(tray.qty_x_axis.unwrap_or_default()),
-                qty_y_axis: Set(tray.qty_y_axis.unwrap_or_default()),
+                qty_cols: Set(tray.qty_cols.unwrap_or_default()),
+                qty_rows: Set(tray.qty_rows.unwrap_or_default()),
                 well_relative_diameter: Set(tray.well_relative_diameter.unwrap_or_default()),
                 created_at: Set(now),
                 last_updated: Set(now),

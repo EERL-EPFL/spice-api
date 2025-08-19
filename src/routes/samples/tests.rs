@@ -1276,8 +1276,8 @@ async fn test_sample_experimental_results_comprehensive() {
         order_sequence: Set(1),
         rotation_degrees: Set(0),
         name: Set(Some("Test Tray".to_string())),
-        qty_x_axis: Set(Some(12)),
-        qty_y_axis: Set(Some(8)),
+        qty_cols: Set(Some(12)),
+        qty_rows: Set(Some(8)),
         well_relative_diameter: Set(Some(Decimal::new(10, 1))), // 1.0
         ..Default::default()
     };

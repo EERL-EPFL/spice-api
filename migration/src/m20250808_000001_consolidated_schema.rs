@@ -463,8 +463,8 @@ impl MigrationTrait for Migration {
                     .default(Expr::current_timestamp()),
             )
             .col(ColumnDef::new(Trays::Name).text())
-            .col(ColumnDef::new(Trays::QtyXAxis).integer())
-            .col(ColumnDef::new(Trays::QtyYAxis).integer())
+            .col(ColumnDef::new(Trays::QtyCols).integer())
+            .col(ColumnDef::new(Trays::QtyRows).integer())
             .col(ColumnDef::new(Trays::WellRelativeDiameter).decimal())
             .foreign_key(
                 ForeignKey::create()
@@ -1392,8 +1392,8 @@ enum Trays {
     CreatedAt,
     LastUpdated,
     Name,
-    QtyXAxis,
-    QtyYAxis,
+    QtyCols,
+    QtyRows,
     WellRelativeDiameter,
 }
 

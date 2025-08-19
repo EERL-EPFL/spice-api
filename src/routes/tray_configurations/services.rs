@@ -57,14 +57,14 @@ pub fn str_to_coordinates(coordinate: &str) -> Result<WellCoordinate, String> {
 pub fn transform_coordinates_for_rotation(
     coord: &WellCoordinate,
     rotation_degrees: i32,
-    qty_x_axis: u8,
-    qty_y_axis: u8,
+    qty_cols: u8,
+    qty_rows: u8,
 ) -> Result<WellCoordinate, String> {
     // Convert 1-based coordinates to 0-based for calculations
     let logical_row = (coord.row - 1) as i32;
     let logical_col = (coord.column - 1) as i32;
-    let qty_x = qty_x_axis as i32;
-    let qty_y = qty_y_axis as i32;
+    let qty_x = qty_cols as i32;  // number of columns
+    let qty_y = qty_rows as i32;  // number of rows
     
     // Apply the same transformation as TrayDisplay.tsx getDisplayIndices
     let (x_index, y_index) = match rotation_degrees {
@@ -129,33 +129,33 @@ fn test_str_to_coordinates() {
 #[test]
 fn test_transform_coordinates_for_rotation() {
     // Test 12x8 tray (12 columns, 8 rows A-H)
-    let qty_x_axis = 12; // columns
-    let qty_y_axis = 8;  // rows
+    let qty_cols = 12; // columns  
+    let qty_rows = 8;  // rows
     
     // Test 0 degrees (no rotation)
     assert_eq!(
-        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 0, qty_x_axis, qty_y_axis),
+        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 0, qty_cols, qty_rows),
         Ok(WellCoordinate { column: 1, row: 1 })
     );
     
     // Test 90 degrees rotation - matches TrayDisplay.tsx logic
     // A1 (logical row=0, col=0) -> xIndex=0, yIndex=11 -> column=1, row=12
     assert_eq!(
-        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 90, qty_x_axis, qty_y_axis),
+        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 90, qty_cols, qty_rows),
         Ok(WellCoordinate { column: 1, row: 12 })
     );
     
     // Test 180 degrees rotation
     // A1 (logical row=0, col=0) -> xIndex=11, yIndex=7 -> column=12, row=8 (H12)
     assert_eq!(
-        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 180, qty_x_axis, qty_y_axis),
+        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 180, qty_cols, qty_rows),
         Ok(WellCoordinate { column: 12, row: 8 })
     );
     
     // Test 270 degrees rotation
     // A1 (logical row=0, col=0) -> xIndex=7, yIndex=0 -> column=8, row=1 (A8)  
     assert_eq!(
-        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 270, qty_x_axis, qty_y_axis),
+        transform_coordinates_for_rotation(&WellCoordinate { column: 1, row: 1 }, 270, qty_cols, qty_rows),
         Ok(WellCoordinate { column: 8, row: 1 })
     );
 
@@ -172,7 +172,7 @@ fn test_transform_coordinates_for_rotation() {
     // And: logical_col = 4
     // So logical A5 should become E8 at 270°
     println!("Debug: A5 at 270° should become E8:");
-    let test_a5 = transform_coordinates_for_rotation(&WellCoordinate { column: 5, row: 1 }, 270, qty_x_axis, qty_y_axis);
+    let test_a5 = transform_coordinates_for_rotation(&WellCoordinate { column: 5, row: 1 }, 270, qty_cols, qty_rows);
     println!("  A5 -> {:?}", test_a5);
     
     // Let's also test the reverse - what shows the current wrong result D5?
@@ -181,6 +181,6 @@ fn test_transform_coordinates_for_rotation() {
     // At 270°: column=5 means xIndex=4, row=4 means yIndex=3
     // So: qty_y - 1 - logical_row = 4 -> logical_row = 3, logical_col = 3
     // So logical D4 should become D5 at 270°
-    let test_d4 = transform_coordinates_for_rotation(&WellCoordinate { column: 4, row: 4 }, 270, qty_x_axis, qty_y_axis);
+    let test_d4 = transform_coordinates_for_rotation(&WellCoordinate { column: 4, row: 4 }, 270, qty_cols, qty_rows);
     println!("  D4 -> {:?}", test_d4);
 }

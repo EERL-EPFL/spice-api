@@ -1,4 +1,4 @@
-use super::models::{ExperimentResultsSummary, SampleResultsSummary, TreatmentResultsSummary, WellSummary};
+use super::models::{ExperimentResultsSummary, SampleResultsSummary, TreatmentResultsSummary, WellSummary, ExperimentResultsResponse, ExperimentResultsSummaryCompact, TrayResultsSummary, TrayWellSummary};
 // Coordinate transformation functions no longer needed - wells store alphanumeric coordinates directly
 use crate::routes::{
     experiments::models as experiments,
@@ -331,7 +331,7 @@ fn build_well_summaries(
 
     for well in experiment_wells {
         // Get tray information for tray_name lookup later
-        let tray_info = tray_map.get(&well.tray_id);
+        let _tray_info = tray_map.get(&well.tray_id);
         
         // Coordinates are now stored directly as alphanumeric format
         // No transformation needed - wells store exactly what should be displayed
@@ -635,6 +635,261 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
     }
     
     sample_results
+}
+
+// NEW TRAY-CENTRIC RESULTS BUILDER
+pub(super) async fn build_tray_centric_results(
+    experiment_id: Uuid,
+    db: &impl ConnectionTrait,
+) -> Result<Option<ExperimentResultsResponse>, DbErr> {
+    // Load all required data using existing helper functions
+    let (
+        _temp_readings_data,
+        temp_readings_map,
+        first_timestamp,
+        last_timestamp,
+        total_time_points,
+    ) = load_temperature_data(experiment_id, db).await?;
+
+    let filename_to_asset_id = load_experiment_assets(experiment_id, db).await?;
+    
+    // Debug: Log asset mapping for tray-centric results
+    println!("🔍 [TRAY-CENTRIC] Asset filename mapping for experiment {}:", experiment_id);
+    for (filename, asset_id) in &filename_to_asset_id {
+        println!("  {} → {}", filename, asset_id);
+    }
+    println!("Total assets mapped: {}", filename_to_asset_id.len());
+
+    let experiment_regions = regions::Entity::find()
+        .filter(regions::Column::ExperimentId.eq(experiment_id))
+        .all(db)
+        .await?;
+
+    let (
+        phase_transitions_data,
+        well_final_states,
+        wells_with_transitions,
+        _wells_with_data,
+        _wells_frozen,
+        _wells_liquid,
+    ) = process_phase_transitions(experiment_id, db).await?;
+
+    let (experiment_wells, tray_map) = load_experiment_wells_and_trays(
+        experiment_id,
+        &wells_with_transitions,
+        &phase_transitions_data,
+        db,
+    )
+    .await?;
+
+    let treatment_map = load_treatment_and_sample_data(&experiment_regions, db).await?;
+
+    // Build tray-centric results
+    let tray_results = build_tray_summaries(
+        &experiment_wells,
+        &phase_transitions_data,
+        &temp_readings_map,
+        &filename_to_asset_id,
+        first_timestamp,
+        &well_final_states,
+        &experiment_regions,
+        &treatment_map,
+        &tray_map,
+    )?;
+
+    // Create compact summary
+    let summary = ExperimentResultsSummaryCompact {
+        total_time_points,
+        first_timestamp,
+        last_timestamp,
+    };
+
+    Ok(Some(ExperimentResultsResponse {
+        summary,
+        trays: tray_results,
+    }))
+}
+
+fn build_tray_summaries(
+    experiment_wells: &[wells::Model],
+    phase_transitions_data: &[(well_phase_transitions::Model, Option<wells::Model>)],
+    temp_readings_map: &std::collections::HashMap<Uuid, temperature_readings::Model>,
+    filename_to_asset_id: &std::collections::HashMap<String, Uuid>,
+    _first_timestamp: Option<DateTime<Utc>>,
+    well_final_states: &std::collections::HashMap<Uuid, i32>,
+    experiment_regions: &[regions::Model],
+    treatment_map: &std::collections::HashMap<
+        Uuid,
+        (
+            crate::routes::treatments::models::Treatment,
+            Option<crate::routes::samples::models::Sample>,
+        ),
+    >,
+    tray_map: &std::collections::HashMap<Uuid, trays::Model>,
+) -> Result<Vec<TrayResultsSummary>, DbErr> {
+    println!("🔍 [TRAY-SUMMARIES] Building tray summaries for {} wells, {} transitions, {} temp readings", 
+        experiment_wells.len(), phase_transitions_data.len(), temp_readings_map.len());
+    
+    // Group wells by tray
+    let mut tray_wells: std::collections::HashMap<Uuid, Vec<&wells::Model>> = std::collections::HashMap::new();
+    
+    for well in experiment_wells {
+        tray_wells.entry(well.tray_id)
+            .or_insert_with(Vec::new)
+            .push(well);
+    }
+
+    let mut tray_results = Vec::new();
+
+    for (tray_id, wells_in_tray) in tray_wells {
+        println!("🔍 [TRAY {}] Processing {} wells", tray_id, wells_in_tray.len());
+        let tray_info = tray_map.get(&tray_id);
+        let tray_name = tray_info.and_then(|t| t.name.clone());
+
+        let mut tray_well_summaries = Vec::new();
+
+        for well in wells_in_tray {
+            // Build well summary similar to existing logic but simplified
+            let coordinate = format!("{}{}", well.row_letter, well.column_number);
+
+            // Get phase transitions for this well
+            let well_transitions: Vec<&well_phase_transitions::Model> = phase_transitions_data
+                .iter()
+                .filter_map(|(transition, well_opt)| {
+                    if well_opt.as_ref().map(|w| w.id) == Some(well.id) {
+                        Some(transition)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            // Calculate first phase change time (first 0→1 transition)
+            let first_phase_change_transition = well_transitions
+                .iter()
+                .find(|transition| transition.previous_state == 0 && transition.new_state == 1);
+            
+            if first_phase_change_transition.is_none() && !well_transitions.is_empty() {
+                println!("⚠️ [{}] No 0→1 transition found, but has {} transitions", coordinate, well_transitions.len());
+                for (i, transition) in well_transitions.iter().enumerate() {
+                    println!("  {}→{} at temp_reading_id: {}", transition.previous_state, transition.new_state, transition.temperature_reading_id);
+                }
+            }
+
+            let first_phase_change_time = first_phase_change_transition
+                .map(|transition| transition.timestamp.with_timezone(&Utc));
+
+            // Count total phase changes
+            let total_phase_changes = well_transitions.len() as i32;
+
+            // Get image asset ID at first phase change
+            let image_asset_id = first_phase_change_transition
+                .and_then(|transition| {
+                    let temp_reading = temp_readings_map.get(&transition.temperature_reading_id);
+                    if temp_reading.is_none() {
+                        println!("⚠️ [{}] No temp reading found for transition ID: {}", coordinate, transition.temperature_reading_id);
+                    }
+                    temp_reading
+                })
+                .and_then(|temp_reading| {
+                    let filename = temp_reading.image_filename.as_ref();
+                    if filename.is_none() {
+                        println!("⚠️ [{}] Temp reading has no image filename", coordinate);
+                    } else {
+                        println!("📷 [{}] Found temp reading image filename: {:?}", coordinate, filename);
+                    }
+                    filename
+                })
+                .and_then(|filename| {
+                    // Strip .jpg extension from temperature reading filename for matching
+                    let filename_for_lookup = if filename.ends_with(".jpg") {
+                        filename.strip_suffix(".jpg").unwrap_or(filename)
+                    } else {
+                        filename
+                    };
+                    println!("🔍 [{}] Looking up asset with filename: '{}' (original: '{}')", coordinate, filename_for_lookup, filename);
+                    
+                    let asset_id = filename_to_asset_id.get(filename_for_lookup);
+                    if asset_id.is_none() {
+                        println!("⚠️ [{}] No asset ID found for filename: '{}'", coordinate, filename_for_lookup);
+                        println!("🔍 Available asset filenames: {:?}", filename_to_asset_id.keys().collect::<Vec<_>>());
+                    } else {
+                        println!("✅ [{}] Found asset ID: {:?} for filename: '{}'", coordinate, asset_id, filename_for_lookup);
+                    }
+                    asset_id
+                })
+                .copied();
+
+            // Determine final state
+            let final_state = well_final_states
+                .get(&well.id)
+                .map(|&state| match state {
+                    0 => "liquid".to_string(),
+                    1 => "frozen".to_string(),
+                    _ => "unknown".to_string(),
+                })
+                .or_else(|| Some("no_data".to_string()));
+
+            // Find region for this well to get sample/treatment info
+            let well_row_0based = well.row_letter.chars().next()
+                .map(|c| (c as u8 - b'A') as i32)
+                .unwrap_or(0);
+            let well_col_0based = well.column_number - 1;
+
+            let region = experiment_regions.iter().find(|r| {
+                if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) =
+                    (r.row_min, r.row_max, r.col_min, r.col_max)
+                {
+                    well_row_0based >= row_min
+                        && well_row_0based <= row_max
+                        && well_col_0based >= col_min
+                        && well_col_0based <= col_max
+                } else {
+                    false
+                }
+            });
+
+            // Get treatment and sample info if region exists
+            let (treatment, sample) = region
+                .and_then(|r| r.treatment_id)
+                .and_then(|treatment_id| treatment_map.get(&treatment_id))
+                .map_or((None, None), |(t, s)| (Some(t.clone()), s.clone()));
+
+            let treatment_name = treatment.map(|t| match t.name {
+                crate::routes::treatments::models::TreatmentName::None => "none".to_string(),
+                crate::routes::treatments::models::TreatmentName::Heat => "heat".to_string(),
+                crate::routes::treatments::models::TreatmentName::H2o2 => "h2o2".to_string(),
+            });
+
+            let tray_well_summary = TrayWellSummary {
+                row_letter: well.row_letter.clone(),
+                column_number: well.column_number,
+                coordinate,
+                sample,
+                treatment_name,
+                dilution_factor: region.and_then(|r| r.dilution_factor),
+                first_phase_change_time,
+                final_state,
+                total_phase_changes,
+                image_asset_id,
+            };
+
+            tray_well_summaries.push(tray_well_summary);
+        }
+
+        let tray_summary = TrayResultsSummary {
+            tray_id: tray_id.to_string(),
+            tray_name,
+            wells: tray_well_summaries,
+        };
+
+        tray_results.push(tray_summary);
+    }
+
+    // Sort trays by their sequence or name
+    tray_results.sort_by(|a, b| a.tray_name.cmp(&b.tray_name));
+
+    Ok(tray_results)
 }
 
 

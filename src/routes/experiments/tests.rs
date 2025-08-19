@@ -17,8 +17,8 @@ use uuid::Uuid;
 async fn create_tray_via_api(app: &axum::Router, rows: i32, cols: i32) -> Result<String, String> {
     let tray_data = json!({
         "name": format!("{}x{} Tray", rows, cols),
-        "qty_x_axis": cols,
-        "qty_y_axis": rows,
+        "qty_cols": cols,
+        "qty_rows": rows,
         "well_relative_diameter": null
     });
 
@@ -408,8 +408,8 @@ async fn test_image_filename_in_results_service() {
         order_sequence: ActiveValue::Set(1),
         rotation_degrees: ActiveValue::Set(0),
         name: ActiveValue::Set(Some("P1".to_string())),
-        qty_x_axis: ActiveValue::Set(Some(8)),
-        qty_y_axis: ActiveValue::Set(Some(12)),
+        qty_cols: ActiveValue::Set(Some(8)),
+        qty_rows: ActiveValue::Set(Some(12)),
         well_relative_diameter: ActiveValue::Set(None),
         created_at: ActiveValue::Set(chrono::Utc::now()),
         last_updated: ActiveValue::Set(chrono::Utc::now()),
@@ -3645,16 +3645,16 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
                 "order_sequence": 1,
                 "rotation_degrees": 0,
                 "name": "P1",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 2.5
             },
             {
                 "order_sequence": 2,
                 "rotation_degrees": 0,
                 "name": "P2",
-                "qty_x_axis": 8,
-                "qty_y_axis": 12,
+                "qty_cols": 8,
+                "qty_rows": 12,
                 "well_relative_diameter": 2.5
             }
         ]

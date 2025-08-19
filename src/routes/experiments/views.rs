@@ -217,6 +217,7 @@ pub fn excel_upload_router() -> Router<AppState> {
             "/{experiment_id}/clear-results",
             post(clear_experiment_results),
         )
+        .route("/{experiment_id}/results", get(get_experiment_results))
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit to match main router
 }
 
@@ -838,4 +839,52 @@ pub async fn clear_experiment_results(
         "success": true,
         "message": "Experiment results cleared successfully"
     })))
+}
+
+/// Get experiment results in tray-centric format
+#[utoipa::path(
+    get,
+    path = "/{experiment_id}/results",
+    responses(
+        (status = 200, description = "Experiment results in tray-centric format", body = super::models::ExperimentResultsResponse),
+        (status = 404, description = "Experiment not found", body = String),
+        (status = 500, description = "Internal Server Error", body = String)
+    ),
+    operation_id = "get_experiment_results",
+    summary = "Get experiment results in tray-centric format",
+    description = "Returns experiment results organized by trays with direct well information including sample and treatment data"
+)]
+pub async fn get_experiment_results(
+    State(app_state): State<AppState>,
+    Path(experiment_id): Path<Uuid>,
+) -> Result<Json<super::models::ExperimentResultsResponse>, (StatusCode, String)> {
+    // Check if experiment exists
+    let _experiment = super::models::Entity::find_by_id(experiment_id)
+        .one(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {e}"),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Experiment not found".to_string()))?;
+
+    // Build tray-centric results
+    let results = super::services::build_tray_centric_results(experiment_id, &app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to build results: {e}"),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "No results available for this experiment".to_string(),
+            )
+        })?;
+
+    Ok(Json(results))
 }

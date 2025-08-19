@@ -20,9 +20,9 @@ pub struct Model {
     #[crudcrate(sortable, filterable, fulltext)]
     pub name: Option<String>,
     #[crudcrate(sortable, filterable)]
-    pub qty_x_axis: Option<i32>,
+    pub qty_cols: Option<i32>,
     #[crudcrate(sortable, filterable)]
-    pub qty_y_axis: Option<i32>,
+    pub qty_rows: Option<i32>,
     #[crudcrate(sortable, filterable)]
     pub well_relative_diameter: Option<Decimal>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
