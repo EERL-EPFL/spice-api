@@ -1048,10 +1048,7 @@ async fn test_experiment_endpoint_includes_results_summary() {
         results["summary"]["total_time_points"].is_number(),
         "Should have total_time_points"
     );
-    assert!(
-        results["trays"].is_array(),
-        "Should have trays array"
-    );
+    assert!(results["trays"].is_array(), "Should have trays array");
 
     // For a new experiment with no data, we expect 0 values
     assert_eq!(
@@ -3465,8 +3462,8 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
 /// Upload Excel file via API with proper multipart support
 async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
     // Read the test Excel file
-    let excel_data = fs::read("src/routes/experiments/test_resources/merged.xlsx")
-        .expect("test Excel file missing");
+    let excel_data =
+        fs::read("src/experiments/test_resources/merged.xlsx").expect("test Excel file missing");
 
     // Create a properly formatted multipart body with correct boundaries and headers
     let boundary = "----formdata-test-boundary-123456789";
