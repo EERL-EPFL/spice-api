@@ -207,14 +207,18 @@ pub async fn update_tray_configuration(
 ) -> Result<TrayConfiguration, DbErr> {
     // Simple validation for trays
     for tray in &update_data.trays {
-        if let Some(qty_cols) = tray.qty_cols {
-            if qty_cols.unwrap() < 1 {
-                return Err(DbErr::Custom("qty_cols must be positive".to_string()));
+        if let Some(qty_cols_opt) = tray.qty_cols {
+            if let Some(qty_cols) = qty_cols_opt {
+                if qty_cols < 1 {
+                    return Err(DbErr::Custom("qty_cols must be positive".to_string()));
+                }
             }
         }
-        if let Some(qty_rows) = tray.qty_rows {
-            if qty_rows.unwrap() < 1 {
-                return Err(DbErr::Custom("qty_rows must be positive".to_string()));
+        if let Some(qty_rows_opt) = tray.qty_rows {
+            if let Some(qty_rows) = qty_rows_opt {
+                if qty_rows < 1 {
+                    return Err(DbErr::Custom("qty_rows must be positive".to_string()));
+                }
             }
         }
     }

@@ -369,7 +369,7 @@ fn build_well_summaries(
     temp_readings_map: &std::collections::HashMap<Uuid, temperature_readings::Model>,
     filename_to_asset_id: &std::collections::HashMap<String, Uuid>,
     first_timestamp: Option<DateTime<Utc>>,
-    well_final_states: &std::collections::HashMap<Uuid, i32>,
+    _well_final_states: &std::collections::HashMap<Uuid, i32>,
     experiment_regions: &[regions::Model],
     treatment_map: &std::collections::HashMap<
         Uuid,
@@ -442,20 +442,8 @@ fn build_well_summaries(
             _ => None,
         };
 
-        // Simple state mapping
-        let final_state = Some(
-            well_final_states
-                .get(&well.id)
-                .map(|&state| {
-                    if state == PHASE_FROZEN {
-                        "frozen"
-                    } else {
-                        "liquid"
-                    }
-                })
-                .unwrap_or("no_data")
-                .to_string(),
-        );
+        // We don't use final_state in experiments endpoint
+        let final_state = None;
 
         // Find region for this well to get sample/treatment info
         let well_row_0based = row_letter_to_index(&well.row_letter);
@@ -570,6 +558,7 @@ pub(super) async fn build_results_summary(
         first_timestamp,
         last_timestamp,
         sample_results,
+        well_summaries,
     }))
 }
 
@@ -739,7 +728,7 @@ fn build_tray_summaries(
     temp_readings_map: &std::collections::HashMap<Uuid, temperature_readings::Model>,
     filename_to_asset_id: &std::collections::HashMap<String, Uuid>,
     _first_timestamp: Option<DateTime<Utc>>,
-    well_final_states: &std::collections::HashMap<Uuid, i32>,
+    _well_final_states: &std::collections::HashMap<Uuid, i32>,
     experiment_regions: &[regions::Model],
     treatment_map: &std::collections::HashMap<
         Uuid,

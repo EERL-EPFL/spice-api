@@ -62,6 +62,9 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = None, list_model=false)]
     pub results: Option<super::models::ExperimentResultsResponse>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = None)]
+    pub results_summary: Option<super::models::ExperimentResultsSummary>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -157,6 +160,7 @@ pub struct ExperimentResultsSummary {
     pub first_timestamp: Option<DateTime<Utc>>,
     pub last_timestamp: Option<DateTime<Utc>>,
     pub sample_results: Vec<SampleResultsSummary>,
+    pub well_summaries: Vec<WellSummary>,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -213,6 +217,7 @@ pub(super) async fn get_one_experiment(
     let mut experiment: Experiment = model.into();
     experiment.regions = regions;
     experiment.results = build_tray_centric_results(id, db).await?;
+    experiment.results_summary = super::services::build_results_summary(id, db).await?;
 
     Ok(experiment)
 }

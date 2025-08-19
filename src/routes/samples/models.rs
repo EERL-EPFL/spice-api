@@ -92,6 +92,9 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], use_target_models)]
     pub treatments: Vec<crate::routes::treatments::models::Treatment>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![])]
+    pub experimental_results: Vec<crate::routes::nucleation_events::models::NucleationEvent>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -144,6 +147,7 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
     let mut sample: Sample = model.into();
 
     sample.treatments = treatments_with_results;
+    sample.experimental_results = super::services::fetch_experimental_results_for_sample(db, id).await?;
 
     Ok(sample)
 }

@@ -1,4 +1,3 @@
-/// High-performance streaming ZIP with concurrent S3 downloads and immediate streaming
 use axum::{
     body::Body,
     http::{
@@ -9,6 +8,7 @@ use axum::{
 };
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
+
 const MAX_CONCURRENT: usize = 25;
 
 pub async fn create_hybrid_streaming_zip_response(

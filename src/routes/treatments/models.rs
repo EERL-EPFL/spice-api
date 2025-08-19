@@ -151,8 +151,19 @@ async fn fetch_experimental_results_for_treatment(
                             region.col_min,
                             region.col_max,
                         ) {
-                            well.row_letter.chars().next().map(|c| (c as u8 - b'A') as i32).unwrap_or(0) >= row_min
-                                && well.row_letter.chars().next().map(|c| (c as u8 - b'A') as i32).unwrap_or(0) <= row_max
+                            well.row_letter
+                                .chars()
+                                .next()
+                                .map(|c| (c as u8 - b'A') as i32)
+                                .unwrap_or(0)
+                                >= row_min
+                                && well
+                                    .row_letter
+                                    .chars()
+                                    .next()
+                                    .map(|c| (c as u8 - b'A') as i32)
+                                    .unwrap_or(0)
+                                    <= row_max
                                 && well.column_number >= (col_min + 1)
                                 && well.column_number <= (col_max + 1)
                         } else {
@@ -251,4 +262,3 @@ async fn get_one_treatment(db: &DatabaseConnection, id: Uuid) -> Result<Treatmen
 
     Ok(treatment)
 }
-

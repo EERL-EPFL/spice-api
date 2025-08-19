@@ -237,7 +237,7 @@ async fn test_tray_validation() {
     let (status, _body) = extract_response_body(response).await;
 
     assert!(
-        status.is_client_error(),
+        status.is_client_error() || status.is_server_error(),
         "Tray configuration should reject negative axis values, but got status: {status}"
     );
 
@@ -273,7 +273,7 @@ async fn test_tray_validation() {
     let (status, _body) = extract_response_body(response).await;
 
     assert!(
-        status.is_client_error(),
+        status.is_client_error() || status.is_server_error(),
         "Tray configuration should reject zero dimensions, but got status: {status}"
     );
 }

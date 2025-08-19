@@ -15,7 +15,7 @@ use sea_orm::{DatabaseConnection, EntityTrait, entity::prelude::*};
 use uuid::Uuid;
 
 /// Fetch all experimental results for a specific sample across all experiments
-async fn fetch_experimental_results_for_sample(
+pub(super) async fn fetch_experimental_results_for_sample(
     db: &DatabaseConnection,
     sample_id: Uuid,
 ) -> Result<Vec<NucleationEvent>, DbErr> {

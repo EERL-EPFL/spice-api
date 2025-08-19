@@ -66,6 +66,10 @@ pub struct DilutionSummary {
 impl NucleationStatistics {
     /// Calculate statistics from a collection of nucleation events
     pub fn from_events(events: &[NucleationEvent]) -> Option<Self> {
+        if events.is_empty() {
+            return None;
+        }
+        
         let total_wells = events.len();
         let frozen_events: Vec<_> = events
             .iter()
