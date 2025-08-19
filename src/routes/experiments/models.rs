@@ -1,385 +1,386 @@
-use super::services::{
-    build_results_summary, create_region_active_models, region_model_to_input_with_treatment,
-};
-use async_trait::async_trait;
+use super::temperatures::models::TemperatureReading;
+use crate::routes::experiments::services::build_tray_centric_results;
 use chrono::{DateTime, Utc};
-use crudcrate::{CRUDResource, ToCreateModel, ToUpdateModel, traits::MergeIntoActiveModel};
+use crudcrate::traits::MergeIntoActiveModel;
+use crudcrate::{CRUDResource, EntityToModels};
 use rust_decimal::Decimal;
+use sea_orm::QuerySelect;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue, Condition, DatabaseConnection, EntityTrait, Order, QueryOrder,
-    QuerySelect, TransactionTrait, entity::prelude::*,
+    ActiveValue::Set, Condition, ConnectionTrait, EntityTrait, Order, QueryOrder, TransactionTrait,
+    entity::prelude::*,
 };
-use serde::{Deserialize, Serialize};
-use spice_entity::experiments::Model;
-use spice_entity::sea_orm_active_enums::TreatmentName;
-use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct TreatmentInfo {
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
+#[sea_orm(table_name = "experiments")]
+#[crudcrate(
+    generate_router,
+    api_struct = "Experiment",
+    name_singular = "experiment",
+    name_plural = "experiments",
+    description = "Experiments track ice nucleation testing sessions with associated data and results.",
+    fn_get_one = get_one_experiment,
+    fn_create = create_experiment,
+    fn_update = update_experiment,
+    fn_get_all = get_all_experiments
+)]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
     pub id: Uuid,
-    pub name: TreatmentName,
-    pub notes: Option<String>,
-    pub enzyme_volume_litres: Option<Decimal>,
-    pub sample: Option<SampleInfo>,
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct SampleInfo {
-    pub id: Uuid,
+    #[sea_orm(column_type = "Text", unique)]
+    #[crudcrate(sortable, filterable, fulltext)]
     pub name: String,
-    pub location: Option<LocationInfo>,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable, fulltext)]
+    pub username: Option<String>,
+    #[crudcrate(sortable, filterable)]
+    pub performed_at: Option<DateTime<Utc>>,
+    #[crudcrate(sortable, filterable, list_model = false)]
+    pub temperature_ramp: Option<Decimal>,
+    #[crudcrate(sortable, filterable, list_model = false)]
+    pub temperature_start: Option<Decimal>,
+    #[crudcrate(sortable, filterable, list_model = false)]
+    pub temperature_end: Option<Decimal>,
+    #[crudcrate(filterable)]
+    pub is_calibration: bool,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable, fulltext, list_model = false)]
+    pub remarks: Option<String>,
+    #[crudcrate(sortable, filterable, list_model = false)]
+    pub tray_configuration_id: Option<Uuid>,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable)]
+    pub last_updated: DateTime<Utc>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
+    pub assets: Vec<crate::routes::assets::models::Asset>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false, use_target_models)]
+    pub regions: Vec<crate::routes::tray_configurations::regions::models::Region>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = None, list_model=false)]
+    pub results: Option<super::models::ExperimentResultsResponse>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct LocationInfo {
-    pub id: Uuid,
-    pub name: String,
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(has_many = "crate::routes::tray_configurations::regions::models::Entity")]
+    Regions,
+    #[sea_orm(has_many = "crate::routes::assets::models::Entity")]
+    S3Assets,
+    #[sea_orm(has_many = "crate::routes::experiments::temperatures::models::Entity")]
+    TemperatureReadings,
+    #[sea_orm(
+        belongs_to = "crate::routes::tray_configurations::models::Entity",
+        from = "Column::TrayConfigurationId",
+        to = "crate::routes::tray_configurations::models::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    TrayConfigurations,
+    #[sea_orm(has_many = "crate::routes::experiments::phase_transitions::models::Entity")]
+    WellPhaseTransitions,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct TemperatureProbeValues {
-    pub probe_1: Option<Decimal>,
-    pub probe_2: Option<Decimal>,
-    pub probe_3: Option<Decimal>,
-    pub probe_4: Option<Decimal>,
-    pub probe_5: Option<Decimal>,
-    pub probe_6: Option<Decimal>,
-    pub probe_7: Option<Decimal>,
-    pub probe_8: Option<Decimal>,
-    pub average: Option<Decimal>,
+impl Related<crate::routes::tray_configurations::regions::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Regions.def()
+    }
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
+impl Related<crate::routes::assets::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::S3Assets.def()
+    }
+}
+
+impl Related<crate::routes::experiments::temperatures::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TemperatureReadings.def()
+    }
+}
+
+impl Related<crate::routes::tray_configurations::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::TrayConfigurations.def()
+    }
+}
+
+impl Related<crate::routes::experiments::phase_transitions::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::WellPhaseTransitions.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+#[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
 pub struct WellSummary {
-    pub row: i32,
-    pub col: i32,
+    pub row_letter: String,
+    pub column_number: i32,
     pub coordinate: String, // e.g., "A1", "B2"
     pub first_phase_change_time: Option<DateTime<Utc>>,
     pub first_phase_change_seconds: Option<i64>, // seconds from experiment start
-    pub first_phase_change_temperature_probes: Option<TemperatureProbeValues>, // Temperature probe values at first phase change
+    pub first_phase_change_temperature_probes: Option<TemperatureReading>,
     pub final_state: Option<String>, // "frozen", "liquid", "no_data"
-    // pub sample_name: Option<String>,
-    // pub treatment_name: Option<String>,
-    // pub treatment_id: Option<Uuid>,
-    pub tray_id: Option<String>, // UUID of the tray
+    pub image_filename_at_freeze: Option<String>, // Image filename at time of first phase change (without .jpg extension)
+    pub image_asset_id: Option<Uuid>, // Asset ID for the image at freeze time (for secure viewing via /assets/{id}/view)
+    pub tray_id: Option<String>,      // UUID of the tray
     pub tray_name: Option<String>,
     pub dilution_factor: Option<i32>,
-    // Full objects with UUIDs for UI linking
-    pub treatment: Option<TreatmentInfo>,
-    // pub sample: Option<SampleInfo>,
+    pub sample: Option<crate::routes::samples::models::Sample>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct ExperimentResultsSummary {
-    pub total_wells: usize,
-    pub wells_with_data: usize,
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SampleResultsSummary {
+    pub sample: crate::routes::samples::models::Sample,
+    pub treatments: Vec<TreatmentResultsSummary>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TreatmentResultsSummary {
+    pub treatment: crate::routes::treatments::models::Treatment,
+    pub wells: Vec<WellSummary>,
     pub wells_frozen: usize,
     pub wells_liquid: usize,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentResultsSummary {
+    pub total_wells: usize,
     pub total_time_points: usize,
     pub first_timestamp: Option<DateTime<Utc>>,
     pub last_timestamp: Option<DateTime<Utc>>,
+    pub sample_results: Vec<SampleResultsSummary>,
     pub well_summaries: Vec<WellSummary>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct TrayInfo {
-    pub id: Uuid,
-    pub name: Option<String>,
-    pub sequence_id: i32,
-    pub qty_x_axis: Option<i32>,
-    pub qty_y_axis: Option<i32>,
-    pub well_relative_diameter: Option<String>,
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-pub struct RegionInput {
-    pub name: Option<String>,
-    pub tray_sequence_id: Option<i32>, // Renamed from tray_id for clarity
-    pub col_min: Option<i32>,
-    pub col_max: Option<i32>,
-    pub row_min: Option<i32>,
-    pub row_max: Option<i32>,
-    pub color: Option<String>, // hex color
-    pub dilution: Option<String>,
-    pub treatment_id: Option<Uuid>,
-    pub is_background_key: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub treatment: Option<TreatmentInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tray: Option<TrayInfo>,
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone)]
-struct TrayRegions {
-    pub id: Uuid,
-    pub experiment_id: Uuid,
-    pub treatment_id: Option<Uuid>,
-    pub name: Option<String>,
-    pub display_colour_hex: Option<String>,
-    pub tray_id: Option<i32>,
-    pub col_min: Option<i32>,
-    pub row_min: Option<i32>,
-    pub col_max: Option<i32>,
-    pub row_max: Option<i32>,
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TrayWellSummary {
+    pub row_letter: String,
+    pub column_number: i32,
+    pub coordinate: String, // e.g., "A1", "B2"
+    pub sample: Option<crate::routes::samples::models::Sample>,
+    pub treatment_name: Option<String>,
     pub dilution_factor: Option<i32>,
-    pub created_at: DateTime<Utc>,
-    pub last_updated: DateTime<Utc>,
+    pub first_phase_change_time: Option<DateTime<Utc>>,
+    pub temperatures: Option<TemperatureReading>,
+    pub total_phase_changes: usize,
+    pub image_asset_id: Option<Uuid>, // Asset ID for the image at freeze time
 }
 
-impl From<spice_entity::regions::Model> for TrayRegions {
-    fn from(region: spice_entity::regions::Model) -> Self {
-        Self {
-            id: region.id,
-            experiment_id: region.experiment_id,
-            treatment_id: region.treatment_id,
-            name: region.name,
-            display_colour_hex: region.display_colour_hex,
-            tray_id: region.tray_id,
-            col_min: region.col_min,
-            row_min: region.row_min,
-            col_max: region.col_max,
-            row_max: region.row_max,
-            dilution_factor: region.dilution_factor,
-            created_at: region.created_at.into(),
-            last_updated: region.last_updated.into(),
-        }
-    }
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TrayResultsSummary {
+    pub tray_id: String,
+    pub tray_name: Option<String>,
+    pub wells: Vec<TrayWellSummary>,
 }
 
-#[derive(ToSchema, Serialize, Deserialize, ToUpdateModel, ToCreateModel, Clone)]
-#[active_model = "spice_entity::experiments::ActiveModel"]
-pub struct Experiment {
-    #[crudcrate(update_model = false, create_model = false, on_create = Uuid::new_v4())]
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentResultsSummaryCompact {
+    pub total_time_points: usize,
+    pub first_timestamp: Option<DateTime<Utc>>,
+    pub last_timestamp: Option<DateTime<Utc>>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ExperimentResultsResponse {
+    pub summary: ExperimentResultsSummaryCompact,
+    pub trays: Vec<TrayResultsSummary>,
+}
+
+pub(super) async fn get_one_experiment(
+    db: &DatabaseConnection,
     id: Uuid,
-    name: String,
-    // sample_id: Uuid,
-    tray_configuration_id: Option<Uuid>,
-    username: Option<String>,
-    performed_at: Option<DateTime<Utc>>,
-    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now())]
-    created_at: DateTime<Utc>,
-    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now())]
-    last_updated: DateTime<Utc>,
-    temperature_ramp: Option<Decimal>,
-    temperature_start: Option<Decimal>,
-    temperature_end: Option<Decimal>,
-    is_calibration: bool,
-    remarks: Option<String>,
-    #[crudcrate(non_db_attr = true, default = vec![])]
-    assets: Vec<crate::routes::assets::models::Asset>,
-    #[crudcrate(non_db_attr = true, default = vec![])]
-    regions: Vec<RegionInput>,
-    #[crudcrate(non_db_attr = true, default = None)]
-    results_summary: Option<ExperimentResultsSummary>,
+) -> Result<Experiment, DbErr> {
+    let model = Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or(DbErr::RecordNotFound("Experiment not found".to_string()))?;
+
+    let regions: Vec<crate::routes::tray_configurations::regions::models::Region> = model
+        .find_related(crate::routes::tray_configurations::regions::models::Entity)
+        .all(db)
+        .await?
+        .into_iter()
+        .map(Into::into) // Direct conversion using EntityToModels
+        .collect();
+
+    let mut experiment: Experiment = model.into();
+    experiment.regions = regions;
+    experiment.results = build_tray_centric_results(id, db).await?;
+
+    Ok(experiment)
 }
 
-impl From<Model> for Experiment {
-    fn from(model: Model) -> Self {
-        Self {
-            id: model.id,
-            name: model.name,
-            tray_configuration_id: model.tray_configuration_id,
-            username: model.username,
-            performed_at: model.performed_at.map(|dt| dt.with_timezone(&Utc)),
-            created_at: model.created_at.into(),
-            last_updated: model.last_updated.into(),
-            temperature_ramp: model.temperature_ramp,
-            temperature_start: model.temperature_start,
-            temperature_end: model.temperature_end,
-            is_calibration: model.is_calibration,
-            remarks: model.remarks,
-            assets: vec![],
-            regions: vec![],
-            results_summary: None,
+pub(super) async fn create_experiment(
+    db: &DatabaseConnection,
+    data: ExperimentCreate,
+) -> Result<Experiment, DbErr> {
+    let txn = db.begin().await?;
+
+    // Store regions before conversion since they're not part of the DB model
+    let regions_to_create = data.regions.clone();
+
+    // Create the experiment first (avoid data.into() due to non-db attributes)
+    // Manually construct ActiveModel from database fields only
+    let mut experiment_model = ActiveModel::new();
+    experiment_model.id = Set(Uuid::new_v4()); // Explicitly set UUID for SQLite compatibility
+    experiment_model.name = Set(data.name);
+    if let Some(username) = data.username {
+        experiment_model.username = Set(Some(username));
+    }
+    if let Some(performed_at) = data.performed_at {
+        experiment_model.performed_at = Set(Some(performed_at));
+    }
+    if let Some(temperature_ramp) = data.temperature_ramp {
+        experiment_model.temperature_ramp = Set(Some(temperature_ramp));
+    }
+    if let Some(temperature_start) = data.temperature_start {
+        experiment_model.temperature_start = Set(Some(temperature_start));
+    }
+    if let Some(temperature_end) = data.temperature_end {
+        experiment_model.temperature_end = Set(Some(temperature_end));
+    }
+    experiment_model.is_calibration = Set(data.is_calibration);
+    if let Some(remarks) = data.remarks {
+        experiment_model.remarks = Set(Some(remarks));
+    }
+    if let Some(tray_configuration_id) = data.tray_configuration_id {
+        experiment_model.tray_configuration_id = Set(Some(tray_configuration_id));
+    }
+
+    let experiment = experiment_model.insert(&txn).await?;
+
+    // Handle regions if provided
+    if !regions_to_create.is_empty() {
+        for region in regions_to_create {
+            // Convert Region to ActiveModel for insertion
+            let region_active = crate::routes::tray_configurations::regions::models::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                experiment_id: Set(experiment.id),
+                treatment_id: Set(region.treatment_id),
+                name: Set(region.name),
+                display_colour_hex: Set(region.display_colour_hex),
+                tray_id: Set(region.tray_id),
+                col_min: Set(region.col_min),
+                row_min: Set(region.row_min),
+                col_max: Set(region.col_max),
+                row_max: Set(region.row_max),
+                dilution_factor: Set(region.dilution_factor),
+                is_background_key: Set(region.is_background_key),
+                created_at: Set(chrono::Utc::now()),
+                last_updated: Set(chrono::Utc::now()),
+            };
+
+            region_active.insert(&txn).await?;
         }
     }
+
+    txn.commit().await?;
+
+    // Return basic experiment (bypass complex get_one_experiment for now)
+    Ok(experiment.into())
 }
 
-#[async_trait]
-impl CRUDResource for Experiment {
-    type EntityType = spice_entity::experiments::Entity;
-    type ColumnType = spice_entity::experiments::Column;
-    type ActiveModelType = spice_entity::experiments::ActiveModel;
-    type CreateModel = ExperimentCreate;
-    type UpdateModel = ExperimentUpdate;
+pub(super) async fn update_experiment(
+    db: &DatabaseConnection,
+    id: Uuid,
+    update_data: ExperimentUpdate,
+) -> Result<Experiment, DbErr> {
+    let txn = db.begin().await?;
 
-    const ID_COLUMN: Self::ColumnType = spice_entity::experiments::Column::Id;
-    const RESOURCE_NAME_PLURAL: &'static str = "experiments";
-    const RESOURCE_NAME_SINGULAR: &'static str = "experiment";
-    const RESOURCE_DESCRIPTION: &'static str =
-        "This resource manages experiments associated with sample data collected during campaigns.";
+    let existing: ActiveModel = Entity::find_by_id(id)
+        .one(&txn)
+        .await?
+        .ok_or(DbErr::RecordNotFound("Experiment not found".to_string()))?
+        .into();
+    let regions = update_data.regions.clone();
+    let updated_model =
+        <ExperimentUpdate as MergeIntoActiveModel<ActiveModel>>::merge_into_activemodel(
+            update_data,
+            existing,
+        )?;
+    let _updated = updated_model.update(&txn).await?;
 
-    async fn get_one(db: &DatabaseConnection, id: Uuid) -> Result<Self, DbErr> {
-        let model =
-            Self::EntityType::find_by_id(id)
-                .one(db)
-                .await?
-                .ok_or(DbErr::RecordNotFound(format!(
-                    "{} not found",
-                    Self::RESOURCE_NAME_SINGULAR
-                )))?;
-
-        let s3_assets = model
-            .find_related(spice_entity::s3_assets::Entity)
-            .all(db)
+    // Handle regions update - delete existing regions and create new ones
+    if !regions.is_empty() {
+        // Delete existing regions for this experiment
+        crate::routes::tray_configurations::regions::models::Entity::delete_many()
+            .filter(
+                crate::routes::tray_configurations::regions::models::Column::ExperimentId.eq(id),
+            )
+            .exec(&txn)
             .await?;
 
-        let regions = model
-            .find_related(spice_entity::regions::Entity)
-            .all(db)
-            .await?;
-
-        let mut regions_with_treatment = Vec::new();
+        // Create new regions
         for region in regions {
-            let region_input = region_model_to_input_with_treatment(region, db).await?;
-            regions_with_treatment.push(region_input);
+            // Convert Region to ActiveModel for insertion
+            let region_active = crate::routes::tray_configurations::regions::models::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                experiment_id: Set(id),
+                treatment_id: Set(region.treatment_id.flatten()),
+                name: Set(region.name.flatten()),
+                display_colour_hex: Set(region.display_colour_hex.flatten()),
+                tray_id: Set(region.tray_id.flatten()),
+                col_min: Set(region.col_min.flatten()),
+                row_min: Set(region.row_min.flatten()),
+                col_max: Set(region.col_max.flatten()),
+                row_max: Set(region.row_max.flatten()),
+                dilution_factor: Set(region.dilution_factor.flatten()),
+                is_background_key: Set(region.is_background_key.flatten().unwrap_or_default()),
+                created_at: Set(chrono::Utc::now()),
+                last_updated: Set(chrono::Utc::now()),
+            };
+
+            region_active.insert(&txn).await?;
         }
-
-        // Build results summary
-        let results_summary = build_results_summary(id, db).await?;
-
-        let mut model: Self = model.into();
-        model.assets = s3_assets.into_iter().map(Into::into).collect();
-        model.regions = regions_with_treatment;
-        model.results_summary = results_summary;
-
-        Ok(model)
     }
 
-    async fn create(db: &DatabaseConnection, data: Self::CreateModel) -> Result<Self, DbErr> {
-        let txn = db.begin().await?;
+    txn.commit().await?;
 
-        // Store regions before conversion since they're not part of the DB model
-        let regions_to_create = data.regions.clone();
+    // Return the complete experiment with regions
+    get_one_experiment(db, id).await
+}
 
-        // Create the experiment first
-        let experiment_model: Self::ActiveModelType = data.into();
-        let experiment = experiment_model.insert(&txn).await?;
+pub(super) async fn get_all_experiments(
+    db: &DatabaseConnection,
+    condition: &Condition,
+    order_column: Column,
+    order_direction: Order,
+    offset: u64,
+    limit: u64,
+) -> Result<Vec<ExperimentList>, DbErr> {
+    let models = Entity::find()
+        .filter(condition.clone())
+        .order_by(order_column, order_direction)
+        .offset(offset)
+        .limit(limit)
+        .all(db)
+        .await?;
 
-        // Handle regions if provided
-        if !regions_to_create.is_empty() {
-            let region_models = create_region_active_models(experiment.id, regions_to_create, &txn);
+    let mut experiments = Vec::new();
 
-            for region_model in region_models {
-                region_model.insert(&txn).await?;
-            }
-        }
-
-        txn.commit().await?;
-
-        // Return the complete experiment with regions
-        Self::get_one(db, experiment.id).await
-    }
-
-    async fn update(
-        db: &DatabaseConnection,
-        id: Uuid,
-        update_data: Self::UpdateModel,
-    ) -> Result<Self, DbErr> {
-        let txn = db.begin().await?;
-
-        let existing: Self::ActiveModelType = Self::EntityType::find_by_id(id)
-            .one(&txn)
-            .await?
-            .ok_or(DbErr::RecordNotFound(format!(
-                "{} not found",
-                Self::RESOURCE_NAME_PLURAL
-            )))?
-            .into();
-
-        let updated_model = update_data.clone().merge_into_activemodel(existing);
-        let _updated = updated_model.update(&txn).await?;
-
-        // Handle regions update - delete existing regions and create new ones
-        if !update_data.regions.is_empty() {
-            // Delete existing regions for this experiment
-            spice_entity::regions::Entity::delete_many()
-                .filter(spice_entity::regions::Column::ExperimentId.eq(id))
-                .exec(&txn)
-                .await?;
-
-            // Create new regions
-            let region_models = create_region_active_models(id, update_data.regions.clone(), &txn);
-
-            for region_model in region_models {
-                region_model.insert(&txn).await?;
-            }
-        }
-
-        txn.commit().await?;
-
-        // Return the complete experiment with regions
-        Self::get_one(db, id).await
-    }
-
-    async fn get_all(
-        db: &DatabaseConnection,
-        condition: Condition,
-        order_column: Self::ColumnType,
-        order_direction: Order,
-        offset: u64,
-        limit: u64,
-    ) -> Result<Vec<Self>, DbErr> {
-        let models = Self::EntityType::find()
-            .filter(condition)
-            .order_by(order_column, order_direction)
-            .offset(offset)
-            .limit(limit)
+    for model in models {
+        let regions: Vec<crate::routes::tray_configurations::regions::models::Region> = model
+            .find_related(crate::routes::tray_configurations::regions::models::Entity)
             .all(db)
-            .await?;
+            .await?
+            .into_iter()
+            .map(Into::into) // Direct conversion using EntityToModels
+            .collect();
 
-        let mut experiments = Vec::new();
+        let mut experiment: Experiment = model.into();
+        experiment.regions = regions;
 
-        for model in models {
-            let s3_assets = model
-                .find_related(spice_entity::s3_assets::Entity)
-                .all(db)
-                .await?;
-
-            let regions = model
-                .find_related(spice_entity::regions::Entity)
-                .all(db)
-                .await?;
-
-            let mut regions_with_treatment = Vec::new();
-            for region in regions {
-                let region_input = region_model_to_input_with_treatment(region, db).await?;
-                regions_with_treatment.push(region_input);
-            }
-
-            let mut experiment: Self = model.into();
-            experiment.assets = s3_assets.into_iter().map(Into::into).collect();
-            experiment.regions = regions_with_treatment;
-
-            experiments.push(experiment);
-        }
-
-        Ok(experiments)
+        experiments.push(experiment);
     }
 
-    fn sortable_columns() -> Vec<(&'static str, Self::ColumnType)> {
-        vec![
-            ("id", Self::ColumnType::Id),
-            ("name", Self::ColumnType::Name),
-            ("performed_at", Self::ColumnType::PerformedAt),
-            ("username", Self::ColumnType::Username),
-            ("created_at", Self::ColumnType::CreatedAt),
-            ("temperature_ramp", Self::ColumnType::TemperatureRamp),
-            ("temperature_start", Self::ColumnType::TemperatureStart),
-            ("temperature_end", Self::ColumnType::TemperatureEnd),
-        ]
-    }
-
-    fn filterable_columns() -> Vec<(&'static str, Self::ColumnType)> {
-        vec![
-            ("name", Self::ColumnType::Name),
-            ("performed_at", Self::ColumnType::PerformedAt),
-            ("username", Self::ColumnType::Username),
-            ("created_at", Self::ColumnType::CreatedAt),
-            ("temperature_ramp", Self::ColumnType::TemperatureRamp),
-            ("temperature_start", Self::ColumnType::TemperatureStart),
-            ("temperature_end", Self::ColumnType::TemperatureEnd),
-        ]
-    }
+    // Convert to ExperimentList
+    Ok(experiments
+        .into_iter()
+        .map(std::convert::Into::into)
+        .collect())
 }

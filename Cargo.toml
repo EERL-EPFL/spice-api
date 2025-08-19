@@ -1,6 +1,6 @@
 [package]
 name = "spice-api"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "API for managing SPICE lab data in the EERL lab"
 license = "MIT"
@@ -10,44 +10,53 @@ keywords = ["eerl", "lab", "data", "api", "axum", "sea-orm"]
 categories = ["web-programming", "database"]
 
 [workspace]
-members = [".", "migration", "entity"]
+members = [".", "migration", ]
 
 [dependencies]
-spice_entity = { path = "entity" }
-anyhow = "1.0.98"
-async-trait = "0.1.85"
-aws-config = "1.8.1"
-aws-sdk-s3 = "1.96.0"
+anyhow = "1.0.99"
+async-stream = "0.3.6"
+async-trait = "0.1.89"
+async_zip = { version = "0.0.18", features = ["tokio", "tokio-fs"] }
+aws-config = "1.8.5"
+aws-sdk-s3 = "1.103.0"
 axum = { version = "0.8.4", features = ["multipart"] }
 axum-keycloak-auth = "0.8.3"
 base64 = "0.22.1"
 byteorder = "1.5.0"
+calamine = "0.30.0"
 chrono = { version = "0.4.41", features = ["serde"] }
-crudcrate = "0.3.3"
-# crudcrate = { path = "../crudcrate" }
+crc32fast = "1.5.0"
+crudcrate = "0.4.3"
+csv = "1.3.1"
 dotenvy = "0.15.7"
 futures = "0.3.31"
 gpx = "0.10.0"
 http-body-util = "0.1.3"
-hyper = "1.6.0"
+hyper = "1.7.0"
+lazy_static = "1.5.0"
 migration = { path = "migration" }
-# multipart = "0.18.0"
-rand = "0.9.1"
-sea-orm = { version = "1.1.13", features = [
+mime = "0.3.17"
+multipart = "0.18.0"
+openssl = "0.10.73"
+rand = "0.9.2"
+rust_decimal = { version = "1.37.2", features = ["serde-with-float"] }
+sea-orm = { version = "1.1.14", features = [
     "sqlx-postgres",
     "runtime-tokio-rustls",
     "macros",
     "with-uuid",
     "with-chrono",
     "with-json",
+    "with-rust_decimal",
 ], default-features = false }
-sea-orm-migration = "1.1.13"
-serde = { version = "1.0.217", features = ["derive"] }
-serde_json = "1.0.137"
+sea-orm-migration = "1.1.14"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.143"
 serde_with = "3.14.0"
+serde_yml = "0.0.12"
 tempfile = "3.20.0"
-tokio = { version = "1.46.1", features = ["full"] }
-tokio-util = "0.7.15"
+tokio = { version = "1.47.1", features = ["full"] }
+tokio-util = "0.7.16"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
 utoipa = { version = "5.4.0", features = [
@@ -58,19 +67,16 @@ utoipa = { version = "5.4.0", features = [
 ] }
 utoipa-axum = "0.2.0"
 utoipa-scalar = { version = "0.3.0", features = ["axum"] }
-uuid = { version = "1.13.2", features = ["serde", "v4", "fast-rng"] }
-zip = "4.2.0"
-rust_decimal = { version = "1.37.2", features = ["serde-with-float"] }
-csv = "1.3"
-calamine = "0.28.0"
-serde_yml = "0.0.12"
-openssl = "0.10.73"
+uuid = { version = "1.18.0", features = ["serde", "v4", "fast-rng"] }
+zip = "4.3.0"
 
 [dev-dependencies]
-async-std = { version = "1.13", features = ["attributes"] }
-reqwest = { version = "0.12.22", features = ["json", "rustls-tls"] }
-rstest = "0.25.0"
-sea-orm = { version = "1.1.8", features = [
+async-std = { version = "1.13.2", features = ["attributes"] }
+axum-test = "17.3.0"
+futures-util = "0.3.31"
+reqwest = { version = "0.12.23", features = ["json", "multipart", "rustls-tls"] }
+rstest = "0.26.1"
+sea-orm = { version = "1.1.14", features = [
     "sqlx-postgres",
     "sqlx-sqlite",
     "runtime-tokio-rustls",
@@ -78,11 +84,11 @@ sea-orm = { version = "1.1.8", features = [
     "with-uuid",
     "with-chrono",
     "with-json",
+    "with-rust_decimal",
 ], default-features = false }
-tokio-test = "0.4"
+tokio-test = "0.4.4"
 tower = { version = "0.5.2", features = ["util"] }
-uuid = { version = "1.0", features = ["v4"] }
-axum-test = "17.3.0"
+uuid = { version = "1.18.0", features = ["v4"] }
 
 [lints.clippy]
 pedantic = "warn"

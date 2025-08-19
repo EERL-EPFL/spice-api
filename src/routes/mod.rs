@@ -1,10 +1,11 @@
-mod assets;
-mod campaigns;
-mod experiments;
-mod projects;
-mod samples;
-pub mod trays;
-mod treatments;
+pub mod assets;
+pub mod experiments;
+pub mod locations;
+pub mod nucleation_events;
+pub mod projects;
+pub mod samples;
+pub mod tray_configurations;
+pub mod treatments;
 
 use crate::common::state::AppState;
 use crate::config::Config;
@@ -61,13 +62,12 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     // Build the router with routes from the plots module
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(crate::common::views::router(&app_state)) // Root routes
-        .nest("/api/locations", campaigns::views::router(&app_state))
+        .nest("/api/locations", locations::views::router(&app_state))
         .nest("/api/projects", projects::views::router(&app_state))
         .nest("/api/experiments", experiments::views::router(&app_state))
-        // .nest("/api", phase_changes::router(&app_state))
         .nest("/api/samples", samples::views::router(&app_state))
         .nest("/api/assets", assets::views::router(&app_state))
-        .nest("/api/trays", trays::views::router(&app_state))
+        .nest("/api/tray_configurations", tray_configurations::views::router(&app_state))
         .nest("/api/treatments", treatments::views::router(&app_state))
         // .nest(
         //     "/api",
@@ -76,5 +76,15 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
         .split_for_parts();
 
-    router.merge(Scalar::with_url("/api/docs", api))
+    // Merge the Excel upload and asset routes separately since they're not OpenApiRouter compatible
+    router
+        .nest(
+            "/api/experiments",
+            experiments::views::excel_upload_router().with_state(app_state.clone()),
+        )
+        .nest(
+            "/api/experiments",
+            experiments::views::asset_router().with_state(app_state),
+        )
+        .merge(Scalar::with_url("/api/docs", api))
 }

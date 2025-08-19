@@ -1,0 +1,57 @@
+use chrono::{DateTime, Utc};
+use crudcrate::{CRUDResource, EntityToModels};
+use sea_orm::entity::prelude::*;
+use uuid::Uuid;
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
+#[sea_orm(table_name = "wells")]
+#[crudcrate(
+    generate_router,
+    api_struct = "Well",
+    name_singular = "well",
+    name_plural = "wells",
+    description = "Wells represent individual positions within trays for experimental samples."
+)]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
+    pub id: Uuid,
+    #[crudcrate(sortable, filterable)]
+    pub tray_id: Uuid,
+    #[crudcrate(sortable, filterable)]
+    pub row_letter: String,
+    #[crudcrate(sortable, filterable)]
+    pub column_number: i32,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub last_updated: DateTime<Utc>,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "crate::routes::tray_configurations::trays::models::Entity",
+        from = "Column::TrayId",
+        to = "crate::routes::tray_configurations::trays::models::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    Trays,
+    #[sea_orm(has_many = "crate::routes::experiments::phase_transitions::models::Entity")]
+    WellPhaseTransitions,
+}
+
+impl Related<crate::routes::tray_configurations::trays::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Trays.def()
+    }
+}
+
+impl Related<crate::routes::experiments::phase_transitions::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::WellPhaseTransitions.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}

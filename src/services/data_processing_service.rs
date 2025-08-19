@@ -1,10 +1,9 @@
+use super::processing::DirectExcelProcessor;
+use crate::common::models::ProcessingStatus;
 use anyhow::Result;
 use chrono::Utc;
 use sea_orm::DatabaseConnection;
 use uuid::Uuid;
-
-use super::processing::DirectExcelProcessor;
-use crate::services::models::ProcessingStatus;
 
 /// Service for data processing operations (Excel upload, phase changes, results generation)
 #[derive(Clone)]
@@ -33,9 +32,7 @@ impl DataProcessingService {
         {
             Ok(result) => Ok(ExcelProcessingResult {
                 status: ProcessingStatus::Completed,
-                time_points_created: result.time_points_created,
                 temperature_readings_created: result.temperature_readings_created,
-                well_states_created: result.well_states_created,
                 processing_time_ms: result.processing_time_ms,
                 started_at,
                 completed_at: Some(Utc::now()),
@@ -44,9 +41,7 @@ impl DataProcessingService {
             }),
             Err(e) => Ok(ExcelProcessingResult {
                 status: ProcessingStatus::Failed,
-                time_points_created: 0,
                 temperature_readings_created: 0,
-                well_states_created: 0,
                 processing_time_ms: 0,
                 started_at,
                 completed_at: Some(Utc::now()),
@@ -61,9 +56,7 @@ impl DataProcessingService {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ExcelProcessingResult {
     pub status: ProcessingStatus,
-    pub time_points_created: usize,
     pub temperature_readings_created: usize,
-    pub well_states_created: usize,
     pub processing_time_ms: u128,
     pub started_at: chrono::DateTime<Utc>,
     pub completed_at: Option<chrono::DateTime<Utc>>,

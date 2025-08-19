@@ -1,44 +1,382 @@
-use super::models::{Experiment, ExperimentCreate, ExperimentUpdate};
+pub use super::models::{Experiment, router as crudrouter};
 use crate::common::auth::Role;
+use crate::common::models::ProcessingStatus;
 use crate::common::state::AppState;
-use crate::external::s3::{download_assets, get_client};
-use aws_sdk_s3::primitives::ByteStream;
-use axum::body::Body;
+use crate::external::s3::get_client;
+use crate::routes::assets::models as s3_assets;
+use crate::routes::experiments::phase_transitions::models as phase_models;
+use crate::routes::experiments::temperatures::models as temp_models;
+use axum::extract::{Path, State};
 use axum::routing::post;
-use axum::{extract::Multipart, response::Response, routing::get};
+use axum::{
+    Router,
+    extract::Multipart,
+    http::{HeaderMap, status::StatusCode},
+    response::{Json, Response},
+    routing::get,
+};
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
-use crudcrate::{CRUDResource, crud_handlers};
+use crudcrate::CRUDResource;
 use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
 use serde::Serialize;
-use spice_entity::s3_assets;
 use std::convert::TryInto;
-use tokio_util::io::ReaderStream;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
-use utoipa_axum::routes;
+#[cfg(test)]
+mod asset_role_tests {
+    use super::determine_asset_role;
 
-crud_handlers!(Experiment, ExperimentUpdate, ExperimentCreate);
+    #[test]
+    fn test_camera_image_detection() {
+        // Test camera image patterns
+        assert_eq!(
+            determine_asset_role("INP_49640_2025-03-20_15-14-17.jpg", "image", "jpg"),
+            "camera_image"
+        );
+        assert_eq!(
+            determine_asset_role("INP_12345_2024-12-01_10-30-45.png", "image", "png"),
+            "camera_image"
+        );
+        // Non-camera image
+        assert_eq!(
+            determine_asset_role("random_photo.jpg", "image", "jpg"),
+            "other_image"
+        );
+    }
+
+    #[test]
+    fn test_tabular_data_roles() {
+        // Analysis data files
+        assert_eq!(
+            determine_asset_role("merged.xlsx", "tabular", "xlsx"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("freezing_temperatures.xlsx", "tabular", "xlsx"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("merged.csv", "tabular", "csv"),
+            "analysis_data"
+        );
+        // Temperature sensor data
+        assert_eq!(
+            determine_asset_role("S39031 INP Freezing.xlsx", "tabular", "xlsx"),
+            "temperature_data"
+        );
+        // Configuration files
+        assert_eq!(
+            determine_asset_role("regions.yaml", "tabular", "yaml"),
+            "configuration"
+        );
+        assert_eq!(
+            determine_asset_role("temperature_config.yaml", "tabular", "yaml"),
+            "configuration"
+        );
+        // Other data
+        assert_eq!(
+            determine_asset_role("random_data.xlsx", "tabular", "xlsx"),
+            "raw_data"
+        );
+    }
+
+    #[test]
+    fn test_other_file_types() {
+        // NetCDF analysis files
+        assert_eq!(
+            determine_asset_role("analysis.nc", "netcdf", "nc"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("well_temperatures.nc", "netcdf", "nc"),
+            "analysis_data"
+        );
+        // Analysis images
+        assert_eq!(
+            determine_asset_role("analysis_tray_1.png", "image", "png"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("frozen_fraction.png", "image", "png"),
+            "analysis_data"
+        );
+        // Other files
+        assert_eq!(
+            determine_asset_role("setup.yaml", "unknown", "yaml"),
+            "configuration"
+        );
+        assert_eq!(
+            determine_asset_role("random.pdf", "unknown", "pdf"),
+            "miscellaneous"
+        );
+    }
+}
+
+// Helper struct for file upload processing
+struct FileUploadData {
+    file_name: String,
+    file_bytes: Vec<u8>,
+    file_type: String,
+    extension: String,
+    size: u64,
+    s3_key: String,
+}
+
+// Helper struct for asset processing results
+struct AssetProcessingResult {
+    auto_processed: bool,
+    processing_message: Option<String>,
+}
+
+/// Process multipart field into file upload data
+async fn process_multipart_field(
+    field: &mut axum::extract::multipart::Field<'_>,
+    experiment_id: Uuid,
+    state: &AppState,
+) -> Result<FileUploadData, (StatusCode, String)> {
+    let file_name = field.file_name().unwrap_or("unknown").to_string();
+    let extension = std::path::Path::new(&file_name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let file_type = match extension.as_str() {
+        "png" | "jpg" | "jpeg" => "image".to_string(),
+        "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
+        "nc" => "netcdf".to_string(),
+        _ => "unknown".to_string(),
+    };
+
+    let mut file_bytes = Vec::new();
+    while let Some(chunk) = field.chunk().await.unwrap() {
+        file_bytes.extend_from_slice(&chunk);
+    }
+    let size = file_bytes.len() as u64;
+
+    let s3_key = format!(
+        "{}/{}/experiments/{}/{}",
+        state.config.app_name, state.config.deployment, experiment_id, file_name
+    );
+
+    Ok(FileUploadData {
+        file_name,
+        file_bytes,
+        file_type,
+        extension,
+        size,
+        s3_key,
+    })
+}
+
+/// Handle existing asset overwrite logic
+async fn handle_existing_asset(
+    file_name: &str,
+    experiment_id: Uuid,
+    allow_overwrite: bool,
+    state: &AppState,
+) -> Result<(), (StatusCode, String)> {
+    let existing_asset = s3_assets::Entity::find()
+        .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
+        .filter(s3_assets::Column::OriginalFilename.eq(file_name))
+        .one(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if let Some(existing) = existing_asset {
+        if !allow_overwrite {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("File '{file_name}' already exists in this experiment"),
+            ));
+        }
+
+        // Delete existing asset from database and S3 before uploading new one
+        if let Err(e) = crate::external::s3::delete_from_s3(&existing.s3_key).await {
+            println!(
+                "Warning: Failed to delete existing file from S3: {} - {}",
+                existing.s3_key, e
+            );
+        }
+
+        s3_assets::Entity::delete_by_id(existing.id)
+            .exec(&state.db)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to delete existing asset: {e}"),
+                )
+            })?;
+    }
+    Ok(())
+}
+
+/// Process Excel file if it should be auto-processed
+async fn process_excel_if_needed(
+    upload_data: &FileUploadData,
+    asset_id: Uuid,
+    experiment_id: Uuid,
+    state: &AppState,
+) -> AssetProcessingResult {
+    let asset_role = determine_asset_role(
+        &upload_data.file_name,
+        &upload_data.file_type,
+        &upload_data.extension,
+    );
+
+    let should_auto_process = upload_data.file_type == "tabular"
+        && (upload_data.extension == "xlsx" || upload_data.extension == "xls")
+        && asset_role == "analysis_data";
+
+    if !should_auto_process {
+        return AssetProcessingResult {
+            auto_processed: false,
+            processing_message: None,
+        };
+    }
+
+    println!("🔄 Auto-processing Excel file: {}", upload_data.file_name);
+
+    let processing_service =
+        crate::services::data_processing_service::DataProcessingService::new(state.db.clone());
+
+    match processing_service
+        .process_excel_file(experiment_id, upload_data.file_bytes.clone())
+        .await
+    {
+        Ok(result) => {
+            let processing_status = match result.status {
+                crate::common::models::ProcessingStatus::Completed => Some("completed".to_string()),
+                crate::common::models::ProcessingStatus::Failed => Some("error".to_string()),
+                _ => Some("processing".to_string()),
+            };
+
+            let message = if result.status == crate::common::models::ProcessingStatus::Completed {
+                Some(format!(
+                    "✅ Processed {} temperature readings in {}ms",
+                    result.temperature_readings_created, result.processing_time_ms
+                ))
+            } else if let Some(error) = result.error {
+                Some(format!("❌ Processing failed: {error}"))
+            } else {
+                Some("Processing completed".to_string())
+            };
+
+            let _ = crate::routes::assets::models::Entity::update_many()
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingStatus,
+                    sea_orm::sea_query::Expr::value(processing_status),
+                )
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingMessage,
+                    sea_orm::sea_query::Expr::value(message.clone()),
+                )
+                .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
+                .exec(&state.db)
+                .await;
+
+            AssetProcessingResult {
+                auto_processed: true,
+                processing_message: message,
+            }
+        }
+        Err(e) => {
+            let error_msg = format!("❌ Auto-processing failed: {e}");
+            println!("{error_msg}");
+
+            let _ = crate::routes::assets::models::Entity::update_many()
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingStatus,
+                    sea_orm::sea_query::Expr::value(Some("error".to_string())),
+                )
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingMessage,
+                    sea_orm::sea_query::Expr::value(Some(error_msg.clone())),
+                )
+                .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
+                .exec(&state.db)
+                .await;
+
+            AssetProcessingResult {
+                auto_processed: false,
+                processing_message: Some(error_msg),
+            }
+        }
+    }
+}
+
+/// Determine asset role based on filename patterns and file type
+fn determine_asset_role(filename: &str, file_type: &str, _extension: &str) -> String {
+    let filename_lower = filename.to_lowercase();
+
+    match file_type {
+        "image" => {
+            // Camera images from INP system follow pattern: INP_XXXXX_YYYY-MM-DD_HH-MM-SS
+            if filename_lower.starts_with("inp_")
+                && (filename_lower.contains("2024")
+                    || filename_lower.contains("2025")
+                    || filename_lower.contains("2026"))
+            {
+                "camera_image".to_string()
+            } else if filename_lower.contains("analysis")
+                || filename_lower.contains("frozen_fraction")
+                || filename_lower.contains("regions")
+                || filename_lower.contains("trays_config")
+            {
+                "analysis_data".to_string()
+            } else {
+                "other_image".to_string()
+            }
+        }
+        "tabular" => {
+            if filename_lower.contains("freezing_temperatures")
+                || (filename_lower.contains("merged")
+                    && (filename_lower.contains("csv") || filename_lower.contains("xlsx")))
+                || filename_lower.contains("analysis")
+            {
+                "analysis_data".to_string()
+            } else if filename_lower.contains("inp") && filename_lower.contains("freezing") {
+                "temperature_data".to_string()
+            } else if filename_lower.contains("config")
+                || filename_lower.contains("setup")
+                || filename_lower.contains("yaml")
+            {
+                "configuration".to_string()
+            } else {
+                "raw_data".to_string()
+            }
+        }
+        "netcdf" => {
+            if filename_lower.contains("analysis") || filename_lower.contains("well_temperatures") {
+                "analysis_data".to_string()
+            } else {
+                "scientific_data".to_string()
+            }
+        }
+        _ => {
+            if filename_lower.contains("readme") || filename_lower.contains("doc") {
+                "documentation".to_string()
+            } else if filename_lower.contains("config")
+                || filename_lower.contains("yaml")
+                || filename_lower.contains("yml")
+            {
+                "configuration".to_string()
+            } else {
+                "miscellaneous".to_string()
+            }
+        }
+    }
+}
 
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Experiment: CRUDResource,
 {
-    let mut mutating_router = OpenApiRouter::new()
-        .routes(routes!(get_one_handler))
-        .routes(routes!(get_all_handler))
-        .routes(routes!(create_one_handler))
-        .routes(routes!(update_one_handler))
-        .routes(routes!(delete_one_handler))
-        .routes(routes!(delete_many_handler))
-        .with_state(state.db.clone())
-        .route("/{experiment_id}/uploads", post(upload_file))
-        .route("/{experiment_id}/download", get(download_experiment_assets))
-        .route(
-            "/{experiment_id}/process-excel",
-            post(super::excel_upload::process_excel_upload),
-        )
-        .with_state(state.clone());
+    let mut mutating_router = crudrouter(&state.db.clone());
+    // Excel upload endpoint is handled separately in excel_upload_router()
+    // Asset upload/download endpoints are handled separately in asset_router()
 
     if let Some(instance) = &state.keycloak_auth_instance {
         mutating_router = mutating_router.layer(
@@ -60,11 +398,45 @@ where
     mutating_router
 }
 
+/// Separate router for Excel upload endpoint (uses regular Axum Router, not `OpenApiRouter`)
+pub fn excel_upload_router() -> Router<AppState> {
+    use axum::extract::DefaultBodyLimit;
+
+    Router::new()
+        .route(
+            "/{experiment_id}/process-excel",
+            post(super::excel_upload::process_excel_upload),
+        )
+        .route("/{experiment_id}/process-asset", post(process_asset_data))
+        .route(
+            "/{experiment_id}/clear-results",
+            post(clear_experiment_results),
+        )
+        .route("/{experiment_id}/results", get(get_experiment_results))
+        .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit to match main router
+}
+
+/// Separate router for asset upload/download endpoints (uses regular Axum Router, not `OpenApiRouter`)
+pub fn asset_router() -> Router<AppState> {
+    use axum::extract::DefaultBodyLimit;
+
+    Router::new()
+        .route("/{experiment_id}/uploads", post(upload_file))
+        .route("/{experiment_id}/download", get(download_experiment_assets))
+        .route(
+            "/{experiment_id}/download-token",
+            post(create_experiment_download_token),
+        )
+        .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit for file uploads
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct UploadResponse {
     success: bool,
     filename: String,
     size: u64,
+    auto_processed: bool,
+    processing_message: Option<String>,
 }
 
 #[utoipa::path(
@@ -84,10 +456,11 @@ pub struct UploadResponse {
 pub async fn upload_file(
     State(state): State<AppState>,
     Path(experiment_id): Path<uuid::Uuid>,
+    headers: HeaderMap,
     mut infile: Multipart,
 ) -> Result<Json<UploadResponse>, (StatusCode, String)> {
     // Check if the experiment exists
-    if spice_entity::experiments::Entity::find_by_id(experiment_id)
+    if super::models::Entity::find_by_id(experiment_id)
         .one(&state.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -96,9 +469,8 @@ pub async fn upload_file(
         return Err((StatusCode::NOT_FOUND, "Experiment not found".to_string()));
     }
 
-    // Load S3 configuration from environment
-    let config = crate::config::Config::from_env();
-    let s3_client = get_client(&config).await;
+    // Load S3 configuration from app state (not needed for mocked S3 operations)
+    let _s3_client = get_client(&state.config).await;
 
     while let Some(mut field) = infile.next_field().await.unwrap() {
         let field_name = field.name().unwrap_or("none").to_string();
@@ -108,75 +480,59 @@ pub async fn upload_file(
             continue;
         }
 
-        let file_name = field.file_name().unwrap_or("unknown").to_string();
-        let extension = std::path::Path::new(&file_name)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let file_type = match extension.as_str() {
-            "png" | "jpg" | "jpeg" => "image".to_string(),
-            "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
-            "nc" => "netcdf".to_string(),
-            _ => "unknown".to_string(),
-        };
+        // Process multipart field into structured data
+        let upload_data = process_multipart_field(&mut field, experiment_id, &state).await?;
 
-        let mut file_bytes = Vec::new();
-        while let Some(chunk) = field.chunk().await.unwrap() {
-            file_bytes.extend_from_slice(&chunk);
-        }
-        let size = file_bytes.len() as u64;
+        // Check if overwrite is allowed
+        let allow_overwrite = headers
+            .get("x-allow-overwrite")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|s| s == "true");
 
-        // Generate a unique S3 key
-        let s3_key = format!(
-            "{}/{}/experiments/{}/{}",
-            config.app_name, config.deployment, experiment_id, file_name
-        );
+        // Handle existing asset overwrite logic
+        handle_existing_asset(
+            &upload_data.file_name,
+            experiment_id,
+            allow_overwrite,
+            &state,
+        )
+        .await?;
 
-        // Check if file already exists in database
-        let existing_asset = s3_assets::Entity::find()
-            .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
-            .filter(s3_assets::Column::OriginalFilename.eq(&file_name))
-            .one(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-        if existing_asset.is_some() {
-            return Err((
-                StatusCode::CONFLICT,
-                format!("File '{file_name}' already exists in this experiment"),
-            ));
-        }
-
-        // Upload the file to S3
-        let body = ByteStream::from(file_bytes.clone());
-        if s3_client
-            .put_object()
-            .bucket(&config.s3_bucket_id)
-            .key(&s3_key)
-            .body(body)
-            .send()
-            .await
-            .is_err()
+        // Upload the file to S3 (uses mock for tests, real S3 for production)
+        if let Err(e) = crate::external::s3::put_object_to_s3(
+            &upload_data.s3_key,
+            upload_data.file_bytes.clone(),
+            &state.config,
+        )
+        .await
         {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to upload to S3".to_string(),
+                format!("Failed to upload to S3: {e}"),
             ));
         }
 
+        // Determine asset role based on filename patterns and type
+        let asset_role = determine_asset_role(
+            &upload_data.file_name,
+            &upload_data.file_type,
+            &upload_data.extension,
+        );
+
         // Insert a record into the local DB
         let asset = s3_assets::ActiveModel {
-            original_filename: Set(file_name.clone()),
+            original_filename: Set(upload_data.file_name.clone()),
             experiment_id: Set(Some(experiment_id)),
-            s3_key: Set(s3_key.clone()),
-            size_bytes: Set(Some(size.try_into().unwrap())),
+            s3_key: Set(upload_data.s3_key.clone()),
+            size_bytes: Set(Some(upload_data.size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())),
-            r#type: Set(file_type),
-            role: Set(Some("raw_image".to_string())),
+            r#type: Set(upload_data.file_type.clone()),
+            role: Set(Some(asset_role.clone())),
+            processing_status: Set(None),
+            processing_message: Set(None),
             ..Default::default()
         };
-        s3_assets::Entity::insert(asset)
+        let asset_result = s3_assets::Entity::insert(asset)
             .exec(&state.db)
             .await
             .map_err(|e| {
@@ -186,14 +542,52 @@ pub async fn upload_file(
                 )
             })?;
 
+        let asset_id = asset_result.last_insert_id;
+
+        // Process Excel file if needed using helper function
+        let processing_result =
+            process_excel_if_needed(&upload_data, asset_id, experiment_id, &state).await;
+
         return Ok(Json(UploadResponse {
             success: true,
-            filename: file_name,
-            size,
+            filename: upload_data.file_name,
+            size: upload_data.size,
+            auto_processed: processing_result.auto_processed,
+            processing_message: processing_result.processing_message,
         }));
     }
 
     Err((StatusCode::BAD_REQUEST, "No file uploaded".to_string()))
+}
+
+/// Create a download token for experiment assets
+pub async fn create_experiment_download_token(
+    State(state): State<AppState>,
+    Path(experiment_id): Path<uuid::Uuid>,
+) -> Result<axum::Json<serde_json::Value>, (StatusCode, String)> {
+    // Verify experiment exists
+    use crate::routes::experiments::models::Entity as ExperimentEntity;
+
+    let experiment = ExperimentEntity::find_by_id(experiment_id)
+        .one(&state.db)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            )
+        })?;
+
+    if experiment.is_none() {
+        return Err((StatusCode::NOT_FOUND, "Experiment not found".to_string()));
+    }
+
+    let token = state.create_experiment_download_token(experiment_id).await;
+
+    Ok(axum::Json(serde_json::json!({
+        "token": token,
+        "download_url": format!("/api/assets/download/{}", token)
+    })))
 }
 
 #[utoipa::path(
@@ -227,915 +621,339 @@ pub async fn download_experiment_assets(
         ));
     }
 
-    // Load configuration and create S3 client.
-    let s3_client = get_client(&state.config).await;
-
-    // Call the new function to download assets concurrently.
-    let (_temp_dir, asset_paths) = download_assets(assets, &state.config, s3_client).await?;
-
-    // Create a temporary file for the zip archive.
-    let zip_temp_file = tempfile::NamedTempFile::new()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let zip_path = zip_temp_file.path().to_owned();
-    let zip_path_for_task = zip_path.clone(); // Clone the path for the blocking task
-    drop(zip_temp_file);
-
-    // Create the zip archive in a blocking task.
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let zip_file = std::fs::File::create(&zip_path_for_task).map_err(|e| e.to_string())?;
-        let mut zip_writer = zip::ZipWriter::new(zip_file);
-        let options = zip::write::FileOptions::<()>::default()
-            .compression_method(zip::CompressionMethod::Stored)
-            .unix_permissions(0o644);
-        for (file_name, file_path) in asset_paths {
-            zip_writer
-                .start_file(file_name, options)
-                .map_err(|e| e.to_string())?;
-            let mut f = std::fs::File::open(&file_path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut f, &mut zip_writer).map_err(|e| e.to_string())?;
-        }
-        zip_writer.finish().map_err(|e| e.to_string())?;
-        Ok(())
-    })
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Open the zip file asynchronously for streaming.
-    let file = tokio::fs::File::open(&zip_path)
+    crate::routes::assets::services::create_hybrid_streaming_zip_response(assets, &state.config)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let stream = ReaderStream::new(file);
-    let body_stream = http_body_util::StreamBody::new(stream);
-    let hyper_body = Body::from_stream(body_stream);
-
-    // Build response headers.
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        axum::http::header::CONTENT_TYPE,
-        "application/zip".parse().unwrap(),
-    );
-    let filename = format!("experiment_{experiment_id}.zip",);
-    let content_disposition = format!("attachment; filename=\"{filename}\"",);
-    headers.insert(
-        axum::http::header::CONTENT_DISPOSITION,
-        content_disposition.parse().unwrap(),
-    );
-
-    let mut response_builder = Response::builder().status(StatusCode::OK);
-    for (key, value) in &headers {
-        response_builder = response_builder.header(key, value);
-    }
-    Ok(response_builder.body(hyper_body).unwrap())
+        .map(|mut response| {
+            // Update filename for experiment
+            let headers = response.headers_mut();
+            headers.insert(
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"experiment_{experiment_id}.zip\"")
+                    .parse()
+                    .unwrap(),
+            );
+            response
+        })
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::config::test_helpers::setup_test_app;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use serde_json::json;
-    use tower::ServiceExt;
+/// Process asset data for an experiment
+#[allow(clippy::too_many_lines)]
+pub async fn process_asset_data(
+    State(app_state): State<AppState>,
+    Path(experiment_id): Path<Uuid>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    use sea_orm::Set;
 
-    /// Integration test helper to create a tray via API
-    async fn create_tray_via_api(
-        app: &axum::Router,
-        rows: i32,
-        cols: i32,
-    ) -> Result<String, String> {
-        let tray_data = json!({
-            "name": format!("{}x{} Tray", rows, cols),
-            "qty_x_axis": cols,
-            "qty_y_axis": rows,
-            "well_relative_diameter": null
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/trays")
-                    .header("content-type", "application/json")
-                    .body(Body::from(tray_data.to_string()))
-                    .unwrap(),
+    let asset_id = payload
+        .get("assetId")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing or invalid assetId".to_string(),
             )
-            .await
-            .unwrap();
+        })?;
 
-        if response.status() == StatusCode::NOT_FOUND {
-            return Err("Tray API endpoint not implemented".to_string());
-        }
-
-        if !response.status().is_success() {
-            return Err(format!(
-                "Failed to create tray via API: {}",
-                response.status()
-            ));
-        }
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let tray: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        Ok(tray["id"].as_str().unwrap().to_string())
-    }
-
-    /// Integration test helper to create a tray configuration via API
-    async fn create_tray_config_via_api(
-        app: &axum::Router,
-        config_name: &str,
-    ) -> Result<String, String> {
-        let config_data = json!({
-            "name": config_name,
-            "experiment_default": false
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tray_configurations")
-                    .header("content-type", "application/json")
-                    .body(Body::from(config_data.to_string()))
-                    .unwrap(),
+    // Find the asset
+    let asset = s3_assets::Entity::find_by_id(asset_id)
+        .one(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {e}"),
             )
-            .await
-            .unwrap();
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Asset not found".to_string()))?;
 
-        if response.status() == StatusCode::NOT_FOUND {
-            return Err("Tray configuration API endpoint not implemented".to_string());
-        }
-
-        if !response.status().is_success() {
-            return Err(format!(
-                "Failed to create tray configuration via API: {}",
-                response.status()
-            ));
-        }
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let config: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        Ok(config["id"].as_str().unwrap().to_string())
-    }
-
-    /// Integration test helper to create a tray configuration assignment via API
-    async fn create_tray_config_assignment_via_api(
-        app: &axum::Router,
-        tray_id: &str,
-        config_id: &str,
-    ) -> Result<(), String> {
-        let assignment_data = json!({
-            "tray_id": tray_id,
-            "tray_configuration_id": config_id,
-            "order_sequence": 1,
-            "rotation_degrees": 0
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tray_configuration_assignments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(assignment_data.to_string()))
-                    .unwrap(),
+    // Update asset status to processing
+    let update_asset = s3_assets::ActiveModel {
+        id: Set(asset_id),
+        processing_status: Set(Some("processing".to_string())),
+        processing_message: Set(Some("Processing started...".to_string())),
+        ..Default::default()
+    };
+    let _ = s3_assets::Entity::update(update_asset)
+        .exec(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update asset: {e}"),
             )
-            .await
-            .unwrap();
+        })?;
 
-        if response.status() == StatusCode::NOT_FOUND {
-            return Err("Tray configuration assignment API endpoint not implemented".to_string());
-        }
-
-        if !response.status().is_success() {
-            return Err(format!(
-                "Failed to create tray configuration assignment via API: {}",
-                response.status()
-            ));
-        }
-
-        Ok(())
-    }
-
-    /// Integration test helper to create a complete tray with configuration via API
-    async fn create_tray_with_config_via_api(
-        app: &axum::Router,
-        rows: i32,
-        cols: i32,
-        config_name: &str,
-    ) -> Result<(String, String), String> {
-        let tray_id = create_tray_via_api(app, rows, cols).await?;
-        let config_id = create_tray_config_via_api(app, config_name).await?;
-        create_tray_config_assignment_via_api(app, &tray_id, &config_id).await?;
-        Ok((tray_id, config_id))
-    }
-
-    /// Integration test helper to assign tray configuration to experiment via API
-    async fn assign_tray_config_to_experiment_via_api(
-        app: &axum::Router,
-        experiment_id: &str,
-        config_id: &str,
-    ) {
-        let update_data = json!({
-            "tray_configuration_id": config_id
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("PATCH")
-                    .uri(format!("/api/experiments/{}", experiment_id))
-                    .header("content-type", "application/json")
-                    .body(Body::from(update_data.to_string()))
-                    .unwrap(),
+    // Download the file from S3 to get bytes for processing (uses mock for tests)
+    let file_bytes = crate::external::s3::get_object_from_s3(&asset.s3_key, &app_state.config)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to download from S3: {e}"),
             )
-            .await
-            .unwrap();
+        })?;
 
-        assert!(
-            response.status().is_success(),
-            "Failed to assign tray configuration to experiment via API"
-        );
-    }
+    // Validate file can be processed - only allow Excel files with appropriate names
+    let filename = asset.original_filename.to_lowercase();
+    let file_extension = std::path::Path::new(&filename)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("");
 
-    #[tokio::test]
-    async fn test_experiment_crud_operations() {
-        let app = setup_test_app().await;
-
-        // Test creating an experiment
-        let experiment_data = json!({
-            "name": "Test Experiment API",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test experiment via API"
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert!(
-            response.status().is_success(),
-            "Failed to create experiment"
+    // Check file extension first
+    if file_extension != "xlsx" && file_extension != "xls" {
+        let error_message = format!(
+            "File '{}' is not processable - only Excel files (.xlsx, .xls) with experiment data can be processed",
+            asset.original_filename
         );
 
-        // Test getting all experiments
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/experiments")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "Failed to get experiments"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_experiment_filtering() {
-        let app = setup_test_app().await;
-
-        // Test filtering by calibration status
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/experiments?filter[is_calibration]=false")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "Calibration filtering should work"
-        );
-
-        // Test sorting
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/experiments?sort[performed_at]=desc")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK, "Sorting should work");
-    }
-
-    #[tokio::test]
-    async fn test_experiment_validation() {
-        let app = setup_test_app().await;
-
-        // Test creating experiment with invalid temperature range
-        let invalid_data = json!({
-            "name": "Invalid Experiment",
-            "temperature_start": -25.0,
-            "temperature_end": 5.0  // End temp higher than start - should be invalid
-        });
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(invalid_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        // Note: This test might pass if validation isn't implemented yet
-        // The test documents expected behavior
-        println!("Temperature validation response: {}", response.status());
-    }
-
-    #[tokio::test]
-    async fn test_time_point_endpoint() {
-        let app = setup_test_app().await;
-
-        // Create tray configuration for basic test (8x12 = 96-well)
-        let tray_setup_result =
-            create_tray_with_config_via_api(&app, 8, 12, "Basic 96-well Config").await;
-
-        let (_tray_id, config_id) = match tray_setup_result {
-            Ok(result) => result,
-            Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
-                return;
-            }
+        // Update asset with error status
+        let update_asset = s3_assets::ActiveModel {
+            id: Set(asset_id),
+            processing_status: Set(Some("error".to_string())),
+            processing_message: Set(Some(error_message.clone())),
+            ..Default::default()
         };
+        let _ = s3_assets::Entity::update(update_asset)
+            .exec(&app_state.db)
+            .await;
 
-        // Create an experiment first
-        let experiment_data = json!({
-            "name": "Test Time Point Experiment",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test time point experiment"
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert!(
-            response.status().is_success(),
-            "Failed to create test experiment"
-        );
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        let experiment_id = experiment["id"].as_str().unwrap();
-
-        // Assign tray configuration to experiment
-        assign_tray_config_to_experiment_via_api(&app, experiment_id, &config_id).await;
-
-        // Test creating a time point (using 1-based coordinates)
-        let time_point_data = json!({
-            "timestamp": "2025-03-20T15:13:47Z",
-            "image_filename": "INP_49640_2025-03-20_15-14-17.jpg",
-            "temperature_readings": [
-                {"probe_sequence": 1, "temperature": 29.827},
-                {"probe_sequence": 2, "temperature": 29.795},
-                {"probe_sequence": 3, "temperature": 29.787}
-            ],
-            "well_states": [
-                {"row": 1, "col": 1, "value": 0},
-                {"row": 1, "col": 2, "value": 1},
-                {"row": 2, "col": 1, "value": 0}
-            ]
-        });
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(time_point_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let status = response.status();
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let response_text = String::from_utf8_lossy(&body_bytes);
-
-        if status != StatusCode::OK {
-            println!("Error response status: {status}");
-            println!("Error response body: {response_text}");
-        }
-
-        assert_eq!(status, StatusCode::OK, "Time point creation should work");
-
-        let time_point: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        assert!(time_point["id"].is_string(), "Time point should have an ID");
-        assert_eq!(
-            time_point["experiment_id"], experiment_id,
-            "Experiment ID should match"
-        );
-        assert_eq!(
-            time_point["image_filename"],
-            "INP_49640_2025-03-20_15-14-17.jpg"
-        );
-
-        println!("Time point response: {time_point}");
+        return Err((StatusCode::BAD_REQUEST, error_message));
     }
 
-    #[tokio::test]
-    async fn test_time_point_with_96_well_plates() {
-        let app = setup_test_app().await;
+    // Check filename content for experiment data files
+    if !filename.contains("merged")
+        && !filename.contains("experiment")
+        && !filename.contains("inp freezing")
+    {
+        let error_message = format!(
+            "File '{}' is not processable - only experiment data files (merged.xlsx, etc.) can be processed",
+            asset.original_filename
+        );
 
-        // Create tray configuration for 96-well plate (8x12)
-        let tray_setup_result =
-            create_tray_with_config_via_api(&app, 8, 12, "96-well Config").await;
-
-        let (_tray_id, config_id) = match tray_setup_result {
-            Ok(result) => result,
-            Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
-                return;
-            }
+        // Update asset with error status
+        let update_asset = s3_assets::ActiveModel {
+            id: Set(asset_id),
+            processing_status: Set(Some("error".to_string())),
+            processing_message: Set(Some(error_message.clone())),
+            ..Default::default()
         };
+        let _ = s3_assets::Entity::update(update_asset)
+            .exec(&app_state.db)
+            .await;
 
-        // Create an experiment
-        let experiment_data = json!({
-            "name": "96-Well Time Point Test",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test with 96-well plates"
-        });
+        return Err((StatusCode::BAD_REQUEST, error_message));
+    }
 
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+    // Delete existing temperature readings and phase transitions for this experiment
+    let _ = temp_models::Entity::delete_many()
+        .filter(temp_models::Column::ExperimentId.eq(experiment_id))
+        .exec(&app_state.db)
+        .await;
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        let experiment_id = experiment["id"].as_str().unwrap();
+    let _ = phase_models::Entity::delete_many()
+        .filter(phase_models::Column::ExperimentId.eq(experiment_id))
+        .exec(&app_state.db)
+        .await;
 
-        // Assign tray configuration to experiment
-        assign_tray_config_to_experiment_via_api(&app, experiment_id, &config_id).await;
+    // Reset processing status for all other assets in this experiment
+    let _ = s3_assets::Entity::update_many()
+        .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
+        .filter(s3_assets::Column::Id.ne(asset_id))
+        .col_expr(
+            s3_assets::Column::ProcessingStatus,
+            sea_orm::sea_query::Expr::value(sea_orm::Value::String(None)),
+        )
+        .col_expr(
+            s3_assets::Column::ProcessingMessage,
+            sea_orm::sea_query::Expr::value(sea_orm::Value::String(None)),
+        )
+        .exec(&app_state.db)
+        .await;
 
-        // Create time point with data for full 96-well plate (8 rows × 12 columns, 1-based)
-        let mut well_states = Vec::new();
-        for row in 1..=8 {
-            for col in 1..=12 {
-                well_states.push(json!({
-                    "row": row,
-                    "col": col,
-                    "value": i32::from((row + col) % 2 != 0) // Alternating pattern
-                }));
+    // Process the Excel file
+    match app_state
+        .data_processing_service
+        .process_excel_file(experiment_id, file_bytes)
+        .await
+    {
+        Ok(result) => {
+            // Check if processing actually succeeded by looking at the result status
+            if matches!(result.status, ProcessingStatus::Completed)
+                && result.temperature_readings_created > 0
+            {
+                let success_message = format!(
+                    "Processed {} temperature readings in {}ms",
+                    result.temperature_readings_created, result.processing_time_ms
+                );
+
+                // Update asset with success status
+                let update_asset = s3_assets::ActiveModel {
+                    id: Set(asset_id),
+                    processing_status: Set(Some("completed".to_string())),
+                    processing_message: Set(Some(success_message.clone())),
+                    ..Default::default()
+                };
+                let _ = s3_assets::Entity::update(update_asset)
+                    .exec(&app_state.db)
+                    .await;
+
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "message": success_message,
+                    "result": result
+                })))
+            } else {
+                // Processing technically succeeded but with errors or no data
+                let error_message = result.error.unwrap_or_else(|| {
+                    if result.errors.is_empty() {
+                        "Processing completed but no temperature readings were created".to_string()
+                    } else {
+                        result.errors.join("; ")
+                    }
+                });
+
+                // Update asset with error status
+                let update_asset = s3_assets::ActiveModel {
+                    id: Set(asset_id),
+                    processing_status: Set(Some("error".to_string())),
+                    processing_message: Set(Some(error_message.clone())),
+                    ..Default::default()
+                };
+                let _ = s3_assets::Entity::update(update_asset)
+                    .exec(&app_state.db)
+                    .await;
+
+                Err((StatusCode::UNPROCESSABLE_ENTITY, error_message))
             }
         }
+        Err(e) => {
+            let error_message = format!("Processing failed: {e}");
 
-        let time_point_data = json!({
-            "timestamp": "2025-03-20T15:13:47Z",
-            "image_filename": "96well_test.jpg",
-            "temperature_readings": [
-                {"probe_sequence": 1, "temperature": 25.0},
-                {"probe_sequence": 2, "temperature": 24.8},
-                {"probe_sequence": 3, "temperature": 24.9},
-                {"probe_sequence": 4, "temperature": 25.1},
-                {"probe_sequence": 5, "temperature": 24.7},
-                {"probe_sequence": 6, "temperature": 25.2},
-                {"probe_sequence": 7, "temperature": 24.6},
-                {"probe_sequence": 8, "temperature": 25.3}
-            ],
-            "well_states": well_states
-        });
+            // Update asset with error status
+            let update_asset = s3_assets::ActiveModel {
+                id: Set(asset_id),
+                processing_status: Set(Some("error".to_string())),
+                processing_message: Set(Some(error_message.clone())),
+                ..Default::default()
+            };
+            let _ = s3_assets::Entity::update(update_asset)
+                .exec(&app_state.db)
+                .await;
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(time_point_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "96-well time point creation should work"
-        );
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let time_point: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        assert_eq!(
-            time_point["well_states"].as_array().unwrap().len(),
-            96,
-            "Should have 96 wells"
-        );
-        assert_eq!(
-            time_point["temperature_readings"].as_array().unwrap().len(),
-            8,
-            "Should have 8 probes"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_time_point_with_384_well_plates() {
-        let app = setup_test_app().await;
-
-        // Create tray configuration for 384-well plate (16x24)
-        let tray_setup_result =
-            create_tray_with_config_via_api(&app, 16, 24, "384-well Config").await;
-
-        let (_tray_id, config_id) = match tray_setup_result {
-            Ok(result) => result,
-            Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
-                return;
-            }
-        };
-
-        // Create an experiment
-        let experiment_data = json!({
-            "name": "384-Well Time Point Test",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test with 384-well plates"
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        let experiment_id = experiment["id"].as_str().unwrap();
-
-        // Assign tray configuration to experiment
-        assign_tray_config_to_experiment_via_api(&app, experiment_id, &config_id).await;
-
-        // Create time point with data for 384-well plate (16 rows × 24 columns, 1-based)
-        let mut well_states = Vec::new();
-        for row in 1..=16 {
-            for col in 1..=24 {
-                // Only add wells that have actual data (simulate sparse data)
-                if (row * col) % 10 == 0 {
-                    well_states.push(json!({
-                        "row": row,
-                        "col": col,
-                        "value": i32::from(row >= 8) // Half frozen, half liquid
-                    }));
-                }
-            }
+            Err((StatusCode::INTERNAL_SERVER_ERROR, error_message))
         }
-
-        let time_point_data = json!({
-            "timestamp": "2025-03-20T16:30:00Z",
-            "image_filename": "384well_test.jpg",
-            "temperature_readings": [
-                {"probe_sequence": 1, "temperature": 20.0},
-                {"probe_sequence": 2, "temperature": 19.8},
-                {"probe_sequence": 3, "temperature": 20.2},
-                {"probe_sequence": 4, "temperature": 19.9}
-            ],
-            "well_states": well_states
-        });
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(time_point_data.to_string()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "384-well time point creation should work"
-        );
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let time_point: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        // Should handle sparse data properly
-        assert!(
-            !time_point["well_states"].as_array().unwrap().is_empty(),
-            "Should have some wells"
-        );
-        assert_eq!(
-            time_point["temperature_readings"].as_array().unwrap().len(),
-            4,
-            "Should have 4 probes"
-        );
     }
+}
 
-    #[tokio::test]
-    async fn test_time_point_with_custom_tray_configuration() {
-        let app = setup_test_app().await;
+/// Clear all processed results for an experiment
+pub async fn clear_experiment_results(
+    State(app_state): State<AppState>,
+    Path(experiment_id): Path<Uuid>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    use sea_orm::Set;
 
-        // Create tray configuration for custom large tray (24x30 to accommodate large coordinates)
-        let tray_setup_result =
-            create_tray_with_config_via_api(&app, 24, 30, "Custom Large Config").await;
-
-        let (_tray_id, config_id) = match tray_setup_result {
-            Ok(result) => result,
-            Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
-                return;
-            }
-        };
-
-        // Create an experiment
-        let experiment_data = json!({
-            "name": "Custom Tray Time Point Test",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test with custom tray configuration"
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
+    let asset_id = payload
+        .get("assetId")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Missing or invalid assetId".to_string(),
             )
-            .await
-            .unwrap();
+        })?;
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        let experiment_id = experiment["id"].as_str().unwrap();
-
-        // Assign tray configuration to experiment
-        assign_tray_config_to_experiment_via_api(&app, experiment_id, &config_id).await;
-
-        // Create time point with irregular well pattern (simulating custom tray, 1-based)
-        let well_states = vec![
-            json!({"row": 1, "col": 1, "value": 0}),
-            json!({"row": 1, "col": 6, "value": 1}),
-            json!({"row": 4, "col": 3, "value": 0}),
-            json!({"row": 8, "col": 12, "value": 1}),
-            json!({"row": 16, "col": 24, "value": 0}), // Large coordinates within bounds
-        ];
-
-        let time_point_data = json!({
-            "timestamp": "2025-03-20T17:45:00Z",
-            "image_filename": "custom_tray_test.jpg",
-            "temperature_readings": [
-                {"probe_sequence": 1, "temperature": 15.5},
-                {"probe_sequence": 3, "temperature": 15.2}, // Non-sequential probe numbers
-                {"probe_sequence": 5, "temperature": 15.8},
-                {"probe_sequence": 7, "temperature": 15.1}
-            ],
-            "well_states": well_states
-        });
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(time_point_data.to_string()))
-                    .unwrap(),
+    // Clear processed data by deleting related records directly
+    // Delete temperature readings
+    let _ = temp_models::Entity::delete_many()
+        .filter(temp_models::Column::ExperimentId.eq(experiment_id))
+        .exec(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to clear temperature readings: {e}"),
             )
-            .await
-            .unwrap();
+        })?;
 
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "Custom tray time point creation should work"
-        );
+    // Delete phase transitions
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let time_point: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        assert_eq!(
-            time_point["well_states"].as_array().unwrap().len(),
-            5,
-            "Should have 5 wells"
-        );
-        assert_eq!(
-            time_point["temperature_readings"].as_array().unwrap().len(),
-            4,
-            "Should have 4 probes"
-        );
-
-        // Verify non-sequential probe sequences are preserved
-        let temp_readings = time_point["temperature_readings"].as_array().unwrap();
-        let probe_sequences: Vec<i64> = temp_readings
-            .iter()
-            .map(|r| r["probe_sequence"].as_i64().unwrap())
-            .collect();
-        assert_eq!(
-            probe_sequences,
-            vec![1, 3, 5, 7],
-            "Probe sequences should be preserved"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_time_point_with_minimal_data() {
-        let app = setup_test_app().await;
-
-        // Create tray configuration for minimal test (single well)
-        let tray_setup_result = create_tray_with_config_via_api(&app, 1, 1, "Minimal Config").await;
-
-        let (_tray_id, config_id) = match tray_setup_result {
-            Ok(result) => result,
-            Err(e) => {
-                println!("Skipping test due to missing tray API: {}", e);
-                return;
-            }
-        };
-
-        // Create an experiment
-        let experiment_data = json!({
-            "name": "Minimal Time Point Test",
-            "username": "test@example.com",
-            "performed_at": "2024-06-20T14:30:00Z",
-            "temperature_ramp": -1.0,
-            "temperature_start": 5.0,
-            "temperature_end": -25.0,
-            "is_calibration": false,
-            "remarks": "Test with minimal data"
-        });
-
-        let response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/experiments")
-                    .header("content-type", "application/json")
-                    .body(Body::from(experiment_data.to_string()))
-                    .unwrap(),
+    let _ = phase_models::Entity::delete_many()
+        .filter(phase_models::Column::ExperimentId.eq(experiment_id))
+        .exec(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to clear phase transitions: {e}"),
             )
-            .await
-            .unwrap();
+        })?;
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let experiment: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-        let experiment_id = experiment["id"].as_str().unwrap();
+    // Update asset to remove processing status
+    let update_asset = s3_assets::ActiveModel {
+        id: Set(asset_id),
+        processing_status: Set(None),
+        processing_message: Set(None),
+        ..Default::default()
+    };
+    let _ = s3_assets::Entity::update(update_asset)
+        .exec(&app_state.db)
+        .await;
 
-        // Assign tray configuration to experiment
-        assign_tray_config_to_experiment_via_api(&app, experiment_id, &config_id).await;
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Experiment results cleared successfully"
+    })))
+}
 
-        // Create time point with minimal data (no image, single well, single probe, 1-based)
-        let time_point_data = json!({
-            "timestamp": "2025-03-20T18:00:00Z",
-            "temperature_readings": [
-                {"probe_sequence": 1, "temperature": 10.0}
-            ],
-            "well_states": [
-                {"row": 1, "col": 1, "value": 1}
-            ]
-        });
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/experiments/{experiment_id}/time_points"))
-                    .header("content-type", "application/json")
-                    .body(Body::from(time_point_data.to_string()))
-                    .unwrap(),
+/// Get experiment results in tray-centric format
+#[utoipa::path(
+    get,
+    path = "/{experiment_id}/results",
+    responses(
+        (status = 200, description = "Experiment results in tray-centric format", body = super::models::ExperimentResultsResponse),
+        (status = 404, description = "Experiment not found", body = String),
+        (status = 500, description = "Internal Server Error", body = String)
+    ),
+    operation_id = "get_experiment_results",
+    summary = "Get experiment results in tray-centric format",
+    description = "Returns experiment results organized by trays with direct well information including sample and treatment data"
+)]
+pub async fn get_experiment_results(
+    State(app_state): State<AppState>,
+    Path(experiment_id): Path<Uuid>,
+) -> Result<Json<super::models::ExperimentResultsResponse>, (StatusCode, String)> {
+    // Check if experiment exists
+    let _experiment = super::models::Entity::find_by_id(experiment_id)
+        .one(&app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {e}"),
             )
-            .await
-            .unwrap();
+        })?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Experiment not found".to_string()))?;
 
-        assert_eq!(
-            response.status(),
-            StatusCode::OK,
-            "Minimal time point creation should work"
-        );
+    // Build tray-centric results
+    let results = super::services::build_tray_centric_results(experiment_id, &app_state.db)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to build results: {e}"),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                "No results available for this experiment".to_string(),
+            )
+        })?;
 
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let time_point: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-        assert_eq!(
-            time_point["well_states"].as_array().unwrap().len(),
-            1,
-            "Should have 1 well"
-        );
-        assert_eq!(
-            time_point["temperature_readings"].as_array().unwrap().len(),
-            1,
-            "Should have 1 probe"
-        );
-        assert!(
-            time_point["image_filename"].is_null(),
-            "Image filename should be null"
-        );
-    }
+    Ok(Json(results))
 }
