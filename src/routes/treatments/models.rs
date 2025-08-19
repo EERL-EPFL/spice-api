@@ -99,6 +99,7 @@ pub enum TreatmentName {
 
 // Experimental results functionality - not implemented yet
 /// Fetch all experimental results for a specific treatment across all experiments
+#[allow(clippy::too_many_lines)]
 async fn fetch_experimental_results_for_treatment(
     db: &DatabaseConnection,
     treatment_id: Uuid,

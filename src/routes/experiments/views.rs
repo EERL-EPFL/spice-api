@@ -112,6 +112,198 @@ mod asset_role_tests {
     }
 }
 
+// Helper struct for file upload processing
+struct FileUploadData {
+    file_name: String,
+    file_bytes: Vec<u8>,
+    file_type: String,
+    extension: String,
+    size: u64,
+    s3_key: String,
+}
+
+// Helper struct for asset processing results
+struct AssetProcessingResult {
+    auto_processed: bool,
+    processing_message: Option<String>,
+}
+
+/// Process multipart field into file upload data
+async fn process_multipart_field(
+    field: &mut axum::extract::multipart::Field<'_>,
+    experiment_id: Uuid,
+    state: &AppState,
+) -> Result<FileUploadData, (StatusCode, String)> {
+    let file_name = field.file_name().unwrap_or("unknown").to_string();
+    let extension = std::path::Path::new(&file_name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    
+    let file_type = match extension.as_str() {
+        "png" | "jpg" | "jpeg" => "image".to_string(),
+        "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
+        "nc" => "netcdf".to_string(),
+        _ => "unknown".to_string(),
+    };
+
+    let mut file_bytes = Vec::new();
+    while let Some(chunk) = field.chunk().await.unwrap() {
+        file_bytes.extend_from_slice(&chunk);
+    }
+    let size = file_bytes.len() as u64;
+
+    let s3_key = format!(
+        "{}/{}/experiments/{}/{}",
+        state.config.app_name, state.config.deployment, experiment_id, file_name
+    );
+
+    Ok(FileUploadData {
+        file_name,
+        file_bytes,
+        file_type,
+        extension,
+        size,
+        s3_key,
+    })
+}
+
+/// Handle existing asset overwrite logic
+async fn handle_existing_asset(
+    file_name: &str,
+    experiment_id: Uuid,
+    allow_overwrite: bool,
+    state: &AppState,
+) -> Result<(), (StatusCode, String)> {
+    let existing_asset = s3_assets::Entity::find()
+        .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
+        .filter(s3_assets::Column::OriginalFilename.eq(file_name))
+        .one(&state.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if let Some(existing) = existing_asset {
+        if !allow_overwrite {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("File '{file_name}' already exists in this experiment"),
+            ));
+        }
+
+        // Delete existing asset from database and S3 before uploading new one
+        if let Err(e) = crate::external::s3::delete_from_s3(&existing.s3_key).await {
+            println!(
+                "Warning: Failed to delete existing file from S3: {} - {}",
+                existing.s3_key, e
+            );
+        }
+
+        s3_assets::Entity::delete_by_id(existing.id)
+            .exec(&state.db)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to delete existing asset: {e}"),
+                )
+            })?;
+    }
+    Ok(())
+}
+
+/// Process Excel file if it should be auto-processed
+async fn process_excel_if_needed(
+    upload_data: &FileUploadData,
+    asset_id: Uuid,
+    experiment_id: Uuid,
+    state: &AppState,
+) -> AssetProcessingResult {
+    let asset_role = determine_asset_role(&upload_data.file_name, &upload_data.file_type, &upload_data.extension);
+    
+    let should_auto_process = upload_data.file_type == "tabular"
+        && (upload_data.extension == "xlsx" || upload_data.extension == "xls")
+        && asset_role == "analysis_data";
+
+    if !should_auto_process {
+        return AssetProcessingResult {
+            auto_processed: false,
+            processing_message: None,
+        };
+    }
+
+    println!("🔄 Auto-processing Excel file: {}", upload_data.file_name);
+
+    let processing_service =
+        crate::services::data_processing_service::DataProcessingService::new(
+            state.db.clone(),
+        );
+
+    match processing_service
+        .process_excel_file(experiment_id, upload_data.file_bytes.clone())
+        .await
+    {
+        Ok(result) => {
+            let processing_status = match result.status {
+                crate::common::models::ProcessingStatus::Completed => Some("completed".to_string()),
+                crate::common::models::ProcessingStatus::Failed => Some("error".to_string()),
+                _ => Some("processing".to_string()),
+            };
+
+            let message = if result.status == crate::common::models::ProcessingStatus::Completed {
+                Some(format!(
+                    "✅ Processed {} temperature readings in {}ms",
+                    result.temperature_readings_created, result.processing_time_ms
+                ))
+            } else if let Some(error) = result.error {
+                Some(format!("❌ Processing failed: {error}"))
+            } else {
+                Some("Processing completed".to_string())
+            };
+
+            let _ = crate::routes::assets::models::Entity::update_many()
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingStatus,
+                    sea_orm::sea_query::Expr::value(processing_status),
+                )
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingMessage,
+                    sea_orm::sea_query::Expr::value(message.clone()),
+                )
+                .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
+                .exec(&state.db)
+                .await;
+
+            AssetProcessingResult {
+                auto_processed: true,
+                processing_message: message,
+            }
+        }
+        Err(e) => {
+            let error_msg = format!("❌ Auto-processing failed: {e}");
+            println!("{error_msg}");
+
+            let _ = crate::routes::assets::models::Entity::update_many()
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingStatus,
+                    sea_orm::sea_query::Expr::value(Some("error".to_string())),
+                )
+                .col_expr(
+                    crate::routes::assets::models::Column::ProcessingMessage,
+                    sea_orm::sea_query::Expr::value(Some(error_msg.clone())),
+                )
+                .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
+                .exec(&state.db)
+                .await;
+
+            AssetProcessingResult {
+                auto_processed: false,
+                processing_message: Some(error_msg),
+            }
+        }
+    }
+}
+
 /// Determine asset role based on filename patterns and file type
 fn determine_asset_role(filename: &str, file_type: &str, _extension: &str) -> String {
     let filename_lower = filename.to_lowercase();
@@ -285,30 +477,8 @@ pub async fn upload_file(
             continue;
         }
 
-        let file_name = field.file_name().unwrap_or("unknown").to_string();
-        let extension = std::path::Path::new(&file_name)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let file_type = match extension.as_str() {
-            "png" | "jpg" | "jpeg" => "image".to_string(),
-            "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
-            "nc" => "netcdf".to_string(),
-            _ => "unknown".to_string(),
-        };
-
-        let mut file_bytes = Vec::new();
-        while let Some(chunk) = field.chunk().await.unwrap() {
-            file_bytes.extend_from_slice(&chunk);
-        }
-        let size = file_bytes.len() as u64;
-
-        // Generate a unique S3 key
-        let s3_key = format!(
-            "{}/{}/experiments/{}/{}",
-            state.config.app_name, state.config.deployment, experiment_id, file_name
-        );
+        // Process multipart field into structured data
+        let upload_data = process_multipart_field(&mut field, experiment_id, &state).await?;
 
         // Check if overwrite is allowed
         let allow_overwrite = headers
@@ -316,46 +486,12 @@ pub async fn upload_file(
             .and_then(|v| v.to_str().ok())
             .is_some_and(|s| s == "true");
 
-        // Check if file already exists in database
-        let existing_asset = s3_assets::Entity::find()
-            .filter(s3_assets::Column::ExperimentId.eq(Some(experiment_id)))
-            .filter(s3_assets::Column::OriginalFilename.eq(&file_name))
-            .one(&state.db)
-            .await
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-        if let Some(existing) = existing_asset {
-            if !allow_overwrite {
-                return Err((
-                    StatusCode::CONFLICT,
-                    format!("File '{file_name}' already exists in this experiment"),
-                ));
-            }
-
-            // Delete existing asset from database and S3 before uploading new one
-            // Delete from S3 first (uses mock for tests, real S3 for production)
-            if let Err(e) = crate::external::s3::delete_from_s3(&existing.s3_key).await {
-                println!(
-                    "Warning: Failed to delete existing file from S3: {} - {}",
-                    existing.s3_key, e
-                );
-            }
-
-            // Delete from database
-            s3_assets::Entity::delete_by_id(existing.id)
-                .exec(&state.db)
-                .await
-                .map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to delete existing asset: {e}"),
-                    )
-                })?;
-        }
+        // Handle existing asset overwrite logic
+        handle_existing_asset(&upload_data.file_name, experiment_id, allow_overwrite, &state).await?;
 
         // Upload the file to S3 (uses mock for tests, real S3 for production)
         if let Err(e) =
-            crate::external::s3::put_object_to_s3(&s3_key, file_bytes.clone(), &state.config).await
+            crate::external::s3::put_object_to_s3(&upload_data.s3_key, upload_data.file_bytes.clone(), &state.config).await
         {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -364,16 +500,16 @@ pub async fn upload_file(
         }
 
         // Determine asset role based on filename patterns and type
-        let asset_role = determine_asset_role(&file_name, &file_type, &extension);
+        let asset_role = determine_asset_role(&upload_data.file_name, &upload_data.file_type, &upload_data.extension);
 
         // Insert a record into the local DB
         let asset = s3_assets::ActiveModel {
-            original_filename: Set(file_name.clone()),
+            original_filename: Set(upload_data.file_name.clone()),
             experiment_id: Set(Some(experiment_id)),
-            s3_key: Set(s3_key.clone()),
-            size_bytes: Set(Some(size.try_into().unwrap())),
+            s3_key: Set(upload_data.s3_key.clone()),
+            size_bytes: Set(Some(upload_data.size.try_into().unwrap())),
             uploaded_by: Set(Some("uploader".to_string())),
-            r#type: Set(file_type.clone()),
+            r#type: Set(upload_data.file_type.clone()),
             role: Set(Some(asset_role.clone())),
             processing_status: Set(None),
             processing_message: Set(None),
@@ -391,95 +527,15 @@ pub async fn upload_file(
 
         let asset_id = asset_result.last_insert_id;
 
-        // Auto-process Excel files with analysis_data role (like merged.xlsx)
-        let should_auto_process = file_type == "tabular"
-            && (extension == "xlsx" || extension == "xls")
-            && asset_role == "analysis_data";
-
-        let (auto_processed, processing_message) = if should_auto_process {
-            println!("🔄 Auto-processing Excel file: {file_name}");
-
-            // Create processing service and trigger processing
-            let processing_service =
-                crate::services::data_processing_service::DataProcessingService::new(
-                    state.db.clone(),
-                );
-
-            match processing_service
-                .process_excel_file(experiment_id, file_bytes.clone())
-                .await
-            {
-                Ok(result) => {
-                    // Update asset with processing results
-                    let processing_status = match result.status {
-                        ProcessingStatus::Completed => Some("completed".to_string()),
-                        ProcessingStatus::Failed => Some("error".to_string()),
-                        _ => Some("processing".to_string()),
-                    };
-
-                    let message = if result.status == ProcessingStatus::Completed {
-                        Some(format!(
-                            "✅ Processed {} temperature readings in {}ms",
-                            result.temperature_readings_created, result.processing_time_ms
-                        ))
-                    } else if let Some(error) = result.error {
-                        Some(format!("❌ Processing failed: {error}"))
-                    } else {
-                        Some("Processing completed".to_string())
-                    };
-
-                    // Update the asset record with processing status
-                    if let Ok(_) = crate::routes::assets::models::Entity::update_many()
-                        .col_expr(
-                            crate::routes::assets::models::Column::ProcessingStatus,
-                            sea_orm::sea_query::Expr::value(processing_status.clone()),
-                        )
-                        .col_expr(
-                            crate::routes::assets::models::Column::ProcessingMessage,
-                            sea_orm::sea_query::Expr::value(message.clone()),
-                        )
-                        .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
-                        .exec(&state.db)
-                        .await
-                    {
-                        println!(
-                            "✅ Updated asset {asset_id} with processing status: {processing_status:?}"
-                        );
-                    }
-
-                    (true, message)
-                }
-                Err(e) => {
-                    let error_msg = format!("❌ Auto-processing failed: {e}");
-                    println!("{error_msg}");
-
-                    // Update asset with error status
-                    let _ = crate::routes::assets::models::Entity::update_many()
-                        .col_expr(
-                            crate::routes::assets::models::Column::ProcessingStatus,
-                            sea_orm::sea_query::Expr::value(Some("error".to_string())),
-                        )
-                        .col_expr(
-                            crate::routes::assets::models::Column::ProcessingMessage,
-                            sea_orm::sea_query::Expr::value(Some(error_msg.clone())),
-                        )
-                        .filter(crate::routes::assets::models::Column::Id.eq(asset_id))
-                        .exec(&state.db)
-                        .await;
-
-                    (false, Some(error_msg))
-                }
-            }
-        } else {
-            (false, None)
-        };
+        // Process Excel file if needed using helper function
+        let processing_result = process_excel_if_needed(&upload_data, asset_id, experiment_id, &state).await;
 
         return Ok(Json(UploadResponse {
             success: true,
-            filename: file_name,
-            size,
-            auto_processed,
-            processing_message,
+            filename: upload_data.file_name,
+            size: upload_data.size,
+            auto_processed: processing_result.auto_processed,
+            processing_message: processing_result.processing_message,
         }));
     }
 
@@ -563,6 +619,7 @@ pub async fn download_experiment_assets(
 }
 
 /// Process asset data for an experiment
+#[allow(clippy::too_many_lines)]
 pub async fn process_asset_data(
     State(app_state): State<AppState>,
     Path(experiment_id): Path<Uuid>,

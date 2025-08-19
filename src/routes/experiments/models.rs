@@ -153,9 +153,6 @@ pub struct TreatmentResultsSummary {
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ExperimentResultsSummary {
     pub total_wells: usize,
-    pub wells_with_data: usize,
-    pub wells_frozen: usize,
-    pub wells_liquid: usize,
     pub total_time_points: usize,
     pub first_timestamp: Option<DateTime<Utc>>,
     pub last_timestamp: Option<DateTime<Utc>>,

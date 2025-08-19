@@ -467,7 +467,7 @@ async fn test_asset_download_and_view_endpoints() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/api/assets/{}/download", fake_id))
+                .uri(format!("/api/assets/{fake_id}/download",))
                 .body(Body::empty())
                 .unwrap(),
         )
