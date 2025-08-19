@@ -355,7 +355,7 @@ async fn load_treatment_and_sample_data(
 }
 
 // Helper function to build well summaries from loaded data
-fn build_well_summaries(context: &WellSummaryContext) -> Result<Vec<WellSummary>, DbErr> {
+fn build_well_summaries(context: &WellSummaryContext) -> Vec<WellSummary> {
     let mut well_summaries = Vec::new();
 
     for well in context.experiment_wells {
@@ -474,7 +474,7 @@ fn build_well_summaries(context: &WellSummaryContext) -> Result<Vec<WellSummary>
         well_summaries.push(well_summary);
     }
 
-    Ok(well_summaries)
+    well_summaries
 }
 
 // Generate experiment results summary (now simplified to orchestrate helper functions)
@@ -517,7 +517,7 @@ pub(super) async fn build_results_summary(
         treatment_map: &treatment_map,
         tray_map: &tray_map,
     };
-    let well_summaries = build_well_summaries(&context)?;
+    let well_summaries = build_well_summaries(&context);
 
     // Build hierarchical sample results from well summaries
     let sample_results = build_sample_results_from_wells(&well_summaries);

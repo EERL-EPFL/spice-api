@@ -1502,14 +1502,13 @@ async fn test_sample_experimental_results_comprehensive() {
         );
 
         let treatment_name = result["treatment_name"].as_str().unwrap();
-        println!("Found treatment_name: {}", treatment_name);
+        println!("Found treatment_name: {treatment_name}");
         assert!(
             treatment_name.contains("none")
                 || treatment_name.contains("None")
                 || treatment_name.contains("heat")
                 || treatment_name.contains("Heat"),
-            "Should be none or heat treatment, got: {}",
-            treatment_name
+            "Should be none or heat treatment, got: {treatment_name}"
         );
 
         // Dilution factor validation
@@ -1640,17 +1639,15 @@ async fn test_sample_complex_workflow() {
                 // Experimental results structure is present
             }
         } else {
-            // Sample retrieval failed
+            panic!("Failed to retrieve sample");
         }
     } else {
-        // Complex workflow test failed - couldn't create sample
+        panic!("Failed to create sample");
     }
-
-    // This test always passes - it's for workflow documentation
-    // Documents sample workflow behavior
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_sample_update_treatment_crud_comprehensive() {
     let app = setup_test_app().await;
 
@@ -1822,7 +1819,7 @@ async fn test_sample_update_treatment_crud_comprehensive() {
             "heat" => {
                 found_heat = true;
             }
-            _ => panic!("Unexpected treatment name: {}", name),
+            _ => panic!("Unexpected treatment name: {name}"),
         }
     }
 

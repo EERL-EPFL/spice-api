@@ -4,6 +4,8 @@ use crate::common::models::ProcessingStatus;
 use crate::common::state::AppState;
 use crate::external::s3::get_client;
 use crate::routes::assets::models as s3_assets;
+use crate::routes::experiments::phase_transitions::models as phase_models;
+use crate::routes::experiments::temperatures::models as temp_models;
 use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{
@@ -21,7 +23,6 @@ use serde::Serialize;
 use std::convert::TryInto;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
-
 #[cfg(test)]
 mod asset_role_tests {
     use super::determine_asset_role;
@@ -140,7 +141,7 @@ async fn process_multipart_field(
         .and_then(|ext| ext.to_str())
         .unwrap_or("")
         .to_lowercase();
-    
+
     let file_type = match extension.as_str() {
         "png" | "jpg" | "jpeg" => "image".to_string(),
         "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
@@ -219,8 +220,12 @@ async fn process_excel_if_needed(
     experiment_id: Uuid,
     state: &AppState,
 ) -> AssetProcessingResult {
-    let asset_role = determine_asset_role(&upload_data.file_name, &upload_data.file_type, &upload_data.extension);
-    
+    let asset_role = determine_asset_role(
+        &upload_data.file_name,
+        &upload_data.file_type,
+        &upload_data.extension,
+    );
+
     let should_auto_process = upload_data.file_type == "tabular"
         && (upload_data.extension == "xlsx" || upload_data.extension == "xls")
         && asset_role == "analysis_data";
@@ -235,9 +240,7 @@ async fn process_excel_if_needed(
     println!("🔄 Auto-processing Excel file: {}", upload_data.file_name);
 
     let processing_service =
-        crate::services::data_processing_service::DataProcessingService::new(
-            state.db.clone(),
-        );
+        crate::services::data_processing_service::DataProcessingService::new(state.db.clone());
 
     match processing_service
         .process_excel_file(experiment_id, upload_data.file_bytes.clone())
@@ -487,11 +490,21 @@ pub async fn upload_file(
             .is_some_and(|s| s == "true");
 
         // Handle existing asset overwrite logic
-        handle_existing_asset(&upload_data.file_name, experiment_id, allow_overwrite, &state).await?;
+        handle_existing_asset(
+            &upload_data.file_name,
+            experiment_id,
+            allow_overwrite,
+            &state,
+        )
+        .await?;
 
         // Upload the file to S3 (uses mock for tests, real S3 for production)
-        if let Err(e) =
-            crate::external::s3::put_object_to_s3(&upload_data.s3_key, upload_data.file_bytes.clone(), &state.config).await
+        if let Err(e) = crate::external::s3::put_object_to_s3(
+            &upload_data.s3_key,
+            upload_data.file_bytes.clone(),
+            &state.config,
+        )
+        .await
         {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -500,7 +513,11 @@ pub async fn upload_file(
         }
 
         // Determine asset role based on filename patterns and type
-        let asset_role = determine_asset_role(&upload_data.file_name, &upload_data.file_type, &upload_data.extension);
+        let asset_role = determine_asset_role(
+            &upload_data.file_name,
+            &upload_data.file_type,
+            &upload_data.extension,
+        );
 
         // Insert a record into the local DB
         let asset = s3_assets::ActiveModel {
@@ -528,7 +545,8 @@ pub async fn upload_file(
         let asset_id = asset_result.last_insert_id;
 
         // Process Excel file if needed using helper function
-        let processing_result = process_excel_if_needed(&upload_data, asset_id, experiment_id, &state).await;
+        let processing_result =
+            process_excel_if_needed(&upload_data, asset_id, experiment_id, &state).await;
 
         return Ok(Json(UploadResponse {
             success: true,
@@ -729,11 +747,6 @@ pub async fn process_asset_data(
         return Err((StatusCode::BAD_REQUEST, error_message));
     }
 
-    // Clear any existing processed data and reset other assets' processing status
-    // This ensures only one file can have processed data at a time
-    use crate::routes::experiments::phase_transitions::models as phase_models;
-    use crate::routes::experiments::temperatures::models as temp_models;
-
     // Delete existing temperature readings and phase transitions for this experiment
     let _ = temp_models::Entity::delete_many()
         .filter(temp_models::Column::ExperimentId.eq(experiment_id))
@@ -856,7 +869,6 @@ pub async fn clear_experiment_results(
 
     // Clear processed data by deleting related records directly
     // Delete temperature readings
-    use crate::routes::experiments::temperatures::models as temp_models;
     let _ = temp_models::Entity::delete_many()
         .filter(temp_models::Column::ExperimentId.eq(experiment_id))
         .exec(&app_state.db)
@@ -869,7 +881,7 @@ pub async fn clear_experiment_results(
         })?;
 
     // Delete phase transitions
-    use crate::routes::experiments::phase_transitions::models as phase_models;
+
     let _ = phase_models::Entity::delete_many()
         .filter(phase_models::Column::ExperimentId.eq(experiment_id))
         .exec(&app_state.db)

@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, NaiveDateTime};
-use sea_orm::ActiveValue;
+use sea_orm::{ActiveModelTrait, ActiveValue};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -178,10 +178,7 @@ async fn assign_tray_config_to_experiment_via_api(
             .await
             .unwrap();
         let error_body = String::from_utf8_lossy(&body_bytes);
-        panic!(
-            "Failed to assign tray configuration. Status: {}, Body: {}",
-            status, error_body
-        );
+        panic!("Failed to assign tray configuration. Status: {status}, Body: {error_body}");
     }
 }
 
@@ -343,6 +340,7 @@ async fn create_experiment_via_api(app: &axum::Router) -> Result<String, String>
 
 // Test the core image-temperature correlation functionality at service layer
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_image_filename_in_results_service() {
     let db = setup_test_db().await;
     println!("🧪 Testing image filename extraction in results service");
@@ -353,7 +351,7 @@ async fn test_image_filename_in_results_service() {
         id: ActiveValue::Set(experiment_id),
         name: ActiveValue::Set("Image Service Test".to_string()),
         username: ActiveValue::Set(Some("test@example.com".to_string())),
-        performed_at: ActiveValue::Set(Some(chrono::Utc::now().into())),
+        performed_at: ActiveValue::Set(Some(chrono::Utc::now())),
         created_at: ActiveValue::Set(chrono::Utc::now()),
         last_updated: ActiveValue::Set(chrono::Utc::now()),
         temperature_ramp: ActiveValue::Set(Some(rust_decimal::Decimal::from(-1))),
@@ -364,7 +362,6 @@ async fn test_image_filename_in_results_service() {
         tray_configuration_id: ActiveValue::Set(None),
     };
 
-    use sea_orm::ActiveModelTrait;
     experiment.insert(&db).await.unwrap();
 
     // Create temperature reading with image filename
@@ -478,19 +475,14 @@ async fn test_image_filename_in_results_service() {
     );
     let summary = results_summary.unwrap();
 
-    // Use well_summaries to get all wells  
-    let all_wells: Vec<_> = summary.well_summaries
-        .iter()
-        .collect();
+    // Use well_summaries to get all wells
+    let all_wells: Vec<_> = summary.well_summaries.iter().collect();
 
     println!(
         "✅ Results summary generated with {} wells",
         all_wells.len()
     );
-    assert!(
-        all_wells.len() > 0,
-        "Expected at least one well summary"
-    );
+    assert!(!all_wells.is_empty(), "Expected at least one well summary");
 
     // Check that the well has the image filename
     let well_with_image = all_wells
@@ -505,15 +497,15 @@ async fn test_image_filename_in_results_service() {
     let well = well_with_image.unwrap();
     let image_filename = well.image_filename_at_freeze.as_ref().unwrap();
 
-    println!("🖼️ Well image filename: {}", image_filename);
-
     // Verify image filename properties
     assert_eq!(
         image_filename, "INP_49640_2025-03-20_15-14-17",
         "Image filename should match temperature reading filename"
     );
     assert!(
-        !image_filename.ends_with(".jpg"),
+        !std::path::Path::new(image_filename)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg")),
         "Image filename should be stored without .jpg extension"
     );
 
@@ -562,10 +554,7 @@ async fn test_experiment_crud_operations() {
     if !status.is_success() {
         let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let body = String::from_utf8_lossy(&bytes);
-        panic!(
-            "Failed to create experiment. Status: {}, Body: {}",
-            status, body
-        );
+        panic!("Failed to create experiment. Status: {status}, Body: {body}");
     }
 
     // Test getting all experiments
@@ -1997,10 +1986,7 @@ async fn test_experiment_process_status_endpoint() {
 
 /// Validate experiment results structure
 fn validate_experiment_results_structure(results: &serde_json::Value) {
-    assert!(
-        results.is_object(),
-        "results should be an object"
-    );
+    assert!(results.is_object(), "results should be an object");
     assert!(
         results["summary"].is_object(),
         "results.summary should be an object"
@@ -2028,14 +2014,14 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
     if let Some(trays) = results["trays"].as_array() {
         let mut total_wells = 0;
         let mut all_wells = Vec::new();
-        
+
         for tray in trays {
             if let Some(wells) = tray["wells"].as_array() {
                 total_wells += wells.len();
                 all_wells.extend(wells.iter());
             }
         }
-        
+
         // If no wells, this might be before upload - just return
         if total_wells == 0 {
             return;
@@ -2043,8 +2029,7 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
 
         // Core success criteria - we expect 192 wells (8x12 x 2 trays)
         assert_eq!(
-            total_wells,
-            192,
+            total_wells, 192,
             "Should have exactly 192 well summaries (8x12 x 2 trays)"
         );
 
@@ -2056,10 +2041,13 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
 
         for (tray_idx, tray) in trays.iter().enumerate() {
             let tray_name = tray["tray_name"].as_str();
-            
+
             if let Some(wells) = tray["wells"].as_array() {
                 for (well_idx, summary) in wells.iter().enumerate() {
-                    assert!(summary.is_object(), "tray[{tray_idx}].wells[{well_idx}] should be an object");
+                    assert!(
+                        summary.is_object(),
+                        "tray[{tray_idx}].wells[{well_idx}] should be an object"
+                    );
                     assert!(
                         summary.get("coordinate").is_some(),
                         "tray[{tray_idx}].wells[{well_idx}] should have coordinate"
@@ -2113,12 +2101,7 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
             "All 192 wells should end up in frozen state"
         );
 
-        println!(
-            "   - Total wells: {} (P1: {}, P2: {})",
-            total_wells,
-            p1_wells,
-            p2_wells
-        );
+        println!("   - Total wells: {total_wells} (P1: {p1_wells}, P2: {p2_wells})");
         println!("   - Wells with phase changes: {wells_with_phase_changes}");
         println!("   - Frozen wells: {frozen_wells}");
 
@@ -3864,13 +3847,13 @@ fn validate_experiment_totals(results: &Value) {
     let mut total_wells = 0;
     let mut wells_with_data = 0;
     let mut wells_frozen = 0;
-    
+
     if let Some(trays) = results["trays"].as_array() {
         for tray in trays {
             if let Some(wells) = tray["wells"].as_array() {
                 for well in wells {
                     total_wells += 1;
-                    
+
                     // Count as having data if it has phase change time
                     if well.get("first_phase_change_time").is_some() {
                         wells_with_data += 1;
@@ -3881,8 +3864,10 @@ fn validate_experiment_totals(results: &Value) {
             }
         }
     }
-    
-    let total_time_points = results["summary"]["total_time_points"].as_u64().unwrap_or(0);
+
+    let total_time_points = results["summary"]["total_time_points"]
+        .as_u64()
+        .unwrap_or(0);
 
     assert_eq!(
         total_wells,
@@ -4012,7 +3997,9 @@ fn validate_specific_well_transitions(experiment: &Value) {
                 println!("⚠️  Well {key} has temperature data but no probe_1 field");
             }
         } else {
-            println!("⚠️  Well {key} missing temperature probe data - skipping temperature validation");
+            println!(
+                "⚠️  Well {key} missing temperature probe data - skipping temperature validation"
+            );
         }
     }
 }
@@ -4203,13 +4190,11 @@ async fn test_image_temperature_correlation() {
 
     // Verify the experiment exists and has the expected structure
     assert_eq!(experiment_data["id"].as_str().unwrap(), experiment_id);
-    println!("✅ Image-temperature correlation test passed");
-    println!("   🧪 Experiment verified: {}", experiment_id);
-    println!("   📝 Note: Temperature readings are created through Excel processing workflow");
 }
 
 /// Test asset retrieval by filename endpoint
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_asset_by_filename_endpoint() {
     let app = setup_test_app().await;
 
@@ -4232,8 +4217,6 @@ async fn test_asset_by_filename_endpoint() {
         "image",
     )
     .await; // No .jpg extension
-
-    println!("📁 Created mock assets: {} and {}", asset_1_id, asset_2_id);
 
     // Add dummy file data to mock S3 store for testing
     let dummy_image_data = b"fake-image-data".to_vec();
@@ -4412,7 +4395,7 @@ async fn test_excel_processing_with_images() {
 
     // 4. Create corresponding image assets (with .jpg extension)
     for image_filename in &image_filenames {
-        let asset_filename = format!("{}.jpg", image_filename); // Assets have .jpg extension
+        let asset_filename = format!("{image_filename}.jpg"); // Assets have .jpg extension
         create_mock_asset(&app, &experiment_id, &asset_filename, "image").await;
     }
 
@@ -4421,10 +4404,10 @@ async fn test_excel_processing_with_images() {
     // Add dummy file data to mock S3 store for testing (just like in test_asset_by_filename_endpoint)
     let dummy_image_data = b"fake-image-data-excel-test".to_vec();
     for image_filename in &image_filenames {
-        let asset_filename_with_jpg = format!("{}.jpg", image_filename);
+        let asset_filename_with_jpg = format!("{image_filename}.jpg");
         crate::external::s3::MOCK_S3_STORE
             .put_object(
-                &format!("test/{}", asset_filename_with_jpg),
+                &format!("test/{asset_filename_with_jpg}"),
                 dummy_image_data.clone(),
             )
             .expect("Failed to add mock S3 data for Excel test");
@@ -4452,7 +4435,7 @@ async fn test_excel_processing_with_images() {
     let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let experiment_data: Value = serde_json::from_slice(&body_bytes).unwrap();
     let results = &experiment_data["results"];
-    
+
     // Extract all wells from all trays in the new tray-centric format
     let mut all_wells = Vec::new();
     if let Some(trays) = results["trays"].as_array() {
@@ -4468,7 +4451,7 @@ async fn test_excel_processing_with_images() {
     println!(
         "📊 Found {} well summaries from {} trays (expected for tray configuration)",
         all_wells.len(),
-        results["trays"].as_array().map(|t| t.len()).unwrap_or(0)
+        results["trays"].as_array().map_or(0, std::vec::Vec::len)
     );
 
     // Verify the assets and temperature readings we created are accessible
@@ -4483,10 +4466,7 @@ async fn test_excel_processing_with_images() {
         .iter()
         .filter(|well| !well["first_phase_change_time"].is_null())
         .count();
-    println!(
-        "📈 Wells with phase change data: {}",
-        wells_with_freeze_data
-    );
+    println!("📈 Wells with phase change data: {wells_with_freeze_data}");
 
     // 7. Test that assets can be accessed via the by-filename endpoint
     for image_filename in &image_filenames {
@@ -4507,8 +4487,7 @@ async fn test_excel_processing_with_images() {
         assert_eq!(
             response.status(),
             StatusCode::OK,
-            "Should be able to access asset {} via filename endpoint",
-            image_filename
+            "Should be able to access asset {image_filename} via filename endpoint"
         );
     }
 
@@ -4518,9 +4497,6 @@ async fn test_excel_processing_with_images() {
         "   📁 Image assets: {} created and accessible",
         image_filenames.len()
     );
-    println!(
-        "   📊 Wells with phase change data: {}",
-        wells_with_freeze_data
-    );
+    println!("   📊 Wells with phase change data: {wells_with_freeze_data}");
     println!("   🌐 Assets accessible via filename endpoint");
 }

@@ -69,7 +69,7 @@ impl NucleationStatistics {
         if events.is_empty() {
             return None;
         }
-        
+
         let total_wells = events.len();
         let frozen_events: Vec<_> = events
             .iter()
@@ -79,7 +79,7 @@ impl NucleationStatistics {
         let liquid_count = events.iter().filter(|e| e.final_state == "liquid").count();
 
         let success_rate = if total_wells > 0 {
-            frozen_count as f64 / total_wells as f64
+            f64::from(u32::try_from(frozen_count).unwrap_or(u32::MAX)) / f64::from(u32::try_from(total_wells).unwrap_or(u32::MAX))
         } else {
             0.0
         };
@@ -91,7 +91,7 @@ impl NucleationStatistics {
                 .filter_map(|e| e.nucleation_temperature_avg_celsius)
                 .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
                 .sum();
-            Some(temp_sum / frozen_count as f64)
+            Some(temp_sum / f64::from(u32::try_from(frozen_count).unwrap_or(u32::MAX)))
         } else {
             None
         };
