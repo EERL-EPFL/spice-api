@@ -9,6 +9,7 @@ use axum::{
 };
 use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
+const MAX_CONCURRENT: usize = 25;
 
 pub async fn create_hybrid_streaming_zip_response(
     assets: Vec<super::models::Model>,
@@ -33,7 +34,6 @@ pub async fn create_hybrid_streaming_zip_response(
         let mut download_futures = FuturesUnordered::new();
         let mut central_directory = Vec::new();
         let mut current_offset: u32 = 0;
-        const MAX_CONCURRENT: usize = 25;
 
         // Process in batches to control memory usage and concurrency
         let chunks: Vec<_> = assets_clone.chunks(MAX_CONCURRENT).collect();

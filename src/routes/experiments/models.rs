@@ -202,11 +202,6 @@ pub(super) async fn get_one_experiment(
         .await?
         .ok_or(DbErr::RecordNotFound("Experiment not found".to_string()))?;
 
-    let s3_assets = model
-        .find_related(crate::routes::assets::models::Entity)
-        .all(db)
-        .await?;
-
     let regions: Vec<crate::routes::tray_configurations::regions::models::Region> = model
         .find_related(crate::routes::tray_configurations::regions::models::Entity)
         .all(db)
@@ -215,13 +210,9 @@ pub(super) async fn get_one_experiment(
         .map(Into::into) // Direct conversion using EntityToModels
         .collect();
 
-    // Build tray-centric results
-    let results = build_tray_centric_results(id, db).await?;
-
     let mut experiment: Experiment = model.into();
-    // experiment.assets = s3_assets.into_iter().map(Into::into).collect();
     experiment.regions = regions;
-    experiment.results = results;
+    experiment.results = build_tray_centric_results(id, db).await?;
 
     Ok(experiment)
 }

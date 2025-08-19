@@ -126,7 +126,7 @@ pub async fn delete_many_assets(
         .await?;
 
     // Verify that all records were actually deleted
-    if delete_result.rows_affected as usize != existing_asset_ids.len() {
+    if delete_result.rows_affected != existing_asset_ids.len() as u64 {
         return Err(DbErr::Custom(format!(
             "Expected to delete {} records but only {} were affected",
             existing_asset_ids.len(),

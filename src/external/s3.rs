@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use futures::stream::{self, StreamExt};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
@@ -61,9 +62,7 @@ impl MockS3Store {
 }
 
 // Global mock store for tests - similar to how we handle the in-memory database
-lazy_static::lazy_static! {
-    pub static ref MOCK_S3_STORE: MockS3Store = MockS3Store::new();
-}
+pub static MOCK_S3_STORE: LazyLock<MockS3Store> = LazyLock::new(MockS3Store::new);
 
 /// Clear the mock S3 store - useful for test cleanup
 #[allow(dead_code)]
