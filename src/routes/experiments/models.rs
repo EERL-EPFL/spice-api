@@ -51,7 +51,7 @@ pub struct Model {
     pub tray_configuration_id: Option<Uuid>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
-    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable)]
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]

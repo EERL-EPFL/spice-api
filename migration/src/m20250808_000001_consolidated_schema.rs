@@ -7,11 +7,15 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Enable UUID extension for PostgreSQL
+        // Enable UUID and PostGIS extensions for PostgreSQL
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             manager
                 .get_connection()
                 .execute_unprepared("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";")
+                .await?;
+            manager
+                .get_connection()
+                .execute_unprepared("CREATE EXTENSION IF NOT EXISTS \"postgis\";")
                 .await?;
         }
 
@@ -233,6 +237,22 @@ impl MigrationTrait for Migration {
         }
 
         manager.create_table(samples_table).await?;
+
+        // Add PostGIS geometry column for PostgreSQL only
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "ALTER TABLE samples ADD COLUMN geom geometry(Point, 4326) GENERATED ALWAYS AS (
+                        CASE
+                            WHEN latitude IS NOT NULL AND longitude IS NOT NULL
+                            THEN ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+                            ELSE NULL
+                        END
+                    ) STORED;"
+                )
+                .await?;
+        }
 
         // Create treatments table
         let mut treatments_table = Table::create()
@@ -1107,10 +1127,71 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // Add spatial indexes for PostGIS geometry column (PostgreSQL only)
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            // Spatial index on samples.geom for efficient spatial queries
+            manager
+                .get_connection()
+                .execute_unprepared("CREATE INDEX idx_samples_geom ON samples USING GIST (geom);")
+                .await?;
+            
+            // Optional: Coordinate indexes for filtering by lat/lon directly
+            manager
+                .create_index(
+                    Index::create()
+                        .name("idx_samples_latitude")
+                        .table(Samples::Table)
+                        .col(Samples::Latitude)
+                        .to_owned(),
+                )
+                .await?;
+            
+            manager
+                .create_index(
+                    Index::create()
+                        .name("idx_samples_longitude")
+                        .table(Samples::Table)
+                        .col(Samples::Longitude)
+                        .to_owned(),
+                )
+                .await?;
+        }
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Drop spatial indexes for PostgreSQL
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_samples_geom;")
+                .await
+                .ok();
+            
+            manager
+                .drop_index(
+                    Index::drop()
+                        .name("idx_samples_latitude")
+                        .table(Samples::Table)
+                        .if_exists()
+                        .to_owned(),
+                )
+                .await
+                .ok();
+            
+            manager
+                .drop_index(
+                    Index::drop()
+                        .name("idx_samples_longitude")
+                        .table(Samples::Table)
+                        .if_exists()
+                        .to_owned(),
+                )
+                .await
+                .ok();
+        }
+
         // Drop tables in reverse dependency order
         manager
             .drop_table(
