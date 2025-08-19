@@ -938,11 +938,10 @@ async fn test_sample_with_treatments() {
 
         let (get_status, get_body) = extract_response_body(get_response).await;
 
-        if get_status == StatusCode::OK
-            && get_body["treatments"].is_array() {
-                let treatments = get_body["treatments"].as_array().unwrap();
-                assert_eq!(treatments.len(), 2, "Should retrieve both treatments");
-            }
+        if get_status == StatusCode::OK && get_body["treatments"].is_array() {
+            let treatments = get_body["treatments"].as_array().unwrap();
+            assert_eq!(treatments.len(), 2, "Should retrieve both treatments");
+        }
     } else {
         // Sample with treatments creation failed
     }
@@ -1156,7 +1155,7 @@ async fn test_sample_experimental_results_comprehensive() {
                 "notes": "Control treatment"
             },
             {
-                "name": "heat", 
+                "name": "heat",
                 "notes": "Heat treatment at 95C"
             }
         ]
@@ -1176,38 +1175,48 @@ async fn test_sample_experimental_results_comprehensive() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    assert_eq!(status, StatusCode::CREATED, "Should create sample with treatments");
-    
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Should create sample with treatments"
+    );
+
     let sample_id = body["id"].as_str().unwrap();
     let treatments = body["treatments"].as_array().unwrap();
     assert_eq!(treatments.len(), 2, "Should create 2 treatments");
 
     // Extract treatment IDs for later use (debug first)
-    println!("Created treatments: {}", serde_json::to_string_pretty(&treatments).unwrap());
-    
-    let none_treatment_id_str = treatments.iter()
+    println!(
+        "Created treatments: {}",
+        serde_json::to_string_pretty(&treatments).unwrap()
+    );
+
+    let none_treatment_id_str = treatments
+        .iter()
         .find(|t| t["name"] == "none" || t["name"] == "None")
-        .unwrap()["id"].as_str().unwrap();
-    let heat_treatment_id_str = treatments.iter()
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+    let heat_treatment_id_str = treatments
+        .iter()
         .find(|t| t["name"] == "heat" || t["name"] == "Heat")
-        .unwrap()["id"].as_str().unwrap();
-        
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+
     let none_treatment_id = uuid::Uuid::parse_str(none_treatment_id_str).unwrap();
     let heat_treatment_id = uuid::Uuid::parse_str(heat_treatment_id_str).unwrap();
 
     // 2. Create test data directly in database (experiment, regions, wells, temperatures, phase transitions)
     use crate::routes::{
         experiments::models as experiments,
-        experiments::temperatures::models as temperature_readings,
         experiments::phase_transitions::models as well_phase_transitions,
-        tray_configurations::{
-            wells::models as wells,
-            regions::models as regions,
-        }
+        experiments::temperatures::models as temperature_readings,
+        tray_configurations::{regions::models as regions, wells::models as wells},
     };
-    use sea_orm::{ActiveModelTrait, Set};
-    use chrono::{Utc, Duration};
+    use chrono::{Duration, Utc};
     use rust_decimal::Decimal;
+    use sea_orm::{ActiveModelTrait, Set};
 
     // Create experiment
     let experiment_id = uuid::Uuid::new_v4();
@@ -1230,7 +1239,7 @@ async fn test_sample_experimental_results_comprehensive() {
         experiment_id: Set(experiment_id),
         timestamp: Set(base_time),
         probe_1: Set(Some(Decimal::new(200, 1))), // 20.0°C
-        probe_2: Set(Some(Decimal::new(198, 1))), // 19.8°C  
+        probe_2: Set(Some(Decimal::new(198, 1))), // 19.8°C
         probe_3: Set(Some(Decimal::new(202, 1))), // 20.2°C
         probe_4: Set(Some(Decimal::new(199, 1))), // 19.9°C
         probe_5: Set(Some(Decimal::new(201, 1))), // 20.1°C
@@ -1259,7 +1268,7 @@ async fn test_sample_experimental_results_comprehensive() {
     temp_2.insert(&db).await.unwrap();
 
     // Create tray configuration and tray first (needed for foreign key constraint)
-    use crate::routes::tray_configurations::{trays::models as trays, models as tray_configs};
+    use crate::routes::tray_configurations::{models as tray_configs, trays::models as trays};
     let tray_config_id = uuid::Uuid::new_v4();
     let tray_config = tray_configs::ActiveModel {
         id: Set(tray_config_id),
@@ -1286,12 +1295,12 @@ async fn test_sample_experimental_results_comprehensive() {
     // Create wells
     let well_1_id = uuid::Uuid::new_v4();
     let well_2_id = uuid::Uuid::new_v4();
-    
+
     let well_1 = wells::ActiveModel {
         id: Set(well_1_id),
         tray_id: Set(tray_id),
         row_letter: Set("A".to_string()), // A row
-        column_number: Set(1), // 1 (1st column) -> A1
+        column_number: Set(1),            // 1 (1st column) -> A1
         ..Default::default()
     };
     well_1.insert(&db).await.unwrap();
@@ -1299,8 +1308,8 @@ async fn test_sample_experimental_results_comprehensive() {
     let well_2 = wells::ActiveModel {
         id: Set(well_2_id),
         tray_id: Set(tray_id),
-        row_letter: Set("A".to_string()), // A row  
-        column_number: Set(2), // 2 (2nd column) -> A2
+        row_letter: Set("A".to_string()), // A row
+        column_number: Set(2),            // 2 (2nd column) -> A2
         ..Default::default()
     };
     well_2.insert(&db).await.unwrap();
@@ -1382,65 +1391,144 @@ async fn test_sample_experimental_results_comprehensive() {
         .unwrap();
 
     let (get_status, get_body) = extract_response_body(get_response).await;
-    assert_eq!(get_status, StatusCode::OK, "Should retrieve sample successfully");
+    assert_eq!(
+        get_status,
+        StatusCode::OK,
+        "Should retrieve sample successfully"
+    );
 
     // 4. Comprehensive validation of experimental_results
-    assert!(get_body["experimental_results"].is_array(), "Should have experimental_results array");
+    assert!(
+        get_body["experimental_results"].is_array(),
+        "Should have experimental_results array"
+    );
     let experimental_results = get_body["experimental_results"].as_array().unwrap();
-    assert_eq!(experimental_results.len(), 2, "Should have 2 experimental results (2 wells with freezing events)");
+    assert_eq!(
+        experimental_results.len(),
+        2,
+        "Should have 2 experimental results (2 wells with freezing events)"
+    );
 
     for (i, result) in experimental_results.iter().enumerate() {
-        println!("Validating experimental result {}: {}", i, serde_json::to_string_pretty(result).unwrap());
+        println!(
+            "Validating experimental result {}: {}",
+            i,
+            serde_json::to_string_pretty(result).unwrap()
+        );
 
         // Basic fields
-        assert!(result["experiment_id"].is_string(), "Should have experiment_id");
-        assert!(result["experiment_name"].is_string(), "Should have experiment_name");
+        assert!(
+            result["experiment_id"].is_string(),
+            "Should have experiment_id"
+        );
+        assert!(
+            result["experiment_name"].is_string(),
+            "Should have experiment_name"
+        );
         assert_eq!(result["experiment_name"], "Test Experiment");
 
-        // Well coordinate validation  
-        assert!(result["well_coordinate"].is_string(), "Should have well_coordinate");
+        // Well coordinate validation
+        assert!(
+            result["well_coordinate"].is_string(),
+            "Should have well_coordinate"
+        );
         let coord = result["well_coordinate"].as_str().unwrap();
-        assert!(coord == "A1" || coord == "A2", "Should be A1 or A2 coordinate");
+        assert!(
+            coord == "A1" || coord == "A2",
+            "Should be A1 or A2 coordinate"
+        );
 
         // Temperature data validation (both field names for compatibility)
         // Note: Decimal values are serialized as strings in JSON
-        assert!(result["nucleation_temperature_avg_celsius"].is_string(), "Should have nucleation_temperature_avg_celsius as string");
-        assert!(result["freezing_temperature_avg"].is_string(), "Should have freezing_temperature_avg for UI compatibility as string");
-        
-        let temp_celsius: f64 = result["nucleation_temperature_avg_celsius"].as_str().unwrap().parse().unwrap();
-        assert!(temp_celsius < -14.0 && temp_celsius > -16.0, "Temperature should be around -15°C (average of 8 probes)");
-        
-        let temp_ui: f64 = result["freezing_temperature_avg"].as_str().unwrap().parse().unwrap();
-        assert_eq!(temp_celsius, temp_ui, "Both temperature fields should have same value");
+        assert!(
+            result["nucleation_temperature_avg_celsius"].is_string(),
+            "Should have nucleation_temperature_avg_celsius as string"
+        );
+        assert!(
+            result["freezing_temperature_avg"].is_string(),
+            "Should have freezing_temperature_avg for UI compatibility as string"
+        );
+
+        let temp_celsius: f64 = result["nucleation_temperature_avg_celsius"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(
+            temp_celsius < -14.0 && temp_celsius > -16.0,
+            "Temperature should be around -15°C (average of 8 probes)"
+        );
+
+        let temp_ui: f64 = result["freezing_temperature_avg"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(
+            temp_celsius, temp_ui,
+            "Both temperature fields should have same value"
+        );
 
         // Time data validation (both field names for compatibility)
-        assert!(result["nucleation_time_seconds"].is_number(), "Should have nucleation_time_seconds");
-        assert!(result["freezing_time_seconds"].is_number(), "Should have freezing_time_seconds for UI compatibility");
-        
+        assert!(
+            result["nucleation_time_seconds"].is_number(),
+            "Should have nucleation_time_seconds"
+        );
+        assert!(
+            result["freezing_time_seconds"].is_number(),
+            "Should have freezing_time_seconds for UI compatibility"
+        );
+
         let time_seconds = result["nucleation_time_seconds"].as_i64().unwrap();
-        assert_eq!(time_seconds, 1000, "Should be 1000 seconds from experiment start");
-        
+        assert_eq!(
+            time_seconds, 1000,
+            "Should be 1000 seconds from experiment start"
+        );
+
         let time_ui = result["freezing_time_seconds"].as_i64().unwrap();
-        assert_eq!(time_seconds, time_ui, "Both time fields should have same value");
+        assert_eq!(
+            time_seconds, time_ui,
+            "Both time fields should have same value"
+        );
 
         // Treatment data validation
-        assert!(result["treatment_id"].is_string(), "Should have treatment_id");
-        assert!(result["treatment_name"].is_string(), "Should have treatment_name");
-        
+        assert!(
+            result["treatment_id"].is_string(),
+            "Should have treatment_id"
+        );
+        assert!(
+            result["treatment_name"].is_string(),
+            "Should have treatment_name"
+        );
+
         let treatment_name = result["treatment_name"].as_str().unwrap();
         println!("Found treatment_name: {}", treatment_name);
-        assert!(treatment_name.contains("none") || treatment_name.contains("None") || 
-               treatment_name.contains("heat") || treatment_name.contains("Heat"), 
-               "Should be none or heat treatment, got: {}", treatment_name);
+        assert!(
+            treatment_name.contains("none")
+                || treatment_name.contains("None")
+                || treatment_name.contains("heat")
+                || treatment_name.contains("Heat"),
+            "Should be none or heat treatment, got: {}",
+            treatment_name
+        );
 
         // Dilution factor validation
-        assert!(result["dilution_factor"].is_number(), "Should have dilution_factor");
+        assert!(
+            result["dilution_factor"].is_number(),
+            "Should have dilution_factor"
+        );
         let dilution = result["dilution_factor"].as_i64().unwrap();
-        assert!(dilution == 100 || dilution == 50, "Should be 100 (none treatment) or 50 (heat treatment)");
+        assert!(
+            dilution == 100 || dilution == 50,
+            "Should be 100 (none treatment) or 50 (heat treatment)"
+        );
 
         // Final state validation
         assert!(result["final_state"].is_string(), "Should have final_state");
-        assert_eq!(result["final_state"], "frozen", "Should be frozen since we created 0->1 transitions");
+        assert_eq!(
+            result["final_state"], "frozen",
+            "Should be frozen since we created 0->1 transitions"
+        );
 
         // Tray information
         assert!(result["tray_name"].is_string(), "Should have tray_name");
@@ -1565,10 +1653,10 @@ async fn test_sample_complex_workflow() {
 #[tokio::test]
 async fn test_sample_update_treatment_crud_comprehensive() {
     let app = setup_test_app().await;
-    
+
     // Create dependencies
     let (_project_id, location_id) = create_test_project_and_location(&app, "TREATMENT_CRUD").await;
-    
+
     // Step 1: Create a sample with initial treatments
     let initial_sample_data = json!({
         "name": "Treatment CRUD Test Sample",
@@ -1587,7 +1675,7 @@ async fn test_sample_update_treatment_crud_comprehensive() {
             }
         ]
     });
-    
+
     let create_response = app
         .clone()
         .oneshot(
@@ -1602,22 +1690,34 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         .unwrap();
 
     let (create_status, create_body) = extract_response_body(create_response).await;
-    assert_eq!(create_status, StatusCode::CREATED, "Should create sample with treatments");
-    
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "Should create sample with treatments"
+    );
+
     let sample_id = create_body["id"].as_str().unwrap();
     let initial_treatments = create_body["treatments"].as_array().unwrap();
-    assert_eq!(initial_treatments.len(), 2, "Should have 2 initial treatments");
-    
+    assert_eq!(
+        initial_treatments.len(),
+        2,
+        "Should have 2 initial treatments"
+    );
+
     // Extract treatment IDs
-    let none_treatment_id = initial_treatments.iter()
+    let none_treatment_id = initial_treatments
+        .iter()
         .find(|t| t["name"].as_str().unwrap().to_lowercase() == "none")
-        .unwrap()["id"].as_str().unwrap();
-    let heat_treatment_id = initial_treatments.iter()
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+    let heat_treatment_id = initial_treatments
+        .iter()
         .find(|t| t["name"].as_str().unwrap().to_lowercase() == "heat")
-        .unwrap()["id"].as_str().unwrap();
-    
-    println!("Initial treatments created - None: {}, Heat: {}", none_treatment_id, heat_treatment_id);
-    
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+
     // Step 2: Update sample with complete treatment list replacement
     // - Keep the none treatment but update it
     // - Delete the heat treatment (not included in update)
@@ -1627,7 +1727,7 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         "treatments": [
             {
                 "id": none_treatment_id,
-                "name": "none", 
+                "name": "none",
                 "notes": "Updated none treatment with new notes"
             },
             {
@@ -1638,7 +1738,7 @@ async fn test_sample_update_treatment_crud_comprehensive() {
             }
         ]
     });
-    
+
     let update_response = app
         .clone()
         .oneshot(
@@ -1653,8 +1753,12 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         .unwrap();
 
     let (update_status, update_body) = extract_response_body(update_response).await;
-    assert_eq!(update_status, StatusCode::OK, "Sample update should succeed: {update_body:?}");
-    
+    assert_eq!(
+        update_status,
+        StatusCode::OK,
+        "Sample update should succeed: {update_body:?}"
+    );
+
     // Step 3: Verify the treatment CRUD operations worked correctly
     let get_response = app
         .clone()
@@ -1670,54 +1774,76 @@ async fn test_sample_update_treatment_crud_comprehensive() {
 
     let (get_status, get_body) = extract_response_body(get_response).await;
     assert_eq!(get_status, StatusCode::OK, "Should retrieve updated sample");
-    
+
     let final_treatments = get_body["treatments"].as_array().unwrap();
-    assert_eq!(final_treatments.len(), 2, "Should have exactly 2 treatments after update");
-    
+    assert_eq!(
+        final_treatments.len(),
+        2,
+        "Should have exactly 2 treatments after update"
+    );
+
     // Verify treatment operations
     let mut found_none = false;
     let mut found_h2o2 = false;
     let mut found_heat = false;
-    
+
     for treatment in final_treatments {
         let name = treatment["name"].as_str().unwrap().to_lowercase();
         match name.as_str() {
             "none" => {
                 found_none = true;
                 // Verify the none treatment was updated, not recreated
-                assert_eq!(treatment["id"].as_str().unwrap(), none_treatment_id, "None treatment should keep same ID");
-                assert_eq!(treatment["notes"], "Updated none treatment with new notes", "Notes should be updated");
-            },
+                assert_eq!(
+                    treatment["id"].as_str().unwrap(),
+                    none_treatment_id,
+                    "None treatment should keep same ID"
+                );
+                assert_eq!(
+                    treatment["notes"], "Updated none treatment with new notes",
+                    "Notes should be updated"
+                );
+            }
             "h2o2" => {
                 found_h2o2 = true;
                 // Verify new treatment was created
-                assert_ne!(treatment["id"].as_str().unwrap(), none_treatment_id, "H2O2 treatment should have new ID");
-                assert_ne!(treatment["id"].as_str().unwrap(), heat_treatment_id, "H2O2 treatment should have new ID");
+                assert_ne!(
+                    treatment["id"].as_str().unwrap(),
+                    none_treatment_id,
+                    "H2O2 treatment should have new ID"
+                );
+                assert_ne!(
+                    treatment["id"].as_str().unwrap(),
+                    heat_treatment_id,
+                    "H2O2 treatment should have new ID"
+                );
                 assert_eq!(treatment["notes"], "New h2o2 treatment added in update");
                 assert_eq!(treatment["enzyme_volume_litres"], "0.002");
-            },
+            }
             "heat" => {
                 found_heat = true;
-            },
-            _ => panic!("Unexpected treatment name: {}", name)
+            }
+            _ => panic!("Unexpected treatment name: {}", name),
         }
     }
-    
+
     // Verify operations
     assert!(found_none, "Should find updated none treatment");
     assert!(found_h2o2, "Should find new h2o2 treatment");
-    assert!(!found_heat, "Heat treatment should be deleted (not in update)");
-    
+    assert!(
+        !found_heat,
+        "Heat treatment should be deleted (not in update)"
+    );
+
     println!("✅ Treatment CRUD operations verified:");
     println!("   - UPDATE: none treatment updated (same ID, new notes) ✅");
     println!("   - CREATE: h2o2 treatment created (new ID) ✅");
     println!("   - DELETE: heat treatment deleted (not in update list) ✅");
-    
+
     // Step 4: Test edge case - empty treatments list should delete all treatments
     let empty_treatments_data = json!({
         "treatments": []
     });
-    
+
     let empty_update_response = app
         .clone()
         .oneshot(
@@ -1731,9 +1857,14 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         .await
         .unwrap();
 
-    let (empty_update_status, _empty_update_body) = extract_response_body(empty_update_response).await;
-    assert_eq!(empty_update_status, StatusCode::OK, "Empty treatments update should succeed");
-    
+    let (empty_update_status, _empty_update_body) =
+        extract_response_body(empty_update_response).await;
+    assert_eq!(
+        empty_update_status,
+        StatusCode::OK,
+        "Empty treatments update should succeed"
+    );
+
     // Verify all treatments are deleted
     let final_get_response = app
         .clone()
@@ -1748,33 +1879,42 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         .unwrap();
 
     let (final_get_status, final_get_body) = extract_response_body(final_get_response).await;
-    assert_eq!(final_get_status, StatusCode::OK, "Should retrieve sample after empty update");
-    
+    assert_eq!(
+        final_get_status,
+        StatusCode::OK,
+        "Should retrieve sample after empty update"
+    );
+
     let empty_treatments = final_get_body["treatments"].as_array().unwrap();
-    assert_eq!(empty_treatments.len(), 0, "All treatments should be deleted with empty treatments list");
-    
+    assert_eq!(
+        empty_treatments.len(),
+        0,
+        "All treatments should be deleted with empty treatments list"
+    );
+
     println!("✅ Empty treatments list edge case verified:");
     println!("   - All treatments deleted when treatments: [] ✅");
 }
 
-#[tokio::test] 
+#[tokio::test]
 async fn test_sample_update_treatment_validation() {
     let app = setup_test_app().await;
-    
+
     // Create dependencies
-    let (_project_id, location_id) = create_test_project_and_location(&app, "TREATMENT_VALIDATION").await;
-    
+    let (_project_id, location_id) =
+        create_test_project_and_location(&app, "TREATMENT_VALIDATION").await;
+
     // Create sample with one treatment
     let sample_data = json!({
         "name": "Treatment Validation Test Sample",
-        "type": "bulk", 
+        "type": "bulk",
         "location_id": location_id,
         "treatments": [{
             "name": "none",
             "notes": "Initial treatment"
         }]
     });
-    
+
     let create_response = app
         .clone()
         .oneshot(
@@ -1790,9 +1930,9 @@ async fn test_sample_update_treatment_validation() {
 
     let (create_status, create_body) = extract_response_body(create_response).await;
     assert_eq!(create_status, StatusCode::CREATED, "Should create sample");
-    
+
     let sample_id = create_body["id"].as_str().unwrap();
-    
+
     // Test invalid treatment name in update
     let invalid_treatment_data = json!({
         "treatments": [{
@@ -1800,7 +1940,7 @@ async fn test_sample_update_treatment_validation() {
             "notes": "This should fail"
         }]
     });
-    
+
     let invalid_response = app
         .clone()
         .oneshot(
@@ -1815,9 +1955,12 @@ async fn test_sample_update_treatment_validation() {
         .unwrap();
 
     let (invalid_status, _invalid_body) = extract_response_body(invalid_response).await;
-    assert!(invalid_status.is_client_error(), "Should reject invalid treatment name");
-    
-    // Test updating non-existent treatment ID  
+    assert!(
+        invalid_status.is_client_error(),
+        "Should reject invalid treatment name"
+    );
+
+    // Test updating non-existent treatment ID
     let fake_treatment_id = uuid::Uuid::new_v4();
     let nonexistent_treatment_data = json!({
         "treatments": [{
@@ -1826,7 +1969,7 @@ async fn test_sample_update_treatment_validation() {
             "notes": "This should fail - treatment ID doesn't exist"
         }]
     });
-    
+
     let nonexistent_response = app
         .clone()
         .oneshot(
@@ -1842,8 +1985,11 @@ async fn test_sample_update_treatment_validation() {
 
     let (nonexistent_status, _nonexistent_body) = extract_response_body(nonexistent_response).await;
     // Should fail with 404 or 500 when trying to update non-existent treatment
-    assert!(!nonexistent_status.is_success(), "Should fail when updating non-existent treatment ID");
-    
+    assert!(
+        !nonexistent_status.is_success(),
+        "Should fail when updating non-existent treatment ID"
+    );
+
     println!("✅ Treatment validation tests passed:");
     println!("   - Invalid treatment names rejected ✅");
     println!("   - Non-existent treatment IDs handled ✅");

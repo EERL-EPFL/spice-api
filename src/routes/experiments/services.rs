@@ -3,13 +3,15 @@ use super::models::{
     SampleResultsSummary, TrayResultsSummary, TrayWellSummary, TreatmentResultsSummary,
     WellSummary,
 };
-// Coordinate transformation functions no longer needed - wells store alphanumeric coordinates directly
 use crate::routes::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
     tray_configurations::regions::models as regions, tray_configurations::trays::models as trays,
     tray_configurations::wells::models as wells,
+};
+use crate::routes::{
+    locations::models as locations, samples::models as samples, treatments::models as treatments,
 };
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -127,7 +129,7 @@ async fn load_experiment_assets(
     // Create filename-to-asset-id mapping (strip .jpg extension for matching)
     let filename_to_asset_id: std::collections::HashMap<String, Uuid> = experiment_assets
         .iter()
-        .filter_map(|asset| {
+        .map(|asset| {
             let filename_without_ext = if std::path::Path::new(&asset.original_filename)
                 .extension()
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("jpg"))
@@ -140,7 +142,7 @@ async fn load_experiment_assets(
             } else {
                 asset.original_filename.clone()
             };
-            Some((filename_without_ext, asset.id))
+            (filename_without_ext, asset.id)
         })
         .collect();
 
@@ -296,11 +298,6 @@ async fn load_treatment_and_sample_data(
         return Ok(treatment_map);
     }
 
-    use crate::routes::{
-        locations::models as locations, samples::models as samples,
-        treatments::models as treatments,
-    };
-
     let treatments_data = treatments::Entity::find()
         .filter(treatments::Column::Id.is_in(treatment_ids))
         .all(db)
@@ -431,7 +428,6 @@ fn build_well_summaries(
             .as_ref()
             .and_then(|filename| filename_to_asset_id.get(filename))
             .copied();
-
 
         // Calculate seconds from experiment start to first phase change
         let first_phase_change_seconds = match (first_phase_change_time, first_timestamp) {
@@ -572,7 +568,8 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
         // Use sample info if available, otherwise create placeholder
         let sample_key = well
             .sample
-            .as_ref().map_or_else(|| "unknown_sample".to_string(), |s| s.id.to_string());
+            .as_ref()
+            .map_or_else(|| "unknown_sample".to_string(), |s| s.id.to_string());
 
         // For treatment, we need to extract from the well somehow
         // Since WellSummary doesn't directly have treatment info, we'll need to group by sample only for now
@@ -595,7 +592,8 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
             .iter()
             .find(|w| {
                 w.sample
-                    .as_ref().map_or_else(|| "unknown_sample".to_string(), |s| s.id.to_string())
+                    .as_ref()
+                    .map_or_else(|| "unknown_sample".to_string(), |s| s.id.to_string())
                     == sample_key
             })
             .and_then(|w| w.sample.clone());
@@ -607,19 +605,11 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
                 // Count frozen and liquid wells
                 let wells_frozen = wells
                     .iter()
-                    .filter(|w| {
-                        w.final_state
-                            .as_ref()
-                            .is_some_and(|s| s == "frozen")
-                    })
+                    .filter(|w| w.final_state.as_ref().is_some_and(|s| s == "frozen"))
                     .count();
                 let wells_liquid = wells
                     .iter()
-                    .filter(|w| {
-                        w.final_state
-                            .as_ref()
-                            .is_some_and(|s| s == "liquid")
-                    })
+                    .filter(|w| w.final_state.as_ref().is_some_and(|s| s == "liquid"))
                     .count();
 
                 // Create a placeholder treatment since we don't have treatment info in WellSummary
@@ -737,10 +727,7 @@ fn build_tray_summaries(
         std::collections::HashMap::new();
 
     for well in experiment_wells {
-        tray_wells
-            .entry(well.tray_id)
-            .or_default()
-            .push(well);
+        tray_wells.entry(well.tray_id).or_default().push(well);
     }
 
     let mut tray_results = Vec::new();

@@ -10,7 +10,9 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use tokio::sync::mpsc;
 
 const MAX_CONCURRENT: usize = 25;
+const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
 
+#[allow(clippy::too_many_lines)]
 pub async fn create_hybrid_streaming_zip_response(
     assets: Vec<super::models::Model>,
     config: &crate::config::Config,
@@ -83,7 +85,7 @@ pub async fn create_hybrid_streaming_zip_response(
             // Stream this batch's files immediately
             for (_, filename, file_data, crc) in batch_results {
                 let filename_bytes = filename.as_bytes();
-                let file_len = file_data.len() as u32;
+                let file_len = u32::try_from(file_data.len()).unwrap_or(u32::MAX);
 
                 // Build and stream local file header
                 let mut local_header = Vec::with_capacity(30 + filename_bytes.len());
@@ -96,7 +98,11 @@ pub async fn create_hybrid_streaming_zip_response(
                 local_header.extend_from_slice(&crc.to_le_bytes()); // CRC-32
                 local_header.extend_from_slice(&file_len.to_le_bytes()); // Compressed size
                 local_header.extend_from_slice(&file_len.to_le_bytes()); // Uncompressed size
-                local_header.extend_from_slice(&(filename_bytes.len() as u16).to_le_bytes()); // File name length
+                local_header.extend_from_slice(
+                    &u16::try_from(filename_bytes.len())
+                        .unwrap_or(u16::MAX)
+                        .to_le_bytes(),
+                ); // File name length
                 local_header.extend_from_slice(&[0x00, 0x00]); // Extra field length
                 local_header.extend_from_slice(filename_bytes); // File name
 
@@ -105,7 +111,6 @@ pub async fn create_hybrid_streaming_zip_response(
                 }
 
                 // Stream file data in chunks
-                const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
                 for chunk in file_data.chunks(CHUNK_SIZE) {
                     if tx.send(Ok(chunk.to_vec())).await.is_err() {
                         return;
@@ -124,7 +129,11 @@ pub async fn create_hybrid_streaming_zip_response(
                 cd_entry.extend_from_slice(&crc.to_le_bytes()); // CRC-32
                 cd_entry.extend_from_slice(&file_len.to_le_bytes()); // Compressed size
                 cd_entry.extend_from_slice(&file_len.to_le_bytes()); // Uncompressed size
-                cd_entry.extend_from_slice(&(filename_bytes.len() as u16).to_le_bytes()); // File name length
+                cd_entry.extend_from_slice(
+                    &u16::try_from(filename_bytes.len())
+                        .unwrap_or(u16::MAX)
+                        .to_le_bytes(),
+                ); // File name length
                 cd_entry.extend_from_slice(&[0x00, 0x00]); // Extra field length
                 cd_entry.extend_from_slice(&[0x00, 0x00]); // File comment length
                 cd_entry.extend_from_slice(&[0x00, 0x00]); // Disk number start
@@ -134,12 +143,13 @@ pub async fn create_hybrid_streaming_zip_response(
                 cd_entry.extend_from_slice(filename_bytes); // File name
 
                 central_directory.extend_from_slice(&cd_entry);
-                current_offset += 30 + filename_bytes.len() as u32 + file_len;
+                current_offset +=
+                    30 + u32::try_from(filename_bytes.len()).unwrap_or(u32::MAX) + file_len;
             }
         }
 
         // Stream central directory and end record
-        let cd_len = central_directory.len() as u32;
+        let cd_len = u32::try_from(central_directory.len()).unwrap_or(u32::MAX);
         let total_files = assets_clone.len();
 
         if !central_directory.is_empty() && tx.send(Ok(central_directory)).await.is_err() {
@@ -150,8 +160,8 @@ pub async fn create_hybrid_streaming_zip_response(
         end_record.extend_from_slice(&[0x50, 0x4b, 0x05, 0x06]); // End of central dir signature
         end_record.extend_from_slice(&[0x00, 0x00]); // Number of this disk
         end_record.extend_from_slice(&[0x00, 0x00]); // Number of disk with start of central directory
-        end_record.extend_from_slice(&(total_files as u16).to_le_bytes()); // Total entries this disk
-        end_record.extend_from_slice(&(total_files as u16).to_le_bytes()); // Total entries
+        end_record.extend_from_slice(&u16::try_from(total_files).unwrap_or(u16::MAX).to_le_bytes()); // Total entries this disk
+        end_record.extend_from_slice(&u16::try_from(total_files).unwrap_or(u16::MAX).to_le_bytes()); // Total entries
         end_record.extend_from_slice(&cd_len.to_le_bytes()); // Size of central directory
         end_record.extend_from_slice(&current_offset.to_le_bytes()); // Offset of start of central directory
         end_record.extend_from_slice(&[0x00, 0x00]); // ZIP file comment length
