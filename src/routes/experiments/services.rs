@@ -25,8 +25,7 @@ fn row_letter_to_index(row_letter: &str) -> i32 {
     row_letter
         .chars()
         .next()
-        .map(|c| c as i32 - 'A' as i32)
-        .unwrap_or(0)
+        .map_or(0, |c| c as i32 - 'A' as i32)
 }
 
 // Helper to calculate average from temperature probes and create formatted reading
@@ -45,13 +44,13 @@ fn format_temperature_reading(
     ];
 
     let non_null_values: Vec<Decimal> = probe_values.into_iter().flatten().collect();
-    let average = if !non_null_values.is_empty() {
+    let average = if non_null_values.is_empty() {
+        None
+    } else {
         Some(
             (non_null_values.iter().sum::<Decimal>() / Decimal::from(non_null_values.len()))
                 .round_dp(3),
         )
-    } else {
-        None
     };
 
     let mut formatted = temp_reading.clone();
@@ -573,9 +572,7 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
         // Use sample info if available, otherwise create placeholder
         let sample_key = well
             .sample
-            .as_ref()
-            .map(|s| s.id.to_string())
-            .unwrap_or_else(|| "unknown_sample".to_string());
+            .as_ref().map_or_else(|| "unknown_sample".to_string(), |s| s.id.to_string());
 
         // For treatment, we need to extract from the well somehow
         // Since WellSummary doesn't directly have treatment info, we'll need to group by sample only for now
@@ -583,9 +580,9 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
 
         sample_map
             .entry(sample_key)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .entry(treatment_key)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(well.clone());
     }
 
@@ -598,9 +595,7 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
             .iter()
             .find(|w| {
                 w.sample
-                    .as_ref()
-                    .map(|s| s.id.to_string())
-                    .unwrap_or_else(|| "unknown_sample".to_string())
+                    .as_ref().map_or_else(|| "unknown_sample".to_string(), |s| s.id.to_string())
                     == sample_key
             })
             .and_then(|w| w.sample.clone());
@@ -615,8 +610,7 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
                     .filter(|w| {
                         w.final_state
                             .as_ref()
-                            .map(|s| s == "frozen")
-                            .unwrap_or(false)
+                            .is_some_and(|s| s == "frozen")
                     })
                     .count();
                 let wells_liquid = wells
@@ -624,8 +618,7 @@ fn build_sample_results_from_wells(well_summaries: &[WellSummary]) -> Vec<Sample
                     .filter(|w| {
                         w.final_state
                             .as_ref()
-                            .map(|s| s == "liquid")
-                            .unwrap_or(false)
+                            .is_some_and(|s| s == "liquid")
                     })
                     .count();
 
@@ -746,7 +739,7 @@ fn build_tray_summaries(
     for well in experiment_wells {
         tray_wells
             .entry(well.tray_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(well);
     }
 

@@ -2,7 +2,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::{DatabaseConnection, DbBackend, Statement};
 use serde_json::{Value, json};
 
-/// Generate a convex hull GeoJSON for all samples belonging to a location
+/// Generate a convex hull `GeoJSON` for all samples belonging to a location
 pub async fn get_location_convex_hull(db: &DatabaseConnection, location_id: Uuid) -> Option<Value> {
     // Only works with PostgreSQL/PostGIS
     if db.get_database_backend() != DbBackend::Postgres {
@@ -49,7 +49,7 @@ pub async fn get_location_convex_hull(db: &DatabaseConnection, location_id: Uuid
     Some(json!({"type": "FeatureCollection", "features": []}))
 }
 
-/// Generate a convex hull GeoJSON for samples with a buffer for visibility
+/// Generate a convex hull `GeoJSON` for samples with a buffer for visibility
 pub async fn get_location_convex_hull_buffered(
     db: &DatabaseConnection, 
     location_id: Uuid, 

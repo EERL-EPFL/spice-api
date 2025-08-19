@@ -61,10 +61,10 @@ pub fn transform_coordinates_for_rotation(
     qty_rows: u8,
 ) -> Result<WellCoordinate, String> {
     // Convert 1-based coordinates to 0-based for calculations
-    let logical_row = (coord.row - 1) as i32;
-    let logical_col = (coord.column - 1) as i32;
-    let qty_x = qty_cols as i32;  // number of columns
-    let qty_y = qty_rows as i32;  // number of rows
+    let logical_row = i32::from(coord.row - 1);
+    let logical_col = i32::from(coord.column - 1);
+    let qty_x = i32::from(qty_cols);  // number of columns
+    let qty_y = i32::from(qty_rows);  // number of rows
     
     // Apply the same transformation as TrayDisplay.tsx getDisplayIndices
     let (x_index, y_index) = match rotation_degrees {

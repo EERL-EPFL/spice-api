@@ -2,7 +2,7 @@ use crate::services::convex_hull_service;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use sea_orm::entity::prelude::*;
-use sea_orm::{PaginatorTrait, QueryOrder, QuerySelect, Statement};
+use sea_orm::{QueryOrder, QuerySelect, Statement};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "locations")]
@@ -135,7 +135,7 @@ async fn get_one_location(db: &DatabaseConnection, id: Uuid) -> Result<Location,
             .await?;
 
         let mut sample_with_treatments: crate::routes::samples::models::Sample = sample.into();
-        sample_with_treatments.treatments = treatments.into_iter().map(|t| t.into()).collect();
+        sample_with_treatments.treatments = treatments.into_iter().map(std::convert::Into::into).collect();
         enriched_samples.push(sample_with_treatments);
     }
 
@@ -144,7 +144,7 @@ async fn get_one_location(db: &DatabaseConnection, id: Uuid) -> Result<Location,
     location.color = project_color;
     location.project_name = project_name;
     location.samples = Some(enriched_samples);
-    location.experiments = Some(experiments.into_iter().map(|e| e.into()).collect());
+    location.experiments = Some(experiments.into_iter().map(std::convert::Into::into).collect());
 
     Ok(location)
 }

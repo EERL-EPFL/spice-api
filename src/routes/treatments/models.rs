@@ -154,15 +154,13 @@ async fn fetch_experimental_results_for_treatment(
                             well.row_letter
                                 .chars()
                                 .next()
-                                .map(|c| (c as u8 - b'A') as i32)
-                                .unwrap_or(0)
+                                .map_or(0, |c| i32::from(c as u8 - b'A'))
                                 >= row_min
                                 && well
                                     .row_letter
                                     .chars()
                                     .next()
-                                    .map(|c| (c as u8 - b'A') as i32)
-                                    .unwrap_or(0)
+                                    .map_or(0, |c| i32::from(c as u8 - b'A'))
                                     <= row_max
                                 && well.column_number >= (col_min + 1)
                                 && well.column_number <= (col_max + 1)

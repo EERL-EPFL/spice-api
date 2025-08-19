@@ -108,7 +108,7 @@ impl NucleationStatistics {
                 None
             } else if times.len() % 2 == 0 {
                 let mid = times.len() / 2;
-                Some((times[mid - 1] + times[mid]) / 2)
+                Some(i64::midpoint(times[mid - 1], times[mid]))
             } else {
                 Some(times[times.len() / 2])
             }
