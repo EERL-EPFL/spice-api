@@ -1,7 +1,7 @@
 FROM rust:1.88.0-slim AS chef
 
-# Fix potential vulnerabilities
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
+# Fix potential vulnerabilities and install build dependencies
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates pkg-config libssl-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN cargo install cargo-chef --locked
 WORKDIR /app
