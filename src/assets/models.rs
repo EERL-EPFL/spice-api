@@ -1,0 +1,139 @@
+use crate::external::s3::delete_from_s3;
+use chrono::{DateTime, Utc};
+use crudcrate::{CRUDResource, EntityToModels};
+use sea_orm::entity::prelude::*;
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
+#[sea_orm(table_name = "s3_assets")]
+#[crudcrate(
+    generate_router,
+    api_struct = "Asset",
+    name_singular = "asset",
+    name_plural = "assets",
+    description = "This resource represents assets stored in S3, including metadata such as file size, type, and upload details.",
+    fn_delete = delete_asset,
+    fn_delete_many = delete_many_assets,
+)]
+pub struct Model {
+    #[sea_orm(primary_key, auto_increment = false)]
+    #[crudcrate(primary_key, update_model = false, create_model = false, on_create = Uuid::new_v4())]
+    pub id: Uuid,
+    #[crudcrate(sortable, filterable)]
+    pub experiment_id: Option<Uuid>,
+    #[sea_orm(column_type = "Text")]
+    #[crudcrate(sortable, filterable, fulltext)]
+    pub original_filename: String,
+    #[sea_orm(column_type = "Text", unique)]
+    #[crudcrate(sortable, filterable, fulltext)]
+    pub s3_key: String,
+    #[crudcrate(sortable)]
+    pub size_bytes: Option<i64>,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable, fulltext)]
+    pub uploaded_by: Option<String>,
+    #[crudcrate(sortable, create_model = false, on_create = chrono::Utc::now())]
+    pub uploaded_at: DateTime<Utc>,
+    #[crudcrate(filterable)]
+    pub is_deleted: bool,
+    #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub created_at: DateTime<Utc>,
+    #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
+    pub last_updated: DateTime<Utc>,
+    #[sea_orm(column_type = "Text")]
+    #[crudcrate(sortable, filterable, fulltext)]
+    pub r#type: String,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable, fulltext)]
+    pub role: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(sortable, filterable)]
+    pub processing_status: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    #[crudcrate(filterable)]
+    pub processing_message: Option<String>,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "crate::experiments::models::Entity",
+        from = "Column::ExperimentId",
+        to = "crate::experiments::models::Column::Id",
+        on_update = "NoAction",
+        on_delete = "NoAction"
+    )]
+    Experiments,
+}
+
+impl Related<crate::experiments::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Experiments.def()
+    }
+}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+async fn delete_asset(db: &DatabaseConnection, id: Uuid) -> Result<Uuid, DbErr> {
+    // Fetch the asset to get its S3 key
+    let asset = Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Asset not found".to_string()))?;
+
+    // Delete the asset from S3
+    if let Err(e) = delete_from_s3(&asset.s3_key).await {
+        return Err(DbErr::Custom(format!(
+            "Failed to delete S3 asset with key {}: {}",
+            asset.s3_key, e
+        )));
+    }
+
+    // Proceed with deleting the database record
+    let res = Entity::delete_by_id(id).exec(db).await?;
+    match res.rows_affected {
+        0 => Err(DbErr::RecordNotFound("Asset not found".to_string())),
+        _ => Ok(id),
+    }
+}
+
+pub async fn delete_many_assets(
+    db: &DatabaseConnection,
+    ids: Vec<Uuid>,
+) -> Result<Vec<Uuid>, DbErr> {
+    // Fetch the assets to get their S3 keys
+    let assets = Entity::find()
+        .filter(Column::Id.is_in(ids.clone()))
+        .all(db)
+        .await?;
+
+    // Track which assets actually exist in the database
+    let existing_asset_ids: Vec<Uuid> = assets.iter().map(|a| a.id).collect();
+
+    // Delete the assets from S3 first
+    for asset in &assets {
+        if let Err(e) = delete_from_s3(&asset.s3_key).await {
+            return Err(DbErr::Custom(format!(
+                "Failed to delete S3 asset with key {}: {}",
+                asset.s3_key, e
+            )));
+        }
+    }
+
+    // Proceed with deleting the database records
+    let delete_result = Entity::delete_many()
+        .filter(Column::Id.is_in(existing_asset_ids.clone()))
+        .exec(db)
+        .await?;
+
+    // Verify that all records were actually deleted
+    if delete_result.rows_affected != existing_asset_ids.len() as u64 {
+        return Err(DbErr::Custom(format!(
+            "Expected to delete {} records but only {} were affected",
+            existing_asset_ids.len(),
+            delete_result.rows_affected
+        )));
+    }
+
+    // Return only the IDs that were actually found and deleted
+    Ok(existing_asset_ids)
+}

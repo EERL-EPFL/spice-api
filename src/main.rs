@@ -4,6 +4,15 @@ mod external;
 mod routes;
 mod services;
 
+mod assets;
+mod experiments;
+mod locations;
+mod nucleation_events;
+mod projects;
+mod samples;
+mod tray_configurations;
+mod treatments;
+
 use crate::config::Config;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection};

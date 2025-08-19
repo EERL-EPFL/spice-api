@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::routes::assets::models::Model as S3Assets;
+use crate::assets::models::Model as S3Assets;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::{Client as S3Client, config::Region};

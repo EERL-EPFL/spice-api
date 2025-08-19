@@ -1,5 +1,5 @@
-use crate::routes::tray_configurations::services::str_to_coordinates;
-use crate::routes::{
+use crate::tray_configurations::services::str_to_coordinates;
+use crate::{
     experiments::{
         models as experiments, phase_transitions::models as well_phase_transitions,
         temperatures::models as temperature_readings,
