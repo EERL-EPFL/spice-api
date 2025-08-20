@@ -164,6 +164,7 @@ pub struct TrayWellSummary {
     pub coordinate: String, // e.g., "A1", "B2"
     pub sample: Option<crate::samples::models::Sample>,
     pub treatment_name: Option<String>,
+    pub treatment: Option<crate::treatments::models::Treatment>, // Full treatment object with enzyme volume
     pub dilution_factor: Option<i32>,
     pub first_phase_change_time: Option<DateTime<Utc>>,
     pub temperatures: Option<TemperatureReading>,

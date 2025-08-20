@@ -508,7 +508,7 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                 .and_then(|treatment_id| context.treatment_map.get(&treatment_id))
                 .map_or((None, None), |(t, s)| (Some(t.clone()), s.clone()));
 
-            let treatment_name = treatment.map(|t| match t.name {
+            let treatment_name = treatment.as_ref().map(|t| match t.name {
                 crate::treatments::models::TreatmentName::None => "none".to_string(),
                 crate::treatments::models::TreatmentName::Heat => "heat".to_string(),
                 crate::treatments::models::TreatmentName::H2o2 => "h2o2".to_string(),
@@ -520,6 +520,7 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                 coordinate,
                 sample,
                 treatment_name,
+                treatment,
                 dilution_factor: region.and_then(|r| r.dilution_factor),
                 first_phase_change_time,
                 temperatures,

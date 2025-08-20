@@ -92,9 +92,6 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], use_target_models)]
     pub treatments: Vec<crate::treatments::models::Treatment>,
-    #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![])]
-    pub experimental_results: Vec<crate::nucleation_events::models::NucleationEvent>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -145,10 +142,7 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
     }
 
     let mut sample: Sample = model.into();
-
     sample.treatments = treatments_with_results;
-    sample.experimental_results =
-        super::services::fetch_experimental_results_for_sample(db, id).await?;
 
     Ok(sample)
 }
@@ -213,8 +207,7 @@ async fn create_sample_with_treatments(
         for treatment_create in treatments {
             let mut treatment_with_sample = treatment_create;
             treatment_with_sample.sample_id = Some(sample_id);
-            let _ = crate::treatments::models::Treatment::create(db, treatment_with_sample)
-                .await?;
+            let _ = crate::treatments::models::Treatment::create(db, treatment_with_sample).await?;
         }
     }
 
@@ -279,8 +272,7 @@ async fn update_sample_with_treatments(
                     enzyme_volume_litres: treatment_update.enzyme_volume_litres.flatten(),
                 };
                 let new_treatment =
-                    crate::treatments::models::Treatment::create(db, treatment_create)
-                        .await?;
+                    crate::treatments::models::Treatment::create(db, treatment_create).await?;
                 updated_treatment_ids.push(new_treatment.id);
             }
         }

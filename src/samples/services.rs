@@ -3,7 +3,9 @@ use crate::{
         models as experiments, phase_transitions::models as well_phase_transitions,
         temperatures::models as temperature_readings,
     },
-    tray_configurations::{regions::models as regions, wells::models as wells},
+    tray_configurations::{
+        regions::models as regions, trays::models as trays, wells::models as wells,
+    },
     treatments::models as treatments,
 };
 use crate::{
@@ -58,8 +60,6 @@ pub(super) async fn fetch_experimental_results_for_sample(
             let temp_readings_map: std::collections::HashMap<Uuid, &temperature_readings::Model> =
                 temp_readings_data.iter().map(|tr| (tr.id, tr)).collect();
 
-            // Load tray data to properly match wells to regions by tray_id
-            use crate::tray_configurations::trays::models as trays;
             let tray_ids: Vec<Uuid> = phase_transitions_data
                 .iter()
                 .filter_map(|(_, well_opt)| well_opt.as_ref().map(|w| w.tray_id))
@@ -99,7 +99,7 @@ pub(super) async fn fetch_experimental_results_for_sample(
                         } else {
                             false
                         };
-                        
+
                         // Only check coordinate bounds if tray matches
                         if tray_matches {
                             if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
@@ -108,8 +108,17 @@ pub(super) async fn fetch_experimental_results_for_sample(
                                 region.col_min,
                                 region.col_max,
                             ) {
-                                well.row_letter.chars().next().map_or(0, |c| i32::from(c as u8 - b'A')) >= row_min
-                                    && well.row_letter.chars().next().map_or(0, |c| i32::from(c as u8 - b'A')) <= row_max
+                                well.row_letter
+                                    .chars()
+                                    .next()
+                                    .map_or(0, |c| i32::from(c as u8 - b'A'))
+                                    >= row_min
+                                    && well
+                                        .row_letter
+                                        .chars()
+                                        .next()
+                                        .map_or(0, |c| i32::from(c as u8 - b'A'))
+                                        <= row_max
                                     && well.column_number >= (col_min + 1)
                                     && well.column_number <= (col_max + 1)
                             } else {
