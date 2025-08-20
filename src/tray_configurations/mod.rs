@@ -1,4 +1,5 @@
 pub mod models;
+pub mod probes;
 pub mod regions;
 pub mod services;
 #[cfg(test)]

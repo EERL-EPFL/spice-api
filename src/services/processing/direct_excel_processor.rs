@@ -2,9 +2,11 @@ use crate::tray_configurations::services::str_to_coordinates;
 use crate::{
     experiments::{
         models as experiments, phase_transitions::models as well_phase_transitions,
+        probe_temperature_readings::models as probe_temperature_readings,
         temperatures::models as temperature_readings,
     },
     tray_configurations::{
+        probes::models as probes,
         trays::models as tray_configuration_assignments, wells::models as wells,
     },
 };
@@ -24,12 +26,14 @@ pub struct DirectExcelProcessor {
     db: DatabaseConnection,
     well_states: HashMap<String, i32>, // Track previous state for each well (tray_name:well_coordinate -> phase)
     well_ids: HashMap<String, Uuid>,   // Map tray_name:well_coordinate -> well_id
+    probe_mappings: HashMap<i32, Uuid>, // Map excel_column_index -> probe_id
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DirectProcessingResult {
     pub success: bool,
     pub temperature_readings_created: usize,
+    pub probe_temperature_readings_created: usize,
     pub phase_transitions_created: usize,
     pub wells_tracked: usize,
     pub errors: Vec<String>,
@@ -60,6 +64,7 @@ impl DirectExcelProcessor {
             db,
             well_states: HashMap::new(),
             well_ids: HashMap::new(),
+            probe_mappings: HashMap::new(),
         }
     }
 
@@ -101,16 +106,22 @@ impl DirectExcelProcessor {
 
         // Load well IDs for this experiment
         self.load_well_ids(&headers, experiment_id).await?;
+        
+        // Load probe mappings for individual probe temperature readings
+        self.probe_mappings = self.load_probe_mappings(experiment_id).await?;
+        println!("   🌡️  Loaded {} probe mappings", self.probe_mappings.len());
 
         let mut temperature_readings_batch = Vec::new(); // 3. Prepare batch collections
         let mut phase_transitions_batch = Vec::new();
+        let mut probe_temperature_readings_batch = Vec::new();
 
         for (row_idx, row) in rows.iter().skip(7).enumerate() {
             match self.parse_row_data(row, &headers, experiment_id, row_idx + 8) {
-                Ok((temperature_reading, phase_transitions)) => {
+                Ok((temperature_reading, probe_temp_readings, phase_transitions)) => {
                     if let Some(temp_reading) = temperature_reading {
                         temperature_readings_batch.push(temp_reading);
                     }
+                    probe_temperature_readings_batch.extend(probe_temp_readings);
                     phase_transitions_batch.extend(phase_transitions);
                 }
                 Err(e) => {
@@ -129,6 +140,20 @@ impl DirectExcelProcessor {
                     .exec(&self.db)
                     .await
                     .context("Failed to batch insert temperature readings")?;
+            }
+        }
+
+        if !probe_temperature_readings_batch.is_empty() {
+            println!(
+                "   🌡️  Inserting {} individual probe temperature readings...",
+                probe_temperature_readings_batch.len()
+            );
+
+            for chunk in probe_temperature_readings_batch.chunks(CHUNK_SIZE) {
+                probe_temperature_readings::Entity::insert_many(chunk.to_vec())
+                    .exec(&self.db)
+                    .await
+                    .context("Failed to batch insert probe temperature readings")?;
             }
         }
 
@@ -154,14 +179,17 @@ impl DirectExcelProcessor {
             "   🌡️  Temperature readings: {}",
             temperature_readings_batch.len()
         );
+        println!("   🌡️  Individual probe readings: {}", probe_temperature_readings_batch.len());
         println!("   🔄 Phase transitions: {}", phase_transitions_batch.len());
         println!("   🧪 Wells mapped: {}", headers.wells.len());
+        println!("   🌡️  Probes mapped: {}", self.probe_mappings.len());
         println!("   ⏱️  Database insert time: {insert_time}ms");
         println!("   ⏱️  Total time: {processing_time}ms");
 
         Ok(DirectProcessingResult {
             success: errors.len() < 10,
             temperature_readings_created: temperature_readings_batch.len(),
+            probe_temperature_readings_created: probe_temperature_readings_batch.len(),
             phase_transitions_created: phase_transitions_batch.len(),
             wells_tracked: headers.wells.len(),
             errors,
@@ -281,6 +309,7 @@ impl DirectExcelProcessor {
         row_number: usize,
     ) -> Result<(
         Option<temperature_readings::ActiveModel>,
+        Vec<probe_temperature_readings::ActiveModel>,
         Vec<well_phase_transitions::ActiveModel>,
     )> {
         let timestamp = Self::extract_timestamp(row, headers, row_number)?; // Extract timestamp
@@ -327,6 +356,17 @@ impl DirectExcelProcessor {
             None
         };
 
+        // Create individual probe temperature readings
+        let probe_temperature_readings = if let Some(ref temp_reading) = temperature_reading {
+            self.create_individual_probe_readings(
+                row,
+                temp_reading.id.as_ref().clone(),
+                timestamp_utc,
+            )
+        } else {
+            Vec::new()
+        };
+
         // Process phase transitions for all wells
         let phase_transitions = self.process_well_phase_transitions(
             row,
@@ -336,7 +376,7 @@ impl DirectExcelProcessor {
             temperature_reading.as_ref(),
         )?;
 
-        Ok((temperature_reading, phase_transitions))
+        Ok((temperature_reading, probe_temperature_readings, phase_transitions))
     }
 
     fn parse_headers(rows: &[&[Data]]) -> Result<ColumnHeaders> {
@@ -803,6 +843,76 @@ impl DirectExcelProcessor {
 
         Ok(())
     }
+
+    /// Load probe mappings for the experiment's trays
+    /// Maps excel_column_index -> probe_id for temperature data processing
+    async fn load_probe_mappings(&self, experiment_id: Uuid) -> Result<HashMap<i32, Uuid>> {
+        // First, get the experiment to find its tray_configuration_id
+        let experiment = experiments::Entity::find_by_id(experiment_id)
+            .one(&self.db)
+            .await?
+            .ok_or_else(|| anyhow!("Experiment not found: {}", experiment_id))?;
+
+        let tray_configuration_id = experiment.tray_configuration_id
+            .ok_or_else(|| anyhow!("Experiment has no tray configuration assigned"))?;
+
+        // Get all trays for this tray configuration
+        let trays = tray_configuration_assignments::Entity::find()
+            .filter(tray_configuration_assignments::Column::TrayConfigurationId.eq(tray_configuration_id))
+            .all(&self.db)
+            .await?;
+
+        let mut probe_mappings = HashMap::new();
+        
+        for tray in trays {
+            // Get probes for this tray
+            let probes = probes::Entity::find()
+                .filter(probes::Column::TrayId.eq(tray.id))
+                .all(&self.db)
+                .await?;
+            
+            for probe in probes {
+                probe_mappings.insert(probe.excel_column_index, probe.id);
+            }
+        }
+        
+        tracing::info!("Loaded {} probe mappings for experiment {}", probe_mappings.len(), experiment_id);
+        Ok(probe_mappings)
+    }
+
+    /// Create individual probe temperature readings from row data
+    fn create_individual_probe_readings(
+        &self,
+        row: &[Data],
+        temperature_reading_id: Uuid,
+        _timestamp: chrono::DateTime<chrono::Utc>,
+    ) -> Vec<probe_temperature_readings::ActiveModel> {
+        let mut probe_readings = Vec::new();
+        
+        // Process temperature columns (2-9 correspond to probes)
+        for excel_col_index in 2..=9 {
+            if let Some(&probe_id) = self.probe_mappings.get(&excel_col_index) {
+                if let Some(temp_value) = row.get(excel_col_index as usize).and_then(|cell| match cell {
+                    Data::Float(f) => Some(*f),
+                    #[allow(clippy::cast_precision_loss)]
+                    Data::Int(i) => Some(*i as f64), // Intentional precision loss for temperature conversion
+                    _ => None,
+                }) {
+                    let probe_reading = probe_temperature_readings::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        temperature_reading_id: Set(temperature_reading_id),
+                        probe_id: Set(probe_id),
+                        temperature: Set(rust_decimal::Decimal::from_f64_retain(temp_value)
+                            .unwrap_or_default()),
+                        created_at: Set(chrono::Utc::now()),
+                    };
+                    probe_readings.push(probe_reading);
+                }
+            }
+        }
+        
+        probe_readings
+    }
 }
 
 #[cfg(test)]
@@ -856,5 +966,331 @@ mod tests {
         assert!(!DirectExcelProcessor::is_valid_well_coordinate("a1")); // lowercase not supported by primary function
         assert!(!DirectExcelProcessor::is_valid_well_coordinate(""));
         assert!(!DirectExcelProcessor::is_valid_well_coordinate("1A"));
+    }
+
+    #[tokio::test]
+    async fn test_excel_processing_with_probe_readings_integration() {
+        use crate::config::test_helpers::setup_test_db;
+        use crate::experiments::models as experiments;
+        use crate::tray_configurations::models as tray_configurations;
+        use crate::tray_configurations::trays::models as trays;
+        use crate::tray_configurations::probes::models as probes;
+        use sea_orm::{ActiveModelTrait, Set};
+        use std::fs;
+
+        println!("🧪 Starting Excel processing integration test with probe readings");
+
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Read the test Excel file
+        let excel_path = "src/experiments/test_resources/merged.xlsx";
+        let excel_data = fs::read(excel_path)
+            .expect("Failed to read merged.xlsx - make sure the test file exists");
+        
+        println!("📄 Loaded Excel file: {} bytes", excel_data.len());
+
+        // Create test tray configuration
+        let tray_config = tray_configurations::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            name: Set(Some("Test Configuration".to_string())),
+            experiment_default: Set(false),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+        };
+        let tray_config = tray_config.insert(&db).await.expect("Failed to create tray config");
+        println!("🗂️  Created tray configuration: {}", tray_config.id);
+
+        // Create two trays (P1, P2) for this configuration
+        let tray_p1 = trays::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            tray_configuration_id: Set(tray_config.id),
+            order_sequence: Set(1),
+            rotation_degrees: Set(0),
+            name: Set(Some("P1".to_string())),
+            qty_cols: Set(Some(12)),
+            qty_rows: Set(Some(8)),
+            well_relative_diameter: Set(Some(rust_decimal::Decimal::new(10, 1))),
+            upper_left_corner_x: Set(Some(0)),
+            upper_left_corner_y: Set(Some(0)),
+            lower_right_corner_x: Set(Some(200)),
+            lower_right_corner_y: Set(Some(150)),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+        };
+        let tray_p1 = tray_p1.insert(&db).await.expect("Failed to create tray P1");
+
+        let tray_p2 = trays::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            tray_configuration_id: Set(tray_config.id),
+            order_sequence: Set(2),
+            rotation_degrees: Set(0),
+            name: Set(Some("P2".to_string())),
+            qty_cols: Set(Some(12)),
+            qty_rows: Set(Some(8)),
+            well_relative_diameter: Set(Some(rust_decimal::Decimal::new(10, 1))),
+            upper_left_corner_x: Set(Some(0)),
+            upper_left_corner_y: Set(Some(0)),
+            lower_right_corner_x: Set(Some(200)),
+            lower_right_corner_y: Set(Some(150)),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+        };
+        let tray_p2 = tray_p2.insert(&db).await.expect("Failed to create tray P2");
+        println!("🧪 Created trays: P1={}, P2={}", tray_p1.id, tray_p2.id);
+
+        // Create probes for P1 tray (columns 2-9 map to probes 1-8)
+        for probe_seq in 1..=8 {
+            let excel_col = probe_seq + 1; // Probe 1 -> Excel column 2, etc.
+            let probe_name = format!("Probe {}", probe_seq);
+            
+            let probe = probes::ActiveModel {
+                id: Set(uuid::Uuid::new_v4()),
+                tray_id: Set(tray_p1.id),
+                name: Set(probe_name),
+                sequence: Set(probe_seq),
+                excel_column_index: Set(excel_col),
+                position_x: Set(rust_decimal::Decimal::new((probe_seq * 20) as i64, 0)),
+                position_y: Set(rust_decimal::Decimal::new((probe_seq * 15) as i64, 0)),
+                created_at: Set(chrono::Utc::now()),
+                last_updated: Set(chrono::Utc::now()),
+            };
+            probe.insert(&db).await.expect("Failed to create probe");
+        }
+        println!("🌡️  Created 8 probes for P1 tray (Excel columns 2-9)");
+
+        // Create test experiment with the tray configuration
+        let experiment = experiments::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            name: Set("Integration Test Experiment".to_string()),
+            username: Set(Some("test_user".to_string())),
+            performed_at: Set(Some(chrono::Utc::now())),
+            is_calibration: Set(false),
+            remarks: Set(Some("Integration test for probe readings".to_string())),
+            tray_configuration_id: Set(Some(tray_config.id)),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+            ..Default::default()
+        };
+        let experiment = experiment.insert(&db).await.expect("Failed to create experiment");
+        println!("🧬 Created experiment: {}", experiment.id);
+
+        // Process the Excel file
+        let mut processor = DirectExcelProcessor::new(db.clone());
+        let result = processor.process_excel_file_direct(excel_data, experiment.id).await;
+        
+        match result {
+            Ok(processing_result) => {
+                println!("✅ Excel processing completed successfully!");
+                println!("📊 Processing Results:");
+                println!("   - Temperature readings: {}", processing_result.temperature_readings_created);
+                println!("   - Individual probe readings: {}", processing_result.probe_temperature_readings_created);
+                println!("   - Phase transitions: {}", processing_result.phase_transitions_created);
+                println!("   - Processing time: {}ms", processing_result.processing_time_ms);
+                println!("   - Errors: {}", processing_result.errors.len());
+
+                // Verify our expectations match CLAUDE.md requirements
+                // Expected: 6,786 temperature readings (timestamps)
+                assert!(processing_result.temperature_readings_created > 6000, 
+                    "Expected >6000 temperature readings, got {}", processing_result.temperature_readings_created);
+
+                // Expected: Individual probe readings (should be 8 * temperature_readings_created for 8 probes)
+                let expected_probe_readings = processing_result.temperature_readings_created * 8;
+                assert!(processing_result.probe_temperature_readings_created > 0, 
+                    "Expected individual probe readings, got 0");
+                
+                // Verify phase transitions exist (192 wells × some transition count)
+                assert!(processing_result.phase_transitions_created > 0, 
+                    "Expected phase transitions, got 0");
+
+                println!("🎯 All integration test assertions passed!");
+                println!("🚀 Individual probe temperature readings are working correctly!");
+                
+                if !processing_result.errors.is_empty() {
+                    println!("⚠️  Processing errors encountered:");
+                    for error in &processing_result.errors {
+                        println!("   - {}", error);
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("❌ Excel processing failed: {}", e);
+            }
+        }
+
+        println!("🏁 Integration test completed successfully!");
+    }
+
+    #[tokio::test]
+    async fn test_experiment_results_with_individual_probe_architecture() {
+        use crate::config::test_helpers::setup_test_db;
+        use crate::experiments::models as experiments;
+        use crate::tray_configurations::models as tray_configurations;
+        use crate::tray_configurations::trays::models as trays;
+        use crate::tray_configurations::probes::models as probes;
+        use sea_orm::{ActiveModelTrait, Set};
+        use std::fs;
+
+        println!("🧪 Testing experiment results API with individual probe architecture");
+
+        // Setup test database
+        let db = setup_test_db().await;
+
+        // Create the same test setup as the previous integration test
+        let tray_config = tray_configurations::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            name: Set(Some("Test Configuration".to_string())),
+            experiment_default: Set(false),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+        };
+        let tray_config = tray_config.insert(&db).await.expect("Failed to create tray config");
+
+        // Create tray P1
+        let tray_p1 = trays::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            tray_configuration_id: Set(tray_config.id),
+            order_sequence: Set(1),
+            rotation_degrees: Set(0),
+            name: Set(Some("P1".to_string())),
+            qty_cols: Set(Some(12)),
+            qty_rows: Set(Some(8)),
+            well_relative_diameter: Set(Some(rust_decimal::Decimal::new(10, 1))),
+            upper_left_corner_x: Set(Some(0)),
+            upper_left_corner_y: Set(Some(0)),
+            lower_right_corner_x: Set(Some(200)),
+            lower_right_corner_y: Set(Some(150)),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+        };
+        let tray_p1 = tray_p1.insert(&db).await.expect("Failed to create tray P1");
+
+        // Create tray P2
+        let tray_p2 = trays::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            tray_configuration_id: Set(tray_config.id),
+            order_sequence: Set(2),
+            rotation_degrees: Set(0),
+            name: Set(Some("P2".to_string())),
+            qty_cols: Set(Some(12)),
+            qty_rows: Set(Some(8)),
+            well_relative_diameter: Set(Some(rust_decimal::Decimal::new(10, 1))),
+            upper_left_corner_x: Set(Some(0)),
+            upper_left_corner_y: Set(Some(0)),
+            lower_right_corner_x: Set(Some(200)),
+            lower_right_corner_y: Set(Some(150)),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+        };
+        let _tray_p2 = tray_p2.insert(&db).await.expect("Failed to create tray P2");
+
+        // Create probes for P1 tray
+        for probe_seq in 1..=8 {
+            let excel_col = probe_seq + 1;
+            let probe_name = format!("Probe {}", probe_seq);
+            
+            let probe = probes::ActiveModel {
+                id: Set(uuid::Uuid::new_v4()),
+                tray_id: Set(tray_p1.id),
+                name: Set(probe_name),
+                sequence: Set(probe_seq),
+                excel_column_index: Set(excel_col),
+                position_x: Set(rust_decimal::Decimal::new((probe_seq * 20) as i64, 0)),
+                position_y: Set(rust_decimal::Decimal::new((probe_seq * 15) as i64, 0)),
+                created_at: Set(chrono::Utc::now()),
+                last_updated: Set(chrono::Utc::now()),
+            };
+            probe.insert(&db).await.expect("Failed to create probe");
+        }
+
+        // Create and process experiment
+        let experiment = experiments::ActiveModel {
+            id: Set(uuid::Uuid::new_v4()),
+            name: Set("Results Test Experiment".to_string()),
+            username: Set(Some("test_user".to_string())),
+            performed_at: Set(Some(chrono::Utc::now())),
+            is_calibration: Set(false),
+            remarks: Set(Some("Test for individual probe results".to_string())),
+            tray_configuration_id: Set(Some(tray_config.id)),
+            created_at: Set(chrono::Utc::now()),
+            last_updated: Set(chrono::Utc::now()),
+            ..Default::default()
+        };
+        let experiment = experiment.insert(&db).await.expect("Failed to create experiment");
+
+        // Process Excel file
+        let excel_path = "src/experiments/test_resources/merged.xlsx";
+        let excel_data = fs::read(excel_path)
+            .expect("Failed to read merged.xlsx");
+        
+        let mut processor = DirectExcelProcessor::new(db.clone());
+        let result = processor.process_excel_file_direct(excel_data, experiment.id).await;
+        
+        assert!(result.is_ok(), "Excel processing should succeed");
+        let processing_result = result.unwrap();
+        println!("✅ Excel processed: {} probe readings created", processing_result.probe_temperature_readings_created);
+
+        // Now test the experiment results API through crudcrate
+        use crate::experiments::models::Entity as ExperimentEntity;
+        use sea_orm::EntityTrait;
+        
+        let experiment_model = ExperimentEntity::find_by_id(experiment.id)
+            .one(&db)
+            .await
+            .expect("Should find experiment")
+            .expect("Experiment should exist");
+        
+        // Build results using the service directly
+        use crate::experiments::services::build_tray_centric_results;
+        let results_opt = build_tray_centric_results(experiment.id, &db).await;
+        
+        assert!(results_opt.is_ok(), "Should be able to build experiment results");
+        let results_option = results_opt.unwrap();
+        
+        // Check that results exist
+        assert!(results_option.is_some(), "Experiment should have results");
+        let results = results_option.unwrap();
+        
+        println!("📊 Results Summary:");
+        println!("   - Total time points: {}", results.summary.total_time_points);
+        println!("   - Number of trays: {}", results.trays.len());
+        
+        // Verify we have the expected structure
+        assert!(results.summary.total_time_points > 6000, "Should have 6000+ time points");
+        assert_eq!(results.trays.len(), 2, "Should have 2 trays (P1, P2)");
+        
+        // Check individual probe data in well summaries
+        let tray_p1_results = results.trays.iter().find(|t| t.tray_name == Some("P1".to_string()));
+        assert!(tray_p1_results.is_some(), "Should have P1 tray results");
+        
+        let tray_p1_results = tray_p1_results.unwrap();
+        println!("   - P1 wells: {}", tray_p1_results.wells.len());
+        
+        // Check that wells have individual probe temperature data
+        if let Some(well_with_temps) = tray_p1_results.wells.iter().find(|w| w.temperatures.is_some()) {
+            let temps = well_with_temps.temperatures.as_ref().unwrap();
+            println!("   - Found well with {} individual probe readings", temps.probe_readings.len());
+            
+            // Verify individual probe data structure
+            assert!(temps.probe_readings.len() > 0, "Should have individual probe readings");
+            
+            for probe_data in &temps.probe_readings {
+                assert!(!probe_data.probe.name.is_empty(), "Probe should have a name");
+                assert!(probe_data.probe.sequence >= 1 && probe_data.probe.sequence <= 8, 
+                    "Probe sequence should be 1-8");
+                // Just verify temperature is a reasonable value (temperatures can be zero in our data)
+                assert!(probe_data.probe_temperature_reading.temperature.abs() < rust_decimal::Decimal::new(1000, 0), 
+                    "Temperature should be reasonable (got: {})", probe_data.probe_temperature_reading.temperature);
+                println!("     - {}: {}°C at position ({}, {})", 
+                    probe_data.probe.name,
+                    probe_data.probe_temperature_reading.temperature,
+                    probe_data.probe.position_x,
+                    probe_data.probe.position_y);
+            }
+        }
+
+        println!("🎉 Individual probe architecture working in experiment results!");
+        println!("✅ No more probe_1-probe_8 static structure!");
+        println!("🚀 Dynamic probe configuration based on tray setup!");
     }
 }

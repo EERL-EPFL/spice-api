@@ -4,6 +4,7 @@ use rust_decimal::Decimal;
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "trays")]
 #[crudcrate(api_struct = "Tray")]
@@ -25,6 +26,14 @@ pub struct Model {
     pub qty_rows: Option<i32>,
     #[crudcrate(sortable, filterable)]
     pub well_relative_diameter: Option<Decimal>,
+    #[crudcrate(sortable, filterable)]
+    pub upper_left_corner_x: Option<i32>,
+    #[crudcrate(sortable, filterable)]
+    pub upper_left_corner_y: Option<i32>,
+    #[crudcrate(sortable, filterable)]
+    pub lower_right_corner_x: Option<i32>,
+    #[crudcrate(sortable, filterable)]
+    pub lower_right_corner_y: Option<i32>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
@@ -43,6 +52,8 @@ pub enum Relation {
     TrayConfigurations,
     #[sea_orm(has_many = "crate::tray_configurations::wells::models::Entity")]
     Wells,
+    #[sea_orm(has_many = "crate::tray_configurations::probes::models::Entity")]
+    Probes,
 }
 
 impl Related<crate::tray_configurations::models::Entity> for Entity {
@@ -54,6 +65,12 @@ impl Related<crate::tray_configurations::models::Entity> for Entity {
 impl Related<crate::tray_configurations::wells::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Wells.def()
+    }
+}
+
+impl Related<crate::tray_configurations::probes::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Probes.def()
     }
 }
 

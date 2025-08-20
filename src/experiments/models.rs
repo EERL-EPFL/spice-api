@@ -158,6 +158,18 @@ pub struct ExperimentResultsSummary {
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct ProbeTemperatureData {
+    pub probe_temperature_reading: crate::experiments::probe_temperature_readings::models::ProbeTemperatureReading,
+    pub probe: crate::tray_configurations::probes::models::Probe,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct TemperatureDataWithProbes {
+    pub temperature_reading: TemperatureReading,
+    pub probe_readings: Vec<ProbeTemperatureData>,
+}
+
+#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct TrayWellSummary {
     pub row_letter: String,
     pub column_number: i32,
@@ -167,7 +179,7 @@ pub struct TrayWellSummary {
     pub treatment: Option<crate::treatments::models::Treatment>, // Full treatment object with enzyme volume
     pub dilution_factor: Option<i32>,
     pub first_phase_change_time: Option<DateTime<Utc>>,
-    pub temperatures: Option<TemperatureReading>,
+    pub temperatures: Option<TemperatureDataWithProbes>,
     pub total_phase_changes: usize,
     pub image_asset_id: Option<Uuid>, // Asset ID for the image at freeze time
 }

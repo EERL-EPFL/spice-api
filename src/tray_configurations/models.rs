@@ -189,6 +189,10 @@ pub async fn create_tray_configuration(
             qty_cols: Set(tray.qty_cols),
             qty_rows: Set(tray.qty_rows),
             well_relative_diameter: Set(tray.well_relative_diameter),
+            upper_left_corner_x: Set(tray.upper_left_corner_x),
+            upper_left_corner_y: Set(tray.upper_left_corner_y),
+            lower_right_corner_x: Set(tray.lower_right_corner_x),
+            lower_right_corner_y: Set(tray.lower_right_corner_y),
             created_at: Set(now),
             last_updated: Set(now),
         };
@@ -269,6 +273,10 @@ pub async fn update_tray_configuration(
                 qty_cols: Set(tray.qty_cols.unwrap_or_default()),
                 qty_rows: Set(tray.qty_rows.unwrap_or_default()),
                 well_relative_diameter: Set(tray.well_relative_diameter.unwrap_or_default()),
+                upper_left_corner_x: Set(tray.upper_left_corner_x.unwrap_or_default()),
+                upper_left_corner_y: Set(tray.upper_left_corner_y.unwrap_or_default()),
+                lower_right_corner_x: Set(tray.lower_right_corner_x.unwrap_or_default()),
+                lower_right_corner_y: Set(tray.lower_right_corner_y.unwrap_or_default()),
                 created_at: Set(now),
                 last_updated: Set(now),
             };

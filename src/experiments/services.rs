@@ -1,18 +1,21 @@
 use super::models::{
     ExperimentResultsResponse, ExperimentResultsSummaryCompact, TrayResultsSummary, TrayWellSummary,
+    TemperatureDataWithProbes, ProbeTemperatureData,
 };
 use crate::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
     experiments::temperatures::models as temperature_readings,
-    tray_configurations::regions::models as regions, tray_configurations::trays::models as trays,
+    experiments::probe_temperature_readings::models as probe_temperature_readings,
+    tray_configurations::regions::models as regions, 
+    tray_configurations::trays::models as trays,
     tray_configurations::wells::models as wells,
+    tray_configurations::probes::models as probes,
 };
 use crate::{
     locations::models as locations, samples::models as samples, treatments::models as treatments,
 };
 use chrono::{DateTime, Utc};
-use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
 use uuid::Uuid;
 
@@ -24,7 +27,7 @@ const PHASE_FROZEN: i32 = 1;
 struct WellSummaryContext<'a> {
     experiment_wells: &'a [wells::Model],
     phase_transitions_data: &'a [(well_phase_transitions::Model, Option<wells::Model>)],
-    temp_readings_map: &'a std::collections::HashMap<Uuid, temperature_readings::Model>,
+    temp_readings_map: &'a std::collections::HashMap<Uuid, TemperatureDataWithProbes>,
     filename_to_asset_id: &'a std::collections::HashMap<String, Uuid>,
     experiment_regions: &'a [regions::Model],
     treatment_map: &'a std::collections::HashMap<
@@ -45,85 +48,87 @@ fn row_letter_to_index(row_letter: &str) -> i32 {
         .map_or(0, |c| c as i32 - 'A' as i32)
 }
 
-// Helper to calculate average from temperature probes and create formatted reading
-fn format_temperature_reading(
-    temp_reading: &temperature_readings::Model,
-) -> temperature_readings::Model {
-    let probe_values = [
-        temp_reading.probe_1,
-        temp_reading.probe_2,
-        temp_reading.probe_3,
-        temp_reading.probe_4,
-        temp_reading.probe_5,
-        temp_reading.probe_6,
-        temp_reading.probe_7,
-        temp_reading.probe_8,
-    ];
 
-    let non_null_values: Vec<Decimal> = probe_values.into_iter().flatten().collect();
-    let average = if non_null_values.is_empty() {
-        None
-    } else {
-        Some(
-            (non_null_values.iter().sum::<Decimal>() / Decimal::from(non_null_values.len()))
-                .round_dp(3),
-        )
-    };
-
-    let mut formatted = temp_reading.clone();
-    formatted.probe_1 = temp_reading.probe_1.map(|d| d.round_dp(3));
-    formatted.probe_2 = temp_reading.probe_2.map(|d| d.round_dp(3));
-    formatted.probe_3 = temp_reading.probe_3.map(|d| d.round_dp(3));
-    formatted.probe_4 = temp_reading.probe_4.map(|d| d.round_dp(3));
-    formatted.probe_5 = temp_reading.probe_5.map(|d| d.round_dp(3));
-    formatted.probe_6 = temp_reading.probe_6.map(|d| d.round_dp(3));
-    formatted.probe_7 = temp_reading.probe_7.map(|d| d.round_dp(3));
-    formatted.probe_8 = temp_reading.probe_8.map(|d| d.round_dp(3));
-    formatted.average = average;
-    formatted
-}
-
-// Helper function to load temperature readings and calculate time span
-async fn load_temperature_data(
+// Helper function to load temperature readings with individual probe data
+async fn load_individual_temperature_data(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<
     (
-        std::collections::HashMap<Uuid, temperature_readings::Model>,
+        std::collections::HashMap<Uuid, TemperatureDataWithProbes>,
         Option<DateTime<Utc>>,
         Option<DateTime<Utc>>,
         usize,
     ),
     DbErr,
 > {
+    // Get all temperature readings for this experiment
     let temp_readings_data = temperature_readings::Entity::find()
         .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
         .order_by_asc(temperature_readings::Column::Timestamp)
         .all(db)
         .await?;
 
-    let (first_timestamp, last_timestamp, total_time_points) = if temp_readings_data.is_empty() {
-        (None, None, 0)
-    } else {
-        let first = temp_readings_data
-            .first()
-            .map(|tp| tp.timestamp.with_timezone(&Utc));
-        let last = temp_readings_data
-            .last()
-            .map(|tp| tp.timestamp.with_timezone(&Utc));
-        let count = temp_readings_data.len();
-        (first, last, count)
-    };
+    if temp_readings_data.is_empty() {
+        return Ok((std::collections::HashMap::new(), None, None, 0));
+    }
 
-    // Create temperature readings lookup map by ID
-    let temp_readings_map: std::collections::HashMap<Uuid, temperature_readings::Model> =
-        temp_readings_data
+    // Get individual probe readings for all temperature readings
+    let temp_reading_ids: Vec<Uuid> = temp_readings_data.iter().map(|tr| tr.id).collect();
+    
+    let probe_readings = probe_temperature_readings::Entity::find()
+        .filter(probe_temperature_readings::Column::TemperatureReadingId.is_in(temp_reading_ids))
+        .find_also_related(probes::Entity)
+        .all(db)
+        .await?;
+
+    // Group probe readings by temperature_reading_id
+    let mut probe_readings_by_temp_id: std::collections::HashMap<Uuid, Vec<(probe_temperature_readings::Model, Option<probes::Model>)>> = std::collections::HashMap::new();
+    
+    for (probe_reading, probe_opt) in probe_readings {
+        probe_readings_by_temp_id
+            .entry(probe_reading.temperature_reading_id)
+            .or_insert_with(Vec::new)
+            .push((probe_reading, probe_opt));
+    }
+
+    // Build temperature data with probes using crudcrate models
+    let mut temp_data_map = std::collections::HashMap::new();
+    
+    for temp_reading in &temp_readings_data {
+        let empty_vec = Vec::new();
+        let probe_readings_for_temp = probe_readings_by_temp_id
+            .get(&temp_reading.id)
+            .unwrap_or(&empty_vec);
+        
+        let probe_data: Vec<ProbeTemperatureData> = probe_readings_for_temp
             .iter()
-            .map(|tr| (tr.id, tr.clone()))
+            .filter_map(|(probe_reading, probe_opt)| {
+                probe_opt.as_ref().map(|probe| ProbeTemperatureData {
+                    probe_temperature_reading: probe_reading.clone().into(),
+                    probe: probe.clone().into(),
+                })
+            })
             .collect();
 
+        let temp_data_with_probes = TemperatureDataWithProbes {
+            temperature_reading: temp_reading.clone().into(),
+            probe_readings: probe_data,
+        };
+
+        temp_data_map.insert(temp_reading.id, temp_data_with_probes);
+    }
+
+    let first_timestamp = temp_readings_data
+        .first()
+        .map(|tp| tp.timestamp.with_timezone(&Utc));
+    let last_timestamp = temp_readings_data
+        .last()
+        .map(|tp| tp.timestamp.with_timezone(&Utc));
+    let total_time_points = temp_readings_data.len();
+
     Ok((
-        temp_readings_map,
+        temp_data_map,
         first_timestamp,
         last_timestamp,
         total_time_points,
@@ -351,13 +356,13 @@ async fn load_treatment_and_sample_data(
     Ok(treatment_map)
 }
 
-pub(super) async fn build_tray_centric_results(
+pub async fn build_tray_centric_results(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsResponse>, DbErr> {
-    // Load all required data using existing helper functions
+    // Load all required data using updated helper functions
     let (temp_readings_map, first_timestamp, last_timestamp, total_time_points) =
-        load_temperature_data(experiment_id, db).await?;
+        load_individual_temperature_data(experiment_id, db).await?;
 
     let filename_to_asset_id = load_experiment_assets(experiment_id, db).await?;
 
@@ -406,15 +411,25 @@ pub(super) async fn build_tray_centric_results(
     }))
 }
 
-fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary> {
-    // Group wells by tray
-    let mut tray_wells: std::collections::HashMap<Uuid, Vec<&wells::Model>> =
+fn create_tray_well_hashmap(
+    context: &WellSummaryContext,
+) -> std::collections::HashMap<Uuid, Vec<wells::Model>> {
+    let mut tray_well_map: std::collections::HashMap<Uuid, Vec<wells::Model>> =
         std::collections::HashMap::new();
 
     for well in context.experiment_wells {
-        tray_wells.entry(well.tray_id).or_default().push(well);
+        tray_well_map
+            .entry(well.tray_id)
+            .or_default()
+            .push(well.clone());
     }
 
+    tray_well_map
+}
+
+fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary> {
+    // Group wells by tray
+    let tray_wells = create_tray_well_hashmap(context);
     let mut tray_results = Vec::new();
 
     for (tray_id, wells_in_tray) in tray_wells {
@@ -422,7 +437,6 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
         let tray_name = tray_info.and_then(|t| t.name.clone());
 
         let mut tray_well_summaries = Vec::new();
-
         for well in wells_in_tray {
             // Build well summary similar to existing logic but simplified
             let coordinate = format!("{}{}", well.row_letter, well.column_number);
@@ -447,20 +461,17 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
             let first_phase_change_time = first_phase_change_transition
                 .map(|transition| transition.timestamp.with_timezone(&Utc));
 
-            // Count total phase changes
-            let total_phase_changes = well_transitions.len();
-
-            // Get temperature probe data at first phase change
-            let temperatures: Option<temperature_readings::TemperatureReading> =
+            // Get temperature data with individual probes at first phase change
+            let temperatures: Option<TemperatureDataWithProbes> =
                 first_phase_change_transition
                     .and_then(|transition| {
                         context
                             .temp_readings_map
                             .get(&transition.temperature_reading_id)
                     })
-                    .map(|temp_reading| format_temperature_reading(temp_reading).into());
+                    .map(|temp_data| temp_data.clone());
             let image_filename: Option<String> =
-                temperatures.clone().and_then(|t| t.image_filename);
+                temperatures.as_ref().and_then(|t| t.temperature_reading.image_filename.clone());
             let image_asset_id = match image_filename {
                 Some(filename) => context.filename_to_asset_id.get(&filename).copied(),
                 None => None,
@@ -484,7 +495,7 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                 } else {
                     false
                 };
-                
+
                 // Only check coordinates if tray matches
                 if tray_matches {
                     if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) =
@@ -524,7 +535,7 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                 dilution_factor: region.and_then(|r| r.dilution_factor),
                 first_phase_change_time,
                 temperatures,
-                total_phase_changes,
+                total_phase_changes: well_transitions.len(),
                 image_asset_id,
             };
 
@@ -536,12 +547,10 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
             tray_name,
             wells: tray_well_summaries,
         };
-
         tray_results.push(tray_summary);
     }
 
     // Sort trays by their sequence or name
     tray_results.sort_by(|a, b| a.tray_name.cmp(&b.tray_name));
-
     tray_results
 }
