@@ -58,28 +58,67 @@ pub(super) async fn fetch_experimental_results_for_sample(
             let temp_readings_map: std::collections::HashMap<Uuid, &temperature_readings::Model> =
                 temp_readings_data.iter().map(|tr| (tr.id, tr)).collect();
 
+            // Load tray data to properly match wells to regions by tray_id
+            use crate::tray_configurations::trays::models as trays;
+            let tray_ids: Vec<Uuid> = phase_transitions_data
+                .iter()
+                .filter_map(|(_, well_opt)| well_opt.as_ref().map(|w| w.tray_id))
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            let trays_data = if tray_ids.is_empty() {
+                vec![]
+            } else {
+                trays::Entity::find()
+                    .filter(trays::Column::Id.is_in(tray_ids))
+                    .all(db)
+                    .await?
+            };
+
+            let tray_map: std::collections::HashMap<Uuid, &trays::Model> =
+                trays_data.iter().map(|t| (t.id, t)).collect();
+
             // Get tray information - region.tray_id is i32, but we need to find by sequence/order
-            // For now, let's use the tray name from the region or a placeholder
             let tray_name = format!("P{}", region.tray_id.unwrap_or(1));
 
             // Process wells that fall within this region's coordinates
             for (transition, well_opt) in &phase_transitions_data {
                 if let Some(well) = well_opt {
-                    // Check if well is within region bounds
-                    let well_in_region =
-                        if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
-                            region.row_min,
-                            region.row_max,
-                            region.col_min,
-                            region.col_max,
-                        ) {
-                            well.row_letter.chars().next().map_or(0, |c| i32::from(c as u8 - b'A')) >= row_min
-                                && well.row_letter.chars().next().map_or(0, |c| i32::from(c as u8 - b'A')) <= row_max
-                                && well.column_number >= (col_min + 1)
-                                && well.column_number <= (col_max + 1)
+                    // Check if well is within region bounds AND on the correct tray
+                    let well_in_region = {
+                        // First verify the tray matches before checking coordinates
+                        let tray_matches = if let Some(region_tray_id) = region.tray_id {
+                            // Get the tray info for this well from our loaded tray data
+                            if let Some(tray_info) = tray_map.get(&well.tray_id) {
+                                // Compare region tray_id (1-based sequence) with tray order_sequence from database
+                                tray_info.order_sequence == region_tray_id
+                            } else {
+                                false
+                            }
                         } else {
                             false
                         };
+                        
+                        // Only check coordinate bounds if tray matches
+                        if tray_matches {
+                            if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) = (
+                                region.row_min,
+                                region.row_max,
+                                region.col_min,
+                                region.col_max,
+                            ) {
+                                well.row_letter.chars().next().map_or(0, |c| i32::from(c as u8 - b'A')) >= row_min
+                                    && well.row_letter.chars().next().map_or(0, |c| i32::from(c as u8 - b'A')) <= row_max
+                                    && well.column_number >= (col_min + 1)
+                                    && well.column_number <= (col_max + 1)
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    };
 
                     if !well_in_region {
                         continue;

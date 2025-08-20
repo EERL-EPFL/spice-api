@@ -472,13 +472,31 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
             let well_col_0based = well.column_number - 1;
 
             let region = context.experiment_regions.iter().find(|r| {
-                if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) =
-                    (r.row_min, r.row_max, r.col_min, r.col_max)
-                {
-                    well_row_0based >= row_min
-                        && well_row_0based <= row_max
-                        && well_col_0based >= col_min
-                        && well_col_0based <= col_max
+                // First check if the well's tray matches the region's tray
+                let tray_matches = if let Some(region_tray_id) = r.tray_id {
+                    // Find the tray info for this well to get its sequence number
+                    if let Some(tray_info) = context.tray_map.get(&well.tray_id) {
+                        // Compare region tray_id (1-based sequence) with tray sequence from database
+                        tray_info.order_sequence == region_tray_id
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                
+                // Only check coordinates if tray matches
+                if tray_matches {
+                    if let (Some(row_min), Some(row_max), Some(col_min), Some(col_max)) =
+                        (r.row_min, r.row_max, r.col_min, r.col_max)
+                    {
+                        well_row_0based >= row_min
+                            && well_row_0based <= row_max
+                            && well_col_0based >= col_min
+                            && well_col_0based <= col_max
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
