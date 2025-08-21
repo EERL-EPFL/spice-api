@@ -132,7 +132,6 @@ async fn test_treatment_crud_operations() {
         .unwrap();
 
     let (update_status, _update_body) = extract_response_body(update_response).await;
-    // TODO: Fix Treatment CRUDResource to support update operations
     assert_eq!(update_status, StatusCode::METHOD_NOT_ALLOWED, "Update not implemented yet");
 
     // Test deleting the treatment (currently returns 405 Method Not Allowed)
