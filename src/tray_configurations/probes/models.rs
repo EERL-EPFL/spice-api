@@ -16,9 +16,7 @@ pub struct Model {
     #[crudcrate(sortable, filterable, fulltext)]
     pub name: String,
     #[crudcrate(sortable, filterable)]
-    pub sequence: i32,
-    #[crudcrate(sortable, filterable)]
-    pub excel_column_index: i32,
+    pub data_column_index: i32,
     #[crudcrate(sortable, filterable)]
     pub position_x: Decimal,
     #[crudcrate(sortable, filterable)]

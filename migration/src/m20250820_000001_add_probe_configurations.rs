@@ -49,8 +49,7 @@ impl MigrationTrait for Migration {
             .if_not_exists()
             .col(ColumnDef::new(Probes::TrayId).uuid().not_null())
             .col(ColumnDef::new(Probes::Name).text().not_null())
-            .col(ColumnDef::new(Probes::Sequence).integer().not_null())
-            .col(ColumnDef::new(Probes::ExcelColumnIndex).integer().not_null())
+            .col(ColumnDef::new(Probes::DataColumnIndex).integer().not_null())
             .col(ColumnDef::new(Probes::PositionX).decimal().not_null())
             .col(ColumnDef::new(Probes::PositionY).decimal().not_null())
             .col(
@@ -73,20 +72,12 @@ impl MigrationTrait for Migration {
                     .on_delete(ForeignKeyAction::Cascade)
                     .on_update(ForeignKeyAction::NoAction),
             )
-            // Ensure unique sequence per tray
+            // Ensure unique data column per tray
             .index(
                 Index::create()
-                    .name("probes_tray_sequence_unique")
+                    .name("probes_tray_data_column_unique")
                     .col(Probes::TrayId)
-                    .col(Probes::Sequence)
-                    .unique(),
-            )
-            // Ensure unique Excel column per tray
-            .index(
-                Index::create()
-                    .name("probes_tray_excel_column_unique")
-                    .col(Probes::TrayId)
-                    .col(Probes::ExcelColumnIndex)
+                    .col(Probes::DataColumnIndex)
                     .unique(),
             )
             .to_owned();
@@ -289,8 +280,7 @@ enum Probes {
     Id,
     TrayId,
     Name,
-    Sequence,
-    ExcelColumnIndex,
+    DataColumnIndex,
     PositionX,
     PositionY,
     CreatedAt,

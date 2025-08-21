@@ -26,7 +26,7 @@ pub struct DirectExcelProcessor {
     db: DatabaseConnection,
     well_states: HashMap<String, i32>, // Track previous state for each well (tray_name:well_coordinate -> phase)
     well_ids: HashMap<String, Uuid>,   // Map tray_name:well_coordinate -> well_id
-    probe_mappings: HashMap<i32, Uuid>, // Map excel_column_index -> probe_id
+    probe_mappings: HashMap<i32, Uuid>, // Map data_column_index -> probe_id
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -360,7 +360,7 @@ impl DirectExcelProcessor {
         let probe_temperature_readings = if let Some(ref temp_reading) = temperature_reading {
             self.create_individual_probe_readings(
                 row,
-                temp_reading.id.as_ref().clone(),
+                *temp_reading.id.as_ref(),
                 timestamp_utc,
             )
         } else {
@@ -845,7 +845,7 @@ impl DirectExcelProcessor {
     }
 
     /// Load probe mappings for the experiment's trays
-    /// Maps excel_column_index -> probe_id for temperature data processing
+    /// Maps `data_column_index` -> `probe_id` for temperature data processing
     async fn load_probe_mappings(&self, experiment_id: Uuid) -> Result<HashMap<i32, Uuid>> {
         // First, get the experiment to find its tray_configuration_id
         let experiment = experiments::Entity::find_by_id(experiment_id)
@@ -872,7 +872,7 @@ impl DirectExcelProcessor {
                 .await?;
             
             for probe in probes {
-                probe_mappings.insert(probe.excel_column_index, probe.id);
+                probe_mappings.insert(probe.data_column_index, probe.id);
             }
         }
         
@@ -1042,16 +1042,15 @@ mod tests {
         // Create probes for P1 tray (columns 2-9 map to probes 1-8)
         for probe_seq in 1..=8 {
             let excel_col = probe_seq + 1; // Probe 1 -> Excel column 2, etc.
-            let probe_name = format!("Probe {}", probe_seq);
+            let probe_name = format!("Probe {probe_seq}");
             
             let probe = probes::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
                 tray_id: Set(tray_p1.id),
                 name: Set(probe_name),
-                sequence: Set(probe_seq),
-                excel_column_index: Set(excel_col),
-                position_x: Set(rust_decimal::Decimal::new((probe_seq * 20) as i64, 0)),
-                position_y: Set(rust_decimal::Decimal::new((probe_seq * 15) as i64, 0)),
+                data_column_index: Set(excel_col),
+                position_x: Set(rust_decimal::Decimal::new(i64::from(probe_seq * 20), 0)),
+                position_y: Set(rust_decimal::Decimal::new(i64::from(probe_seq * 15), 0)),
                 created_at: Set(chrono::Utc::now()),
                 last_updated: Set(chrono::Utc::now()),
             };
@@ -1095,7 +1094,7 @@ mod tests {
                     "Expected >6000 temperature readings, got {}", processing_result.temperature_readings_created);
 
                 // Expected: Individual probe readings (should be 8 * temperature_readings_created for 8 probes)
-                let expected_probe_readings = processing_result.temperature_readings_created * 8;
+                let _expected_probe_readings = processing_result.temperature_readings_created * 8;
                 assert!(processing_result.probe_temperature_readings_created > 0, 
                     "Expected individual probe readings, got 0");
                 
@@ -1109,12 +1108,12 @@ mod tests {
                 if !processing_result.errors.is_empty() {
                     println!("⚠️  Processing errors encountered:");
                     for error in &processing_result.errors {
-                        println!("   - {}", error);
+                        println!("   - {error}");
                     }
                 }
             }
             Err(e) => {
-                panic!("❌ Excel processing failed: {}", e);
+                panic!("❌ Excel processing failed: {e}");
             }
         }
 
@@ -1187,16 +1186,15 @@ mod tests {
         // Create probes for P1 tray
         for probe_seq in 1..=8 {
             let excel_col = probe_seq + 1;
-            let probe_name = format!("Probe {}", probe_seq);
+            let probe_name = format!("Probe {probe_seq}");
             
             let probe = probes::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
                 tray_id: Set(tray_p1.id),
                 name: Set(probe_name),
-                sequence: Set(probe_seq),
-                excel_column_index: Set(excel_col),
-                position_x: Set(rust_decimal::Decimal::new((probe_seq * 20) as i64, 0)),
-                position_y: Set(rust_decimal::Decimal::new((probe_seq * 15) as i64, 0)),
+                data_column_index: Set(excel_col),
+                position_x: Set(rust_decimal::Decimal::new(i64::from(probe_seq * 20), 0)),
+                position_y: Set(rust_decimal::Decimal::new(i64::from(probe_seq * 15), 0)),
                 created_at: Set(chrono::Utc::now()),
                 last_updated: Set(chrono::Utc::now()),
             };
@@ -1234,7 +1232,7 @@ mod tests {
         use crate::experiments::models::Entity as ExperimentEntity;
         use sea_orm::EntityTrait;
         
-        let experiment_model = ExperimentEntity::find_by_id(experiment.id)
+        let _experiment_model = ExperimentEntity::find_by_id(experiment.id)
             .one(&db)
             .await
             .expect("Should find experiment")
@@ -1272,11 +1270,11 @@ mod tests {
             println!("   - Found well with {} individual probe readings", temps.probe_readings.len());
             
             // Verify individual probe data structure
-            assert!(temps.probe_readings.len() > 0, "Should have individual probe readings");
+            assert!(!temps.probe_readings.is_empty(), "Should have individual probe readings");
             
             for probe_data in &temps.probe_readings {
                 assert!(!probe_data.probe.name.is_empty(), "Probe should have a name");
-                assert!(probe_data.probe.sequence >= 1 && probe_data.probe.sequence <= 8, 
+                assert!(probe_data.probe.data_column_index >= 1 && probe_data.probe.data_column_index <= 8, 
                     "Probe sequence should be 1-8");
                 // Just verify temperature is a reasonable value (temperatures can be zero in our data)
                 assert!(probe_data.probe_temperature_reading.temperature.abs() < rust_decimal::Decimal::new(1000, 0), 

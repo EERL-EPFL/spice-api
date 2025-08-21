@@ -38,6 +38,9 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![], use_target_models)]
+    pub probe_locations: Vec<crate::tray_configurations::probes::models::Probe>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -92,9 +92,23 @@ pub async fn get_one_tray_configuration(
     // Sort trays by order_sequence
     trays.sort_by_key(|t| t.order_sequence);
 
+    // Load probe data for each tray
+    let mut tray_api_structs = Vec::new();
+    for tray_model in trays {
+        let probes = crate::tray_configurations::probes::models::Entity::find()
+            .filter(crate::tray_configurations::probes::models::Column::TrayId.eq(tray_model.id))
+            .all(db)
+            .await?;
+        
+        let mut tray_api: crate::tray_configurations::trays::models::Tray = tray_model.into();
+        tray_api.probe_locations = probes.into_iter().map(Into::into).collect();
+        
+        tray_api_structs.push(tray_api);
+    }
+
     // Convert to crudcrate-generated TrayConfiguration and populate non-db fields
     let mut tray_config: TrayConfiguration = model.into();
-    tray_config.trays = trays.into_iter().map(Into::into).collect();
+    tray_config.trays = tray_api_structs;
     tray_config.associated_experiments = experiments;
 
     Ok(tray_config)
@@ -180,8 +194,9 @@ pub async fn create_tray_configuration(
 
     // Create individual trays
     for tray in &data.trays {
+        let tray_id = Uuid::new_v4();
         let tray_active = crate::tray_configurations::trays::models::ActiveModel {
-            id: Set(Uuid::new_v4()),
+            id: Set(tray_id),
             tray_configuration_id: Set(tray_config_id),
             order_sequence: Set(tray.order_sequence),
             rotation_degrees: Set(tray.rotation_degrees),
@@ -197,6 +212,21 @@ pub async fn create_tray_configuration(
             last_updated: Set(now),
         };
         tray_active.insert(db).await?;
+
+        // Create probes for this tray
+        for probe_data in &tray.probe_locations {
+            let probe_active = crate::tray_configurations::probes::models::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                tray_id: Set(tray_id),
+                name: Set(probe_data.name.clone()),
+                data_column_index: Set(probe_data.data_column_index),
+                position_x: Set(probe_data.position_x),
+                position_y: Set(probe_data.position_y),
+                created_at: Set(now),
+                last_updated: Set(now),
+            };
+            probe_active.insert(db).await?;
+        }
     }
 
     // Return the complete configuration
@@ -261,8 +291,9 @@ pub async fn update_tray_configuration(
         // Create new trays
         let now = chrono::Utc::now();
         for tray in trays {
+            let tray_id = Uuid::new_v4();
             let tray_active = crate::tray_configurations::trays::models::ActiveModel {
-                id: Set(Uuid::new_v4()),
+                id: Set(tray_id),
                 tray_configuration_id: Set(id),
                 order_sequence: Set(tray.order_sequence.unwrap_or_default().unwrap_or_default()),
                 rotation_degrees: Set(tray
@@ -281,6 +312,23 @@ pub async fn update_tray_configuration(
                 last_updated: Set(now),
             };
             tray_active.insert(db).await?;
+
+            // Create probes for this tray if provided
+            if !tray.probe_locations.is_empty() {
+                for probe_data in &tray.probe_locations {
+                    let probe_active = crate::tray_configurations::probes::models::ActiveModel {
+                        id: Set(Uuid::new_v4()),
+                        tray_id: Set(tray_id),
+                        name: Set(probe_data.name.clone().unwrap_or_default().unwrap_or_else(|| "Unnamed Probe".to_string())),
+                        data_column_index: Set(probe_data.data_column_index.unwrap_or_default().unwrap_or(1)),
+                        position_x: Set(probe_data.position_x.unwrap_or_default().unwrap_or_else(|| 0.into())),
+                        position_y: Set(probe_data.position_y.unwrap_or_default().unwrap_or_else(|| 0.into())),
+                        created_at: Set(now),
+                        last_updated: Set(now),
+                    };
+                    probe_active.insert(db).await?;
+                }
+            }
         }
     }
 

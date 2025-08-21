@@ -88,7 +88,7 @@ async fn load_individual_temperature_data(
     for (probe_reading, probe_opt) in probe_readings {
         probe_readings_by_temp_id
             .entry(probe_reading.temperature_reading_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((probe_reading, probe_opt));
     }
 
@@ -468,8 +468,7 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                         context
                             .temp_readings_map
                             .get(&transition.temperature_reading_id)
-                    })
-                    .map(|temp_data| temp_data.clone());
+                    }).cloned();
             let image_filename: Option<String> =
                 temperatures.as_ref().and_then(|t| t.temperature_reading.image_filename.clone());
             let image_asset_id = match image_filename {

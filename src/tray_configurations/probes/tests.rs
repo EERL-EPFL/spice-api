@@ -13,10 +13,9 @@ fn test_probe_model_compilation() {
     // Verify the model has the expected fields
     let _model_check = models::Model {
         id: probe_id,
-        tray_id: tray_id,
+        tray_id,
         name: "Test Probe".to_string(),
-        sequence: 1,
-        excel_column_index: 2,
+        excel_column_index: 1,
         position_x: rust_decimal::Decimal::new(45, 1), // 4.5
         position_y: rust_decimal::Decimal::new(135, 1), // 13.5
         created_at: chrono::Utc::now(),
@@ -53,9 +52,9 @@ fn test_probe_yaml_config_structure() {
     
     // Verify Excel column indices match logger positions + 1 (column 2 = logger position 1)
     for (name, sequence, excel_col, pos_x, pos_y) in expected_configs {
-        assert_eq!(excel_col, sequence + 1, "Excel column should be sequence + 1 for {}", name);
-        assert!(pos_x >= 0.0 && pos_x <= 200.0, "X position should be reasonable for {}", name);
-        assert!(pos_y >= 0.0 && pos_y <= 200.0, "Y position should be reasonable for {}", name);
+        assert_eq!(excel_col, sequence + 1, "Excel column should be sequence + 1 for {name}");
+        assert!((0.0..=200.0).contains(&pos_x), "X position should be reasonable for {name}");
+        assert!((0.0..=200.0).contains(&pos_y), "Y position should be reasonable for {name}");
     }
     
     println!("✅ Probe YAML configuration structure validated");
@@ -81,10 +80,9 @@ fn test_probe_database_constraints() {
     
     let probe = models::Model {
         id: probe_id,
-        tray_id: tray_id,
+        tray_id,
         name: "Temperature Probe 1".to_string(),
-        sequence: 1,
-        excel_column_index: 2, // Excel column mapping for processing
+        excel_column_index: 1, // Excel column mapping for processing
         position_x: rust_decimal::Decimal::new(45, 1), // 4.5 pixels from left
         position_y: rust_decimal::Decimal::new(135, 1), // 13.5 pixels from top
         created_at: chrono::Utc::now(),
@@ -92,8 +90,7 @@ fn test_probe_database_constraints() {
     };
     
     // Test key properties
-    assert_eq!(probe.sequence, 1);
-    assert_eq!(probe.excel_column_index, 2);
+    assert_eq!(probe.excel_column_index, 1);
     assert_eq!(probe.name, "Temperature Probe 1");
     assert!(!probe.name.is_empty(), "Probe name should not be empty");
     
