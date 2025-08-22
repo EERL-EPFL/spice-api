@@ -23,7 +23,6 @@ fn test_probe_model_compilation() {
     };
 
     // Test passes if it compiles
-    println!("✅ Probe model compilation test passed");
 }
 
 #[test]
@@ -71,7 +70,6 @@ fn test_probe_yaml_config_structure() {
         );
     }
 
-    println!("✅ Probe YAML configuration structure validated");
 }
 
 #[test]
@@ -108,5 +106,4 @@ fn test_probe_database_constraints() {
     assert_eq!(probe.name, "Temperature Probe 1");
     assert!(!probe.name.is_empty(), "Probe name should not be empty");
 
-    println!("✅ Probe database constraints validated");
 }

@@ -14,7 +14,7 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 
     // Log error details for debugging
     if status.is_server_error() || status.is_client_error() {
-        eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
+        // println!("HTTP Error - Status: {status}, Body: {body:?}");
     }
 
     (status, body)
@@ -1514,9 +1514,9 @@ async fn test_debug_500_error_user_payload() {
     let (create_status, create_body) = extract_response_body(create_response).await;
     
     // Debug the response
-    eprintln!("DEBUG USER PAYLOAD TEST:");
-    eprintln!("Status: {create_status}");
-    eprintln!("Body: {create_body:?}");
+    // println!("DEBUG USER PAYLOAD TEST:");
+    // println!("Status: {create_status}");
+    // println!("Body: {create_body:?}");
     
     assert_eq!(
         create_status,
@@ -1631,6 +1631,6 @@ async fn test_tray_configurations_have_id_fields() {
             }
         }
         
-        println!("✅ Tray configuration {} has required id field: {}", config["name"], config["id"]);
+        // Tray configuration has required id field
     }
 }

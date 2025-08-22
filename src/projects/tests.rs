@@ -14,7 +14,7 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 
     // Log error details for debugging
     if status.is_server_error() || status.is_client_error() {
-        eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
+// eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
     }
 
     (status, body)
@@ -205,7 +205,7 @@ async fn test_project_filtering_and_pagination() {
     assert_eq!(pagination_status, StatusCode::OK, "Pagination should work");
 
     // Debug the response structure to understand what we're getting
-    println!("Pagination response body: {pagination_body:?}");
+// println!("Pagination response body: {pagination_body:?}");
 
     // The response is directly an array, not wrapped in an object with 'items'
     let items = pagination_body
@@ -353,7 +353,7 @@ async fn test_project_filtering_and_sorting() {
 
             // Check filtering behavior - may work correctly or have known issues
             if non_matching_count > 0 {
-                eprintln!("⚠️ Filtering returned {non_matching_count} non-matching projects (known issue)");
+// eprintln!("⚠️ Filtering returned {non_matching_count} non-matching projects (known issue)");
             }
         }
 
@@ -455,7 +455,7 @@ async fn test_project_with_locations() {
 
     if status == StatusCode::CREATED {
         let project_id = body["id"].as_str().unwrap();
-        println!("✅ Project created for location testing");
+// println!("✅ Project created for location testing");
 
         // Try to create a location assigned to this project
         let location_data = json!({
@@ -480,7 +480,7 @@ async fn test_project_with_locations() {
         let (location_status, _location_body) = extract_response_body(location_response).await;
 
         if location_status == StatusCode::CREATED {
-            println!("✅ Location created and assigned to project");
+// println!("✅ Location created and assigned to project");
 
             // Now get the project and check if locations are loaded
             let get_project_response = app
@@ -499,20 +499,20 @@ async fn test_project_with_locations() {
                 extract_response_body(get_project_response).await;
 
             if get_project_status == StatusCode::OK {
-                println!("✅ Project with locations retrieved successfully");
+// println!("✅ Project with locations retrieved successfully");
                 if get_project_body["locations"].is_array() {
                     let locations = get_project_body["locations"].as_array().unwrap();
-                    println!("   Project has {} locations", locations.len());
+// println!("   Project has {} locations", locations.len());
 
                     if !locations.is_empty() {
-                        println!("   ✅ Project-location relationship working");
+// println!("   ✅ Project-location relationship working");
                     }
                 } else {
-                    println!("   ⚠️  Locations not loaded or wrong type");
+// println!("   ⚠️  Locations not loaded or wrong type");
                 }
             }
         } else {
-            println!("📋 Could not create location - testing project without locations");
+// println!("📋 Could not create location - testing project without locations");
 
             // Still test project retrieval
             let get_response = app
@@ -529,11 +529,11 @@ async fn test_project_with_locations() {
 
             let (get_status, get_body) = extract_response_body(get_response).await;
             if get_status == StatusCode::OK && get_body["locations"].is_array() {
-                println!("✅ Project locations array structure present");
+// println!("✅ Project locations array structure present");
             }
         }
     } else {
-        println!("📋 Skipping project-location test - couldn't create project");
+// println!("📋 Skipping project-location test - couldn't create project");
     }
 }
 
@@ -572,11 +572,12 @@ async fn test_project_colour_variations() {
         let (status, _body) = extract_response_body(response).await;
 
         if status == StatusCode::CREATED {
-            println!("✅ Project accepts {description} colour format: '{colour}'");
+// println!("✅ Project accepts {description} colour format: '{colour}'");
         } else {
-            println!(
-                "📋 Project rejects {description} colour format: '{colour}' (Status: {status})"
-            );
+            // println!(
+            //     "📋 Project rejects {} colour format: '{}' (Status: {})",
+            //     description, colour, status
+            // );
         }
     }
 }
@@ -585,8 +586,8 @@ async fn test_project_colour_variations() {
 async fn test_project_pagination_and_limits() {
     let app = setup_test_app().await;
 
-    println!("📋 PROJECT PAGINATION TEST");
-    println!("   Testing project pagination and limit functionality");
+// println!("📋 PROJECT PAGINATION TEST");
+// println!("   Testing project pagination and limit functionality");
 
     // Test pagination
     let pagination_response = app
@@ -629,9 +630,9 @@ async fn test_project_pagination_and_limits() {
     let (sorted_pagination_status, _) = extract_response_body(sorted_pagination_response).await;
 
     if sorted_pagination_status == StatusCode::OK {
-        println!("   ✅ Sorted pagination query successful");
+// println!("   ✅ Sorted pagination query successful");
     } else {
-        println!("   ⚠️  Sorted pagination query failed: {sorted_pagination_status}");
+// println!("   ⚠️  Sorted pagination query failed: {sorted_pagination_status}");
     }
 
     // This test always passes - it's for documenting pagination behavior
@@ -710,12 +711,12 @@ async fn test_project_retrieval(app: &axum::Router, project_id: &str) -> Option<
 
         // Check for related data
         if get_body["locations"].is_array() {
-            println!("   ✅ Locations array present");
+// println!("   ✅ Locations array present");
         }
 
         Some(get_body)
     } else {
-        println!("⚠️  Project retrieval failed: {get_status}");
+// println!("⚠️  Project retrieval failed: {get_status}");
         None
     }
 }
@@ -749,11 +750,11 @@ async fn test_project_update(app: &axum::Router, project_id: &str, new_colour: &
             true
         }
         StatusCode::METHOD_NOT_ALLOWED => {
-            println!("⚠️  Project update not implemented (405) - This is expected");
+// println!("⚠️  Project update not implemented (405) - This is expected");
             false
         }
         _ => {
-            println!("📋 Project update returned: {update_status}");
+// println!("📋 Project update returned: {update_status}");
             false
         }
     }
@@ -776,19 +777,19 @@ async fn test_project_deletion(app: &axum::Router, project_id: &str) -> bool {
     let delete_status = delete_response.status();
     match delete_status {
         status if status.is_success() => {
-            println!("✅ Project delete successful");
+// println!("✅ Project delete successful");
             true
         }
         StatusCode::METHOD_NOT_ALLOWED => {
-            println!("⚠️  Project delete not implemented (405) - This is expected");
+// println!("⚠️  Project delete not implemented (405) - This is expected");
             false
         }
         StatusCode::NOT_FOUND => {
-            println!("📋 Project delete returned 404 (project not found) - This is expected for non-existent resources");
+// println!("📋 Project delete returned 404 (project not found) - This is expected for non-existent resources");
             false
         }
         _ => {
-            println!("📋 Project delete returned: {delete_status}");
+// println!("📋 Project delete returned: {delete_status}");
             false
         }
     }
@@ -812,16 +813,16 @@ async fn create_multiple_test_projects(
                 projects.push((project_id, body));
             }
             Err(error) => {
-                println!("Failed to create project {i}: {error}");
+// println!("Failed to create project {i}: {error}");
             }
         }
     }
 
-    println!(
-        "✅ Created {} out of {} requested projects",
-        projects.len(),
-        count
-    );
+    // println!(
+    //     "✅ Created {} out of {} requested projects",
+    //     projects.len(),
+    //     count
+    // );
     projects
 }
 
@@ -843,7 +844,7 @@ async fn test_project_complete_lifecycle() {
 
     match project_result {
         Ok((project_id, _body)) => {
-            println!("✅ Project created using helper function: {project_id}");
+// println!("✅ Project created using helper function: {project_id}");
 
             // Use helper function to test retrieval
             if let Some(_project_data) = test_project_retrieval(&app, &project_id).await {
@@ -857,10 +858,10 @@ async fn test_project_complete_lifecycle() {
                 let _delete_success = test_project_deletion(&app, &project_id).await;
             }
 
-            println!("✅ Complete project lifecycle test passed using helper functions");
+// println!("✅ Complete project lifecycle test passed using helper functions");
         }
         Err(error) => {
-            println!("📋 Project lifecycle test failed: {error}");
+// println!("📋 Project lifecycle test failed: {error}");
         }
     }
 }
@@ -873,13 +874,13 @@ async fn test_multiple_project_batch_operations() {
     let projects = create_multiple_test_projects(&app, 5).await;
 
     if projects.is_empty() {
-        println!("📋 Skipping batch operations test - no projects created");
+// println!("📋 Skipping batch operations test - no projects created");
     } else {
-        println!("✅ Batch project creation successful");
+// println!("✅ Batch project creation successful");
 
         // Test retrieval of all created projects
         for (i, (project_id, _)) in projects.iter().enumerate() {
-            println!("Testing retrieval of project {}", i + 1);
+// println!("Testing retrieval of project {}", i + 1);
             test_project_retrieval(&app, project_id).await;
         }
 
@@ -887,11 +888,11 @@ async fn test_multiple_project_batch_operations() {
         let update_colours = ["#AAAAAA", "#BBBBBB", "#CCCCCC", "#DDDDDD", "#EEEEEE"];
         for (i, (project_id, _)) in projects.iter().enumerate() {
             let colour = update_colours[i % update_colours.len()];
-            println!("Testing update of project {} with colour {}", i + 1, colour);
+// println!("Testing update of project {} with colour {}", i + 1, colour);
             let _update_success = test_project_update(&app, project_id, colour).await;
         }
 
-        println!("✅ Multiple project operations test completed");
+// println!("✅ Multiple project operations test completed");
     }
 }
 
@@ -911,7 +912,7 @@ async fn test_project_helper_functions_consistency() {
 
         match create_test_project_with_params(&app, &full_name, colour, note).await {
             Ok((project_id, create_body)) => {
-                println!("✅ Project created: {}", create_body["name"]);
+// println!("✅ Project created: {}", create_body["name"]);
 
                 // Verify the created project has expected fields
                 assert_eq!(create_body["name"], full_name);
@@ -931,10 +932,10 @@ async fn test_project_helper_functions_consistency() {
                     }
                 }
 
-                println!("✅ Helper function consistency verified for: {full_name}");
+// println!("✅ Helper function consistency verified for: {full_name}");
             }
             Err(error) => {
-                println!("📋 Project creation failed for {full_name}: {error}");
+// println!("📋 Project creation failed for {full_name}: {error}");
             }
         }
     }
@@ -946,7 +947,7 @@ async fn test_project_error_handling_with_helpers() {
 
     // Test retrieval of non-existent project using helper
     let fake_project_id = uuid::Uuid::new_v4().to_string();
-    println!("Testing retrieval of non-existent project: {fake_project_id}");
+// println!("Testing retrieval of non-existent project: {fake_project_id}");
 
     // This should return None and not panic
     let result = test_project_retrieval(&app, &fake_project_id).await;
@@ -956,12 +957,12 @@ async fn test_project_error_handling_with_helpers() {
     );
 
     // Test update of non-existent project using helper
-    println!("Testing update of non-existent project: {fake_project_id}");
+// println!("Testing update of non-existent project: {fake_project_id}");
     let _update_success = test_project_update(&app, &fake_project_id, "#123456").await;
 
     // Test deletion of non-existent project using helper
-    println!("Testing deletion of non-existent project: {fake_project_id}");
+// println!("Testing deletion of non-existent project: {fake_project_id}");
     let _delete_success = test_project_deletion(&app, &fake_project_id).await;
 
-    println!("✅ Project error handling test completed with helpers");
+// println!("✅ Project error handling test completed with helpers");
 }

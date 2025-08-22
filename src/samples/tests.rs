@@ -1203,10 +1203,10 @@ async fn test_sample_experimental_results_comprehensive() {
     assert_eq!(treatments.len(), 2, "Should create 2 treatments");
 
     // Extract treatment IDs for later use (debug first)
-    println!(
-        "Created treatments: {}",
-        serde_json::to_string_pretty(&treatments).unwrap()
-    );
+    // println!(
+    //     "Created treatments: {}",
+    //     serde_json::to_string_pretty(&treatments).unwrap()
+    // );
 
     let none_treatment_id_str = treatments
         .iter()
@@ -1426,11 +1426,11 @@ async fn test_sample_experimental_results_comprehensive() {
     );
 
     for (i, result) in all_experimental_results.iter().enumerate() {
-        println!(
-            "Validating experimental result {}: {}",
-            i,
-            serde_json::to_string_pretty(result).unwrap()
-        );
+        // println!(
+        //     "Validating experimental result {}: {}",
+        //     i,
+        //     serde_json::to_string_pretty(result).unwrap()
+        // );
 
         // Basic fields
         assert!(
@@ -1518,7 +1518,7 @@ async fn test_sample_experimental_results_comprehensive() {
         );
 
         let treatment_name = result["treatment_name"].as_str().unwrap();
-        println!("Found treatment_name: {treatment_name}");
+// println!("Found treatment_name: {treatment_name}");
         assert!(
             treatment_name.contains("none")
                 || treatment_name.contains("None")
@@ -1549,12 +1549,12 @@ async fn test_sample_experimental_results_comprehensive() {
         assert!(result["tray_name"].is_string(), "Should have tray_name");
     }
 
-    println!("✅ All experimental results validated successfully!");
-    println!("   - Temperature calculations from 8 probes: ✅");
-    println!("   - Treatment linking through regions: ✅");
-    println!("   - Time calculations from experiment start: ✅");
-    println!("   - Well coordinate mapping: ✅");
-    println!("   - UI field compatibility: ✅");
+// println!("✅ All experimental results validated successfully!");
+// println!("   - Temperature calculations from 8 probes: ✅");
+// println!("   - Treatment linking through regions: ✅");
+// println!("   - Time calculations from experiment start: ✅");
+// println!("   - Well coordinate mapping: ✅");
+// println!("   - UI field compatibility: ✅");
 }
 
 #[tokio::test]
@@ -1847,10 +1847,10 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         "Heat treatment should be deleted (not in update)"
     );
 
-    println!("✅ Treatment CRUD operations verified:");
-    println!("   - UPDATE: none treatment updated (same ID, new notes) ✅");
-    println!("   - CREATE: h2o2 treatment created (new ID) ✅");
-    println!("   - DELETE: heat treatment deleted (not in update list) ✅");
+// println!("✅ Treatment CRUD operations verified:");
+// println!("   - UPDATE: none treatment updated (same ID, new notes) ✅");
+// println!("   - CREATE: h2o2 treatment created (new ID) ✅");
+// println!("   - DELETE: heat treatment deleted (not in update list) ✅");
 
     // Step 4: Test edge case - empty treatments list should delete all treatments
     let empty_treatments_data = json!({
@@ -1905,8 +1905,8 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         "All treatments should be deleted with empty treatments list"
     );
 
-    println!("✅ Empty treatments list edge case verified:");
-    println!("   - All treatments deleted when treatments: [] ✅");
+// println!("✅ Empty treatments list edge case verified:");
+// println!("   - All treatments deleted when treatments: [] ✅");
 }
 
 #[tokio::test]
@@ -2003,7 +2003,7 @@ async fn test_sample_update_treatment_validation() {
         "Should fail when updating non-existent treatment ID"
     );
 
-    println!("✅ Treatment validation tests passed:");
-    println!("   - Invalid treatment names rejected ✅");
-    println!("   - Non-existent treatment IDs handled ✅");
+// println!("✅ Treatment validation tests passed:");
+// println!("   - Invalid treatment names rejected ✅");
+// println!("   - Non-existent treatment IDs handled ✅");
 }
