@@ -51,6 +51,8 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model = false, create_model = false, update_model = false)]
     pub dilution_summaries: Vec<DilutionSummary>,
+    // Note: sample field removed to prevent circular dependency with samples.treatments field
+    // Use sample_id to reference sample data when needed
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

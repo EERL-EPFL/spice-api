@@ -25,7 +25,10 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 use tokio::time::{Duration, sleep};
+use futures::future::join_all;
 
 #[derive(Debug, Clone)]
 pub struct SeedingConfig {
@@ -52,7 +55,7 @@ pub struct DatabaseSeeder {
 
 /// Generate a random coordinate within approximately 1km radius of a base coordinate
 fn generate_nearby_coordinate(base_lat: f64, base_lon: f64) -> (f64, f64) {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Approximate degrees per km (varies with latitude, but good enough for testing)
     // 1 degree latitude ≈ 111 km, so 0.009 degrees ≈ 1 km
@@ -84,6 +87,78 @@ impl DatabaseSeeder {
             },
             created_objects: CreatedObjects::default(),
         }
+    }
+
+    /// Make multiple requests in parallel with controlled concurrency
+    async fn make_parallel_requests(
+        &self,
+        requests: Vec<(String, String, Option<Value>)>, // (method, endpoint, data)
+        max_concurrent: usize,
+        pb: &ProgressBar,
+    ) -> Result<Vec<Value>, String> {
+        let semaphore = Arc::new(Semaphore::new(max_concurrent));
+        let mut tasks = Vec::new();
+
+        for (method, endpoint, data) in requests {
+            let sem = Arc::clone(&semaphore);
+            let config = self.config.clone();
+            let pb_clone = pb.clone();
+            
+            let task = tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                
+                let client = &config.client;
+                let url = format!("{}{}", config.base_url, endpoint);
+
+                let response = match method.to_uppercase().as_str() {
+                    "POST" => {
+                        let mut request = client
+                            .post(&url)
+                            .header("authorization", format!("Bearer {}", config.jwt_token))
+                            .header("content-type", "application/json");
+                        if let Some(json_data) = data {
+                            request = request.json(&json_data);
+                        }
+                        request.send().await
+                    },
+                    "GET" => {
+                        client
+                            .get(&url)
+                            .header("authorization", format!("Bearer {}", config.jwt_token))
+                            .send()
+                            .await
+                    },
+                    _ => return Err("Unsupported HTTP method".to_string()),
+                };
+
+                let result = match response {
+                    Ok(resp) if resp.status().is_success() => {
+                        resp.json::<Value>().await
+                            .map_err(|e| format!("JSON parse error: {e}"))
+                    },
+                    Ok(resp) => {
+                        let status = resp.status();
+                        let error_text = resp.text().await.unwrap_or_default();
+                        Err(format!("HTTP {} {}: {}", status, endpoint, error_text))
+                    },
+                    Err(e) => Err(format!("Request error {}: {e}", endpoint)),
+                };
+
+                pb_clone.inc(1);
+                result
+            });
+            
+            tasks.push(task);
+        }
+
+        let results: Result<Vec<_>, String> = join_all(tasks).await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Task join error: {}", e))?
+            .into_iter()
+            .collect();
+
+        results
     }
 
     async fn make_request(
@@ -406,12 +481,10 @@ impl DatabaseSeeder {
 
         let samples_per_location = 100; // Generate 100 samples per location for geographic spread
         let total_samples = self.created_objects.locations.len() * samples_per_location;
-        let pb = ProgressBar::new(total_samples as u64);
-        pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
-            .unwrap()
-            .progress_chars("##-"));
-
+        
+        // Build all sample requests for parallel execution
+        let mut all_sample_requests = Vec::new();
+        
         for location in &self.created_objects.locations {
             let location_id = location["id"].as_str().unwrap();
             let location_name = location["name"].as_str().unwrap();
@@ -426,7 +499,7 @@ impl DatabaseSeeder {
                 .parse::<f64>()
                 .unwrap_or(0.0);
 
-            // Create many samples per location with geographic spread
+            // Build sample requests for this location
             for i in 0..samples_per_location {
                 let (pattern_name, sample_type) = &sample_patterns[i % sample_patterns.len()];
 
@@ -448,11 +521,6 @@ impl DatabaseSeeder {
                     collection_date,
                     i + 1
                 );
-
-                pb.set_message(format!(
-                    "Creating: {}...",
-                    &sample_name[..sample_name.len().min(35)]
-                ));
 
                 let remarks = match *sample_type {
                     "procedural_blank" => format!(
@@ -483,16 +551,24 @@ impl DatabaseSeeder {
                     "remarks": remarks
                 });
 
-                let result = self
-                    .make_request("POST", "/samples", Some(sample_data))
-                    .await?;
-                self.created_objects.samples.push(result);
-
-                pb.inc(1);
-                // Reduce sleep time due to many more samples
-                sleep(Duration::from_millis(10)).await;
+                all_sample_requests.push(("POST".to_string(), "/samples".to_string(), Some(sample_data)));
             }
         }
+
+        // Execute sample creation in parallel with controlled concurrency
+        let pb = ProgressBar::new(total_samples as u64);
+        pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
+            .unwrap()
+            .progress_chars("##-"));
+        pb.set_message("Creating samples in parallel...");
+
+        let max_concurrent = 20; // Limit concurrent requests to avoid overwhelming the server
+        let results = self.make_parallel_requests(all_sample_requests, max_concurrent, &pb).await
+            .map_err(|e| format!("Sample creation failed: {}", e))?;
+        
+        // Store all created samples
+        self.created_objects.samples.extend(results);
 
         pb.finish_with_message("Samples created!");
         println!(

@@ -92,6 +92,9 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], use_target_models)]
     pub treatments: Vec<crate::treatments::models::Treatment>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = None, list_model=false)]
+    pub location: Option<crate::locations::models::Location>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

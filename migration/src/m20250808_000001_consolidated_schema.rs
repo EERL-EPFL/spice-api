@@ -427,6 +427,12 @@ impl MigrationTrait for Migration {
                     .not_null()
                     .default(Expr::current_timestamp()),
             )
+            .col(
+                ColumnDef::new(Experiments::HasResults)
+                    .boolean()
+                    .not_null()
+                    .default(false),
+            )
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_experiment_tray_configuration")
@@ -1453,6 +1459,7 @@ enum Experiments {
     TrayConfigurationId,
     CreatedAt,
     LastUpdated,
+    HasResults,
 }
 
 #[derive(DeriveIden)]

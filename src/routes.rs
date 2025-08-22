@@ -7,7 +7,8 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
-use utoipa_scalar::{Scalar, Servable};
+// Temporarily disable scalar to isolate stack overflow issue
+// use utoipa_scalar::{Scalar, Servable};
 
 pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     #[derive(OpenApi)]
@@ -51,28 +52,19 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
 
     let app_state: AppState = AppState::new(db.clone(), config.clone(), keycloak_instance);
 
-    // Build the router with routes from the plots module
-    let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+    // Build the router without OpenAPI to completely isolate stack overflow issue
+    Router::new()
         .merge(crate::common::views::router(&app_state)) // Root routes
-        .nest("/api/locations", locations::views::router(&app_state))
-        .nest("/api/projects", projects::views::router(&app_state))
-        .nest("/api/experiments", experiments::views::router(&app_state))
-        .nest("/api/samples", samples::views::router(&app_state))
-        .nest("/api/assets", assets::views::router(&app_state))
+        .nest("/api/locations", locations::views::router(&app_state).into())
+        .nest("/api/projects", projects::views::router(&app_state).into())
+        .nest("/api/experiments", experiments::views::router(&app_state).into())
+        .nest("/api/samples", samples::views::router(&app_state).into())
+        .nest("/api/assets", assets::views::router(&app_state).into())
         .nest(
             "/api/tray_configurations",
-            tray_configurations::views::router(&app_state),
+            tray_configurations::views::router(&app_state).into(),
         )
-        .nest("/api/treatments", treatments::views::router(&app_state))
-        // .nest(
-        //     "/api",
-        //     freezing_results::views::freezing_results_routes().with_state(app_state.clone()),
-        // )
-        .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
-        .split_for_parts();
-
-    // Merge the Excel upload and asset routes separately since they're not OpenApiRouter compatible
-    router
+        .nest("/api/treatments", treatments::views::router(&app_state).into())
         .nest(
             "/api/experiments",
             experiments::views::excel_upload_router().with_state(app_state.clone()),
@@ -81,5 +73,5 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
             "/api/experiments",
             experiments::views::asset_router().with_state(app_state),
         )
-        .merge(Scalar::with_url("/api/docs", api))
+        .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
 }

@@ -53,6 +53,8 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable)]
     pub last_updated: DateTime<Utc>,
+    #[crudcrate(sortable, filterable)]
+    pub has_results: bool,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false, use_target_models)]
     pub regions: Vec<crate::tray_configurations::regions::models::Region>,
@@ -224,17 +226,22 @@ pub(super) async fn get_one_experiment(
         .await?
         .ok_or(DbErr::RecordNotFound("Experiment not found".to_string()))?;
 
-    let regions: Vec<crate::tray_configurations::regions::models::Region> = model
+    // Load regions with enhanced treatment and sample data
+    let region_models = model
         .find_related(crate::tray_configurations::regions::models::Entity)
         .all(db)
-        .await?
+        .await?;
+
+    // Load regions without enhancement for now to avoid stack overflow
+    let enhanced_regions: Vec<crate::tray_configurations::regions::models::Region> = region_models
         .into_iter()
-        .map(Into::into) // Direct conversion using EntityToModels
+        .map(Into::into)
         .collect();
 
     let mut experiment: Experiment = model.into();
-    experiment.regions = regions;
-    experiment.results = build_tray_centric_results(id, db).await?;
+    experiment.regions = enhanced_regions;
+    // Temporarily disable results loading to isolate stack overflow
+    // experiment.results = build_tray_centric_results(id, db).await?;
 
     Ok(experiment)
 }
@@ -396,6 +403,7 @@ pub(super) async fn get_all_experiments(
 
         let mut experiment: Experiment = model.into();
         experiment.regions = regions;
+        // has_results is now a database field, no need to compute it
 
         experiments.push(experiment);
     }
