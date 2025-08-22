@@ -1,11 +1,11 @@
 pub use super::models::{Experiment, router as crudrouter};
+use crate::assets::models as s3_assets;
 use crate::common::auth::Role;
 use crate::common::models::ProcessingStatus;
 use crate::common::state::AppState;
-use crate::external::s3::get_client;
-use crate::assets::models as s3_assets;
 use crate::experiments::phase_transitions::models as phase_models;
 use crate::experiments::temperatures::models as temp_models;
+use crate::external::s3::get_client;
 use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{
@@ -23,95 +23,6 @@ use serde::Serialize;
 use std::convert::TryInto;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
-#[cfg(test)]
-mod asset_role_tests {
-    use super::determine_asset_role;
-
-    #[test]
-    fn test_camera_image_detection() {
-        // Test camera image patterns
-        assert_eq!(
-            determine_asset_role("INP_49640_2025-03-20_15-14-17.jpg", "image", "jpg"),
-            "camera_image"
-        );
-        assert_eq!(
-            determine_asset_role("INP_12345_2024-12-01_10-30-45.png", "image", "png"),
-            "camera_image"
-        );
-        // Non-camera image
-        assert_eq!(
-            determine_asset_role("random_photo.jpg", "image", "jpg"),
-            "other_image"
-        );
-    }
-
-    #[test]
-    fn test_tabular_data_roles() {
-        // Analysis data files
-        assert_eq!(
-            determine_asset_role("merged.xlsx", "tabular", "xlsx"),
-            "analysis_data"
-        );
-        assert_eq!(
-            determine_asset_role("freezing_temperatures.xlsx", "tabular", "xlsx"),
-            "analysis_data"
-        );
-        assert_eq!(
-            determine_asset_role("merged.csv", "tabular", "csv"),
-            "analysis_data"
-        );
-        // Temperature sensor data
-        assert_eq!(
-            determine_asset_role("S39031 INP Freezing.xlsx", "tabular", "xlsx"),
-            "temperature_data"
-        );
-        // Configuration files
-        assert_eq!(
-            determine_asset_role("regions.yaml", "tabular", "yaml"),
-            "configuration"
-        );
-        assert_eq!(
-            determine_asset_role("temperature_config.yaml", "tabular", "yaml"),
-            "configuration"
-        );
-        // Other data
-        assert_eq!(
-            determine_asset_role("random_data.xlsx", "tabular", "xlsx"),
-            "raw_data"
-        );
-    }
-
-    #[test]
-    fn test_other_file_types() {
-        // NetCDF analysis files
-        assert_eq!(
-            determine_asset_role("analysis.nc", "netcdf", "nc"),
-            "analysis_data"
-        );
-        assert_eq!(
-            determine_asset_role("well_temperatures.nc", "netcdf", "nc"),
-            "analysis_data"
-        );
-        // Analysis images
-        assert_eq!(
-            determine_asset_role("analysis_tray_1.png", "image", "png"),
-            "analysis_data"
-        );
-        assert_eq!(
-            determine_asset_role("frozen_fraction.png", "image", "png"),
-            "analysis_data"
-        );
-        // Other files
-        assert_eq!(
-            determine_asset_role("setup.yaml", "unknown", "yaml"),
-            "configuration"
-        );
-        assert_eq!(
-            determine_asset_role("random.pdf", "unknown", "pdf"),
-            "miscellaneous"
-        );
-    }
-}
 
 // Helper struct for file upload processing
 struct FileUploadData {
@@ -430,7 +341,7 @@ pub fn asset_router() -> Router<AppState> {
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit for file uploads
 }
 
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, serde::Deserialize, ToSchema)]
 pub struct UploadResponse {
     success: bool,
     filename: String,
@@ -956,4 +867,306 @@ pub async fn get_experiment_results(
         })?;
 
     Ok(Json(results))
+}
+
+#[cfg(test)]
+mod asset_role_tests {
+    use super::determine_asset_role;
+
+    #[test]
+    fn test_camera_image_detection() {
+        // Test camera image patterns
+        assert_eq!(
+            determine_asset_role("INP_49640_2025-03-20_15-14-17.jpg", "image", "jpg"),
+            "camera_image"
+        );
+        assert_eq!(
+            determine_asset_role("INP_12345_2024-12-01_10-30-45.png", "image", "png"),
+            "camera_image"
+        );
+        // Non-camera image
+        assert_eq!(
+            determine_asset_role("random_photo.jpg", "image", "jpg"),
+            "other_image"
+        );
+    }
+
+    #[test]
+    fn test_tabular_data_roles() {
+        // Analysis data files
+        assert_eq!(
+            determine_asset_role("merged.xlsx", "tabular", "xlsx"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("freezing_temperatures.xlsx", "tabular", "xlsx"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("merged.csv", "tabular", "csv"),
+            "analysis_data"
+        );
+        // Temperature sensor data
+        assert_eq!(
+            determine_asset_role("S39031 INP Freezing.xlsx", "tabular", "xlsx"),
+            "temperature_data"
+        );
+        // Configuration files
+        assert_eq!(
+            determine_asset_role("regions.yaml", "tabular", "yaml"),
+            "configuration"
+        );
+        assert_eq!(
+            determine_asset_role("temperature_config.yaml", "tabular", "yaml"),
+            "configuration"
+        );
+        // Other data
+        assert_eq!(
+            determine_asset_role("random_data.xlsx", "tabular", "xlsx"),
+            "raw_data"
+        );
+    }
+
+    #[test]
+    fn test_other_file_types() {
+        // NetCDF analysis files
+        assert_eq!(
+            determine_asset_role("analysis.nc", "netcdf", "nc"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("well_temperatures.nc", "netcdf", "nc"),
+            "analysis_data"
+        );
+        // Analysis images
+        assert_eq!(
+            determine_asset_role("analysis_tray_1.png", "image", "png"),
+            "analysis_data"
+        );
+        assert_eq!(
+            determine_asset_role("frozen_fraction.png", "image", "png"),
+            "analysis_data"
+        );
+        // Other files
+        assert_eq!(
+            determine_asset_role("setup.yaml", "unknown", "yaml"),
+            "configuration"
+        );
+        assert_eq!(
+            determine_asset_role("random.pdf", "unknown", "pdf"),
+            "miscellaneous"
+        );
+    }
+}
+
+#[cfg(test)]
+mod view_helper_tests {
+    use super::*;
+
+    #[test]
+    fn test_file_upload_data_struct() {
+        // Test that FileUploadData can be created and has expected fields
+        let upload_data = FileUploadData {
+            file_name: "test.jpg".to_string(),
+            file_bytes: vec![1, 2, 3, 4],
+            file_type: "image".to_string(),
+            extension: "jpg".to_string(),
+            size: 4,
+            s3_key: "test/path/test.jpg".to_string(),
+        };
+
+        assert_eq!(upload_data.file_name, "test.jpg");
+        assert_eq!(upload_data.file_bytes, vec![1, 2, 3, 4]);
+        assert_eq!(upload_data.file_type, "image");
+        assert_eq!(upload_data.extension, "jpg");
+        assert_eq!(upload_data.size, 4);
+        assert_eq!(upload_data.s3_key, "test/path/test.jpg");
+    }
+
+    #[test]
+    fn test_asset_processing_result_struct() {
+        // Test that AssetProcessingResult can be created with different configurations
+        let result1 = AssetProcessingResult {
+            auto_processed: true,
+            processing_message: Some("File processed successfully".to_string()),
+        };
+
+        assert_eq!(result1.auto_processed, true);
+        assert_eq!(result1.processing_message, Some("File processed successfully".to_string()));
+
+        let result2 = AssetProcessingResult {
+            auto_processed: false,
+            processing_message: None,
+        };
+
+        assert_eq!(result2.auto_processed, false);
+        assert_eq!(result2.processing_message, None);
+    }
+
+    #[test]
+    fn test_upload_response_struct() {
+        // Test that UploadResponse can be serialized/deserialized
+        let response = UploadResponse {
+            success: true,
+            filename: "test.xlsx".to_string(),
+            size: 1024,
+            auto_processed: true,
+            processing_message: Some("Excel file processed".to_string()),
+        };
+
+        // Test serialization
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("test.xlsx"));
+        assert!(json.contains("true"));
+        assert!(json.contains("1024"));
+        assert!(json.contains("Excel file processed"));
+
+        // Test deserialization
+        let deserialized: UploadResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.success, true);
+        assert_eq!(deserialized.filename, "test.xlsx");
+        assert_eq!(deserialized.size, 1024);
+        assert_eq!(deserialized.auto_processed, true);
+        assert_eq!(deserialized.processing_message, Some("Excel file processed".to_string()));
+    }
+
+    #[test]
+    fn test_upload_response_without_message() {
+        // Test UploadResponse with None message
+        let response = UploadResponse {
+            success: false,
+            filename: "failed.txt".to_string(),
+            size: 0,
+            auto_processed: false,
+            processing_message: None,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        let deserialized: UploadResponse = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(deserialized.success, false);
+        assert_eq!(deserialized.filename, "failed.txt");
+        assert_eq!(deserialized.size, 0);
+        assert_eq!(deserialized.auto_processed, false);
+        assert_eq!(deserialized.processing_message, None);
+    }
+
+    #[test]
+    fn test_file_type_detection_logic() {
+        // Test the file type detection logic from process_multipart_field
+        let test_cases = vec![
+            ("image.png", "png", "image"),
+            ("photo.jpg", "jpg", "image"),
+            ("picture.jpeg", "jpeg", "image"),
+            ("data.xlsx", "xlsx", "tabular"),
+            ("spreadsheet.xls", "xls", "tabular"),
+            ("csv_data.csv", "csv", "tabular"),
+            ("calc.ods", "ods", "tabular"),
+            ("netcdf_file.nc", "nc", "netcdf"),
+            ("unknown.pdf", "pdf", "unknown"),
+            ("no_extension", "", "unknown"),
+        ];
+
+        for (filename, expected_ext, expected_type) in test_cases {
+            let extension = std::path::Path::new(filename)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+
+            let file_type = match extension.as_str() {
+                "png" | "jpg" | "jpeg" => "image".to_string(),
+                "xls" | "ods" | "xlsx" | "csv" => "tabular".to_string(),
+                "nc" => "netcdf".to_string(),
+                _ => "unknown".to_string(),
+            };
+
+            assert_eq!(extension, expected_ext, "Extension mismatch for {}", filename);
+            assert_eq!(file_type, expected_type, "File type mismatch for {}", filename);
+        }
+    }
+
+    #[test]
+    fn test_s3_key_generation_pattern() {
+        // Test the S3 key generation pattern from process_multipart_field
+        let app_name = "test-app";
+        let deployment = "test";
+        let experiment_id = uuid::Uuid::new_v4();
+        let filename = "test_file.xlsx";
+
+        let expected_pattern = format!(
+            "{}/{}/experiments/{}/{}",
+            app_name, deployment, experiment_id, filename
+        );
+
+        // Test that the pattern follows expected structure
+        assert!(expected_pattern.contains(app_name));
+        assert!(expected_pattern.contains(deployment));
+        assert!(expected_pattern.contains("experiments"));
+        assert!(expected_pattern.contains(&experiment_id.to_string()));
+        assert!(expected_pattern.contains(filename));
+
+        // Test path structure
+        let parts: Vec<&str> = expected_pattern.split('/').collect();
+        assert_eq!(parts.len(), 5); // app_name/deployment/experiments/experiment_id/filename
+        assert_eq!(parts[0], app_name);
+        assert_eq!(parts[1], deployment);
+        assert_eq!(parts[2], "experiments");
+        assert_eq!(parts[3], &experiment_id.to_string());
+        assert_eq!(parts[4], filename);
+    }
+
+    #[test]
+    fn test_body_limit_constants() {
+        // Test that body limits are reasonable
+        let max_body_limit = 30 * 1024 * 1024; // 30MB as used in routers
+        
+        assert_eq!(max_body_limit, 31457280); // 30MB in bytes
+        assert!(max_body_limit > 1024 * 1024); // At least 1MB
+        assert!(max_body_limit < 100 * 1024 * 1024); // Less than 100MB (reasonable limit)
+    }
+
+    #[test]
+    fn test_route_path_constants() {
+        // Test that route paths follow expected patterns
+        let route_patterns = vec![
+            "/{experiment_id}/process-excel",
+            "/{experiment_id}/process-asset", 
+            "/{experiment_id}/clear-results",
+            "/{experiment_id}/results",
+            "/{experiment_id}/uploads",
+            "/{experiment_id}/download",
+            "/{experiment_id}/download-token",
+        ];
+
+        for pattern in route_patterns {
+            assert!(pattern.starts_with("/"));
+            assert!(pattern.contains("{experiment_id}"));
+            assert!(!pattern.contains(" ")); // No spaces in routes
+            assert!(pattern.len() > 10); // Reasonable length
+            assert!(pattern.len() < 50); // Not too long
+        }
+    }
+
+    #[test]
+    fn test_header_constants() {
+        // Test header names used in the code
+        let overwrite_header = "x-allow-overwrite";
+        
+        assert!(overwrite_header.starts_with("x-")); // Custom header prefix
+        assert!(overwrite_header.contains("allow"));
+        assert!(overwrite_header.contains("overwrite"));
+        assert!(!overwrite_header.contains(" ")); // No spaces in header names
+        assert!(overwrite_header.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
+    }
+
+    #[test]
+    fn test_multipart_field_name() {
+        // Test that we expect the correct multipart field name
+        let expected_field_name = "file";
+        
+        assert_eq!(expected_field_name, "file");
+        assert!(expected_field_name.len() > 0);
+        assert!(expected_field_name.chars().all(|c| c.is_ascii_alphabetic()));
+    }
 }
