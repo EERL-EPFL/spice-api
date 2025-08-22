@@ -49,7 +49,7 @@ fn test_probe_yaml_config_structure() {
     for (i, (_, sequence, _, _, _)) in expected_configs.iter().enumerate() {
         assert_eq!(
             *sequence,
-            (i + 1) as i32,
+            (i + 1),
             "Sequence should be consecutive starting from 1"
         );
     }

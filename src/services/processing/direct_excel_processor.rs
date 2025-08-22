@@ -26,7 +26,7 @@ pub struct DirectExcelProcessor {
     db: DatabaseConnection,
     well_states: HashMap<String, i32>, // Track previous state for each well (tray_name:well_coordinate -> phase)
     well_ids: HashMap<String, Uuid>,   // Map tray_name:well_coordinate -> well_id
-    probe_mappings: HashMap<i32, Uuid>, // Map data_column_index -> probe_id
+    probe_mappings: HashMap<u32, Uuid>, // Map data_column_index -> probe_id
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -58,6 +58,23 @@ struct ColumnHeaders {
     wells: Vec<WellMapping>,
 }
 
+#[derive(Debug)]
+struct ProcessingBatches {
+    temperature_readings: Vec<temperature_readings::ActiveModel>,
+    probe_temperature_readings: Vec<probe_temperature_readings::ActiveModel>,
+    phase_transitions: Vec<well_phase_transitions::ActiveModel>,
+}
+
+impl ProcessingBatches {
+    fn new() -> Self {
+        Self {
+            temperature_readings: Vec::new(),
+            probe_temperature_readings: Vec::new(),
+            phase_transitions: Vec::new(),
+        }
+    }
+}
+
 impl DirectExcelProcessor {
     pub fn new(db: DatabaseConnection) -> Self {
         Self {
@@ -74,11 +91,27 @@ impl DirectExcelProcessor {
         experiment_id: Uuid,
     ) -> Result<DirectProcessingResult> {
         let start_time = std::time::Instant::now();
-        let mut errors = Vec::new();
 
         println!("🚀 Starting direct Excel processing (phase transition tracking)");
 
-        // 1. Load the xlsx
+        // 1. Setup: Load and parse Excel file
+        let (rows, headers) = Self::load_and_parse_excel(file_data)?;
+
+        // 2. Setup: Load experiment-related data
+        self.setup_experiment_data(&headers, experiment_id).await?;
+
+        // 3. Process: Parse all Excel rows into data batches
+        let (batches, errors) = self.process_excel_rows(&rows, &headers, experiment_id);
+
+        // 4. Persist: Insert all data to database
+        let insert_time = self.persist_data_batches(&batches).await?;
+
+        // 5. Results: Compile and return processing results
+        Ok(self.compile_processing_results(start_time, insert_time, &batches, &headers, errors))
+    }
+
+    /// Load Excel file and parse headers
+    fn load_and_parse_excel(file_data: Vec<u8>) -> Result<(Vec<Vec<Data>>, ColumnHeaders)> {
         let cursor = Cursor::new(file_data);
         let mut workbook: Xlsx<_> = open_workbook_from_rs(cursor)
             .map_err(|e| anyhow!("Failed to open Excel workbook: {}", e))?;
@@ -91,38 +124,59 @@ impl DirectExcelProcessor {
             .worksheet_range(sheet_name)
             .map_err(|e| anyhow!("Failed to read worksheet: {}", e))?;
 
-        let rows: Vec<_> = worksheet.rows().collect();
+        let rows: Vec<Vec<Data>> = worksheet.rows().map(<[calamine::Data]>::to_vec).collect();
         if rows.len() < 8 {
             return Err(anyhow!("Excel file format invalid: need at least 8 rows"));
         }
         println!("   📊 Total rows in Excel: {}", rows.len());
 
-        let headers = Self::parse_headers(&rows)?; // Identify tray and well headers from first two rows, then probe/time headers
+        let rows_refs: Vec<_> = rows.iter().map(std::vec::Vec::as_slice).collect();
+        let headers = Self::parse_headers(&rows_refs)?;
         println!(
             "   🗺️  Found {} wells, {} temp probes",
             headers.wells.len(),
             headers.temp_cols.iter().filter(|c| c.is_some()).count()
         );
 
+        Ok((rows, headers))
+    }
+
+    /// Setup experiment-related data (wells, probes)
+    async fn setup_experiment_data(
+        &mut self,
+        headers: &ColumnHeaders,
+        experiment_id: Uuid,
+    ) -> Result<()> {
         // Load well IDs for this experiment
-        self.load_well_ids(&headers, experiment_id).await?;
+        self.load_well_ids(headers, experiment_id).await?;
 
         // Load probe mappings for individual probe temperature readings
         self.probe_mappings = self.load_probe_mappings(experiment_id).await?;
         println!("   🌡️  Loaded {} probe mappings", self.probe_mappings.len());
 
-        let mut temperature_readings_batch = Vec::new(); // 3. Prepare batch collections
-        let mut phase_transitions_batch = Vec::new();
-        let mut probe_temperature_readings_batch = Vec::new();
+        Ok(())
+    }
+
+    /// Process all Excel rows into data batches
+    fn process_excel_rows(
+        &mut self,
+        rows: &[Vec<Data>],
+        headers: &ColumnHeaders,
+        experiment_id: Uuid,
+    ) -> (ProcessingBatches, Vec<String>) {
+        let mut batches = ProcessingBatches::new();
+        let mut errors = Vec::new();
 
         for (row_idx, row) in rows.iter().skip(7).enumerate() {
-            match self.parse_row_data(row, &headers, experiment_id, row_idx + 8) {
+            match self.parse_row_data(row.as_slice(), headers, experiment_id, row_idx + 8) {
                 Ok((temperature_reading, probe_temp_readings, phase_transitions)) => {
                     if let Some(temp_reading) = temperature_reading {
-                        temperature_readings_batch.push(temp_reading);
+                        batches.temperature_readings.push(temp_reading);
                     }
-                    probe_temperature_readings_batch.extend(probe_temp_readings);
-                    phase_transitions_batch.extend(phase_transitions);
+                    batches
+                        .probe_temperature_readings
+                        .extend(probe_temp_readings);
+                    batches.phase_transitions.extend(phase_transitions);
                 }
                 Err(e) => {
                     errors.push(format!("Row {} error: {}", row_idx + 8, e));
@@ -133,9 +187,16 @@ impl DirectExcelProcessor {
             }
         }
 
-        let insert_start = std::time::Instant::now(); // Start batch import
-        if !temperature_readings_batch.is_empty() {
-            for chunk in temperature_readings_batch.chunks(CHUNK_SIZE) {
+        (batches, errors)
+    }
+
+    /// Insert all data batches to database
+    async fn persist_data_batches(&self, batches: &ProcessingBatches) -> Result<u128> {
+        let insert_start = std::time::Instant::now();
+
+        // Insert temperature readings
+        if !batches.temperature_readings.is_empty() {
+            for chunk in batches.temperature_readings.chunks(CHUNK_SIZE) {
                 temperature_readings::Entity::insert_many(chunk.to_vec())
                     .exec(&self.db)
                     .await
@@ -143,13 +204,14 @@ impl DirectExcelProcessor {
             }
         }
 
-        if !probe_temperature_readings_batch.is_empty() {
+        // Insert probe temperature readings
+        if !batches.probe_temperature_readings.is_empty() {
             println!(
                 "   🌡️  Inserting {} individual probe temperature readings...",
-                probe_temperature_readings_batch.len()
+                batches.probe_temperature_readings.len()
             );
 
-            for chunk in probe_temperature_readings_batch.chunks(CHUNK_SIZE) {
+            for chunk in batches.probe_temperature_readings.chunks(CHUNK_SIZE) {
                 probe_temperature_readings::Entity::insert_many(chunk.to_vec())
                     .exec(&self.db)
                     .await
@@ -157,13 +219,14 @@ impl DirectExcelProcessor {
             }
         }
 
-        if !phase_transitions_batch.is_empty() {
+        // Insert phase transitions
+        if !batches.phase_transitions.is_empty() {
             println!(
                 "   💾 Inserting {} phase transitions...",
-                phase_transitions_batch.len()
+                batches.phase_transitions.len()
             );
 
-            for chunk in phase_transitions_batch.chunks(CHUNK_SIZE) {
+            for chunk in batches.phase_transitions.chunks(CHUNK_SIZE) {
                 well_phase_transitions::Entity::insert_many(chunk.to_vec())
                     .exec(&self.db)
                     .await
@@ -171,33 +234,47 @@ impl DirectExcelProcessor {
             }
         }
 
-        let insert_time = insert_start.elapsed().as_millis();
+        Ok(insert_start.elapsed().as_millis())
+    }
+
+    /// Compile final processing results
+    fn compile_processing_results(
+        &self,
+        start_time: std::time::Instant,
+        insert_time: u128,
+        batches: &ProcessingBatches,
+        headers: &ColumnHeaders,
+        errors: Vec<String>,
+    ) -> DirectProcessingResult {
         let processing_time = start_time.elapsed().as_millis();
 
         println!("✅ Phase transition processing complete!");
         println!(
             "   🌡️  Temperature readings: {}",
-            temperature_readings_batch.len()
+            batches.temperature_readings.len()
         );
         println!(
             "   🌡️  Individual probe readings: {}",
-            probe_temperature_readings_batch.len()
+            batches.probe_temperature_readings.len()
         );
-        println!("   🔄 Phase transitions: {}", phase_transitions_batch.len());
+        println!(
+            "   🔄 Phase transitions: {}",
+            batches.phase_transitions.len()
+        );
         println!("   🧪 Wells mapped: {}", headers.wells.len());
         println!("   🌡️  Probes mapped: {}", self.probe_mappings.len());
         println!("   ⏱️  Database insert time: {insert_time}ms");
         println!("   ⏱️  Total time: {processing_time}ms");
 
-        Ok(DirectProcessingResult {
+        DirectProcessingResult {
             success: errors.len() < 10,
-            temperature_readings_created: temperature_readings_batch.len(),
-            probe_temperature_readings_created: probe_temperature_readings_batch.len(),
-            phase_transitions_created: phase_transitions_batch.len(),
+            temperature_readings_created: batches.temperature_readings.len(),
+            probe_temperature_readings_created: batches.probe_temperature_readings.len(),
+            phase_transitions_created: batches.phase_transitions.len(),
             wells_tracked: headers.wells.len(),
             errors,
             processing_time_ms: processing_time,
-        })
+        }
     }
 
     // Helper function to extract and process temperature readings
@@ -854,7 +931,7 @@ impl DirectExcelProcessor {
 
     /// Load probe mappings for the experiment's trays
     /// Maps `data_column_index` -> `probe_id` for temperature data processing
-    async fn load_probe_mappings(&self, experiment_id: Uuid) -> Result<HashMap<i32, Uuid>> {
+    async fn load_probe_mappings(&self, experiment_id: Uuid) -> Result<HashMap<u32, Uuid>> {
         // First, get the experiment to find its tray_configuration_id
         let experiment = experiments::Entity::find_by_id(experiment_id)
             .one(&self.db)
@@ -874,7 +951,7 @@ impl DirectExcelProcessor {
             .all(&self.db)
             .await?;
 
-        let mut probe_mappings = HashMap::new();
+        let mut probe_mappings: HashMap<u32, Uuid> = HashMap::new();
 
         for tray in trays {
             // Get probes for this tray

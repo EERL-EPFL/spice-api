@@ -4271,15 +4271,9 @@ async fn test_excel_processing_with_images() {
     println!("   🌐 Assets accessible via filename endpoint");
 }
 
-/// API Integration test for Excel processing endpoint with real Excel file
-/// This tests the full HTTP request/response cycle through /api/experiments/{id}/process-excel
-#[tokio::test]
-async fn test_excel_processing_api_integration() {
-    println!("🧪 Starting Excel processing API integration test");
-
-    let app = setup_test_app().await;
-
-    // 1. Create a tray configuration via API
+/// Helper function to create a test tray configuration with trays and probes
+async fn create_test_tray_configuration_with_probes(app: &Router) -> Result<String, String> {
+    // 1. Create base tray configuration
     let tray_config_response = app
         .clone()
         .oneshot(
@@ -4287,21 +4281,32 @@ async fn test_excel_processing_api_integration() {
                 .method("POST")
                 .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({
-                    "name": "Excel Test Configuration",
-                    "experiment_default": false
-                }).to_string()))
+                .body(Body::from(
+                    json!({
+                        "name": "Excel Test Configuration",
+                        "experiment_default": false
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(tray_config_response.status(), StatusCode::CREATED);
-    let tray_config_body = to_bytes(tray_config_response.into_body(), usize::MAX).await.unwrap();
+    if tray_config_response.status() != StatusCode::CREATED {
+        return Err(format!(
+            "Failed to create tray configuration: {}",
+            tray_config_response.status()
+        ));
+    }
+
+    let tray_config_body = to_bytes(tray_config_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let tray_config: Value = serde_json::from_slice(&tray_config_body).unwrap();
     let tray_config_id = tray_config["id"].as_str().unwrap();
 
-    // 2. Update the tray configuration to include trays with probes
+    // 2. Update with trays and probes
     let update_response = app
         .clone()
         .oneshot(
@@ -4355,10 +4360,22 @@ async fn test_excel_processing_api_integration() {
         .await
         .unwrap();
 
-    assert_eq!(update_response.status(), StatusCode::OK);
-    println!("🧪 Created trays P1 and P2 with probes via tray configuration");
+    if update_response.status() != StatusCode::OK {
+        return Err(format!(
+            "Failed to update tray configuration: {}",
+            update_response.status()
+        ));
+    }
 
-    // 3. Create experiment via API
+    println!("🧪 Created trays P1 and P2 with probes via tray configuration");
+    Ok(tray_config_id.to_string())
+}
+
+/// Helper function to create a test experiment
+async fn create_test_experiment_via_api(
+    app: &Router,
+    tray_config_id: &str,
+) -> Result<String, String> {
     let experiment_response = app
         .clone()
         .oneshot(
@@ -4366,113 +4383,150 @@ async fn test_excel_processing_api_integration() {
                 .method("POST")
                 .uri("/api/experiments")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({
-                    "name": "Excel Processing API Integration Test",
-                    "username": "test_user@example.com",
-                    "performed_at": "2025-01-01T00:00:00Z",
-                    "is_calibration": false,
-                    "remarks": "Testing Excel upload via API",
-                    "tray_configuration_id": tray_config_id
-                }).to_string()))
+                .body(Body::from(
+                    json!({
+                        "name": "Excel Processing API Integration Test",
+                        "username": "test_user@example.com",
+                        "performed_at": "2025-01-01T00:00:00Z",
+                        "is_calibration": false,
+                        "remarks": "Testing Excel upload via API",
+                        "tray_configuration_id": tray_config_id
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(experiment_response.status(), StatusCode::CREATED);
-    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX).await.unwrap();
+    if experiment_response.status() != StatusCode::CREATED {
+        return Err(format!(
+            "Failed to create experiment: {}",
+            experiment_response.status()
+        ));
+    }
+
+    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let experiment: Value = serde_json::from_slice(&experiment_body).unwrap();
     let experiment_id = experiment["id"].as_str().unwrap();
-    println!("🧬 Created experiment: {experiment_id}");
 
-    // 4. Load the real Excel test file
+    println!("🧬 Created experiment: {experiment_id}");
+    Ok(experiment_id.to_string())
+}
+
+/// Helper function to process Excel file via API
+async fn process_excel_file_via_api(app: &Router, experiment_id: &str) -> Result<Value, String> {
+    // Load test Excel file
     let excel_path = "src/experiments/test_resources/merged.xlsx";
-    let excel_data = fs::read(excel_path).expect("Failed to read merged.xlsx test file");
+    let excel_data = fs::read(excel_path).map_err(|e| format!("Failed to read Excel file: {e}"))?;
     println!("📄 Loaded Excel file: {} bytes", excel_data.len());
 
-    // 5. Create multipart form data for Excel upload (handle binary data properly)
+    // Create multipart form data (binary safe)
     let boundary = "test-boundary-12345";
     let mut multipart_body = Vec::new();
-    
-    // Add multipart headers
+
     multipart_body.extend_from_slice(format!(
         "--{boundary}\r\nContent-Disposition: form-data; name=\"excel_file\"; filename=\"merged.xlsx\"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n"
     ).as_bytes());
-    
-    // Add binary Excel data
     multipart_body.extend_from_slice(&excel_data);
-    
-    // Add multipart closing
     multipart_body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
-    // 6. Upload and process Excel file via API
+    // Process Excel file via API
     let processing_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri(format!("/api/experiments/{experiment_id}/process-excel"))
-                .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
                 .body(Body::from(multipart_body))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    // 7. Verify processing response
     let status = processing_response.status();
-    let processing_body = to_bytes(processing_response.into_body(), usize::MAX).await.unwrap();
-    
+    let processing_body = to_bytes(processing_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+
     if status != StatusCode::OK {
         let error_text = String::from_utf8_lossy(&processing_body);
-        panic!("Excel processing failed with status {status}: {error_text}");
+        return Err(format!(
+            "Excel processing failed with status {status}: {error_text}"
+        ));
     }
 
-    let processing_result: Value = serde_json::from_slice(&processing_body).unwrap();
-    println!("✅ Excel processing API response received");
+    let processing_result: Value = serde_json::from_slice(&processing_body)
+        .map_err(|e| format!("Failed to parse processing result: {e}"))?;
 
-    // 8. Verify the processing results structure
+    println!("✅ Excel processing API response received");
+    Ok(processing_result)
+}
+
+/// Helper function to validate Excel processing results
+fn validate_excel_processing_results(processing_result: &Value) -> Result<(), String> {
     let success = processing_result["success"].as_bool().unwrap_or(false);
     let empty_errors = vec![];
-    let errors = processing_result["errors"].as_array().unwrap_or(&empty_errors);
-    
+    let errors = processing_result["errors"]
+        .as_array()
+        .unwrap_or(&empty_errors);
+
     let temp_readings_created = processing_result["temperature_readings_created"]
-        .as_u64().unwrap_or(0);
+        .as_u64()
+        .unwrap_or(0);
     let probe_readings_created = processing_result["probe_temperature_readings_created"]
-        .as_u64().unwrap_or(0);
+        .as_u64()
+        .unwrap_or(0);
     let phase_transitions_created = processing_result["phase_transitions_created"]
-        .as_u64().unwrap_or(0);
-    
+        .as_u64()
+        .unwrap_or(0);
+
     println!("📊 Processing success: {success}");
     if !errors.is_empty() {
         println!("⚠️  Processing errors: {errors:?}");
     }
-    
-    // Check if we have reasonable amounts of data
+
     let has_reasonable_data = temp_readings_created > 5000 && phase_transitions_created > 0;
-    
-    println!("📊 Has reasonable data: {has_reasonable_data} (temp_readings: {temp_readings_created}, phase_transitions: {phase_transitions_created})");
-    
-    // For this integration test, having temperature readings and phase transitions is a success
-    // Individual probe readings require probe mappings which may be complex to set up
-    assert!(has_reasonable_data, "Processing failed without reasonable data. Success: {success}, Errors: {errors:?}");
+    println!(
+        "📊 Has reasonable data: {has_reasonable_data} (temp_readings: {temp_readings_created}, phase_transitions: {phase_transitions_created})"
+    );
+
+    if !has_reasonable_data {
+        return Err(format!(
+            "Processing failed without reasonable data. Success: {success}, Errors: {errors:?}"
+        ));
+    }
 
     println!("📊 Processing Results from API:");
     println!("   - Temperature readings: {temp_readings_created}");
     println!("   - Individual probe readings: {probe_readings_created}");
     println!("   - Phase transitions: {phase_transitions_created}");
 
-    // 9. Verify expected data volumes (based on merged.xlsx characteristics)
-    assert!(temp_readings_created > 6000, 
-           "Expected >6000 temperature readings, got {temp_readings_created}");
-    // Note: Individual probe readings require proper probe mappings, which may not be set up in this test
-    // The main goal is to test the API integration, not the complex probe setup
-    assert!(phase_transitions_created > 0, 
-           "Expected phase transitions, got 0");
-    
-    println!("   ✅ Core Excel processing working via API (temp readings: {temp_readings_created}, phase transitions: {phase_transitions_created})");
+    // Verify expected data volumes
+    if temp_readings_created <= 6000 {
+        return Err(format!(
+            "Expected >6000 temperature readings, got {temp_readings_created}"
+        ));
+    }
+    if phase_transitions_created == 0 {
+        return Err("Expected phase transitions, got 0".to_string());
+    }
 
-    // 10. Verify we can retrieve experiment results via API
+    println!(
+        "   ✅ Core Excel processing working via API (temp readings: {temp_readings_created}, phase transitions: {phase_transitions_created})"
+    );
+
+    Ok(())
+}
+
+/// Helper function to verify experiment results are accessible via API
+async fn verify_experiment_results_api(app: &Router, experiment_id: &str) -> Result<(), String> {
     let results_response = app
         .clone()
         .oneshot(
@@ -4485,19 +4539,66 @@ async fn test_excel_processing_api_integration() {
         .await
         .unwrap();
 
-    assert_eq!(results_response.status(), StatusCode::OK);
-    let results_body = to_bytes(results_response.into_body(), usize::MAX).await.unwrap();
-    let experiment_data: Value = serde_json::from_slice(&results_body).unwrap();
+    if results_response.status() != StatusCode::OK {
+        return Err(format!(
+            "Failed to retrieve experiment results: {}",
+            results_response.status()
+        ));
+    }
+
+    let results_body = to_bytes(results_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment_data: Value = serde_json::from_slice(&results_body)
+        .map_err(|e| format!("Failed to parse experiment data: {e}"))?;
 
     // Check that results include the processed data
     if let Some(results) = experiment_data.get("results") {
         if let Some(summary) = results.get("summary") {
             let total_time_points = summary["total_time_points"].as_u64().unwrap_or(0);
-            assert!(total_time_points > 6000, 
-                   "Results should show >6000 time points, got {total_time_points}");
+            if total_time_points <= 6000 {
+                return Err(format!(
+                    "Results should show >6000 time points, got {total_time_points}"
+                ));
+            }
             println!("📈 Experiment results accessible via API: {total_time_points} time points");
         }
     }
+
+    Ok(())
+}
+
+/// API Integration test for Excel processing endpoint with real Excel file
+/// This tests the full HTTP request/response cycle through /api/experiments/{id}/process-excel
+#[tokio::test]
+async fn test_excel_processing_api_integration() {
+    println!("🧪 Starting Excel processing API integration test");
+
+    let app = setup_test_app().await;
+
+    // 1. Setup: Create tray configuration with trays and probes
+    let tray_config_id = create_test_tray_configuration_with_probes(&app)
+        .await
+        .expect("Failed to create tray configuration");
+
+    // 2. Setup: Create experiment
+    let experiment_id = create_test_experiment_via_api(&app, &tray_config_id)
+        .await
+        .expect("Failed to create experiment");
+
+    // 3. Process: Upload and process Excel file
+    let processing_result = process_excel_file_via_api(&app, &experiment_id)
+        .await
+        .expect("Failed to process Excel file");
+
+    // 4. Validate: Check processing results
+    validate_excel_processing_results(&processing_result)
+        .expect("Processing results validation failed");
+
+    // 5. Validate: Check that results are accessible via API
+    verify_experiment_results_api(&app, &experiment_id)
+        .await
+        .expect("Failed to verify experiment results API");
 
     println!("🎯 Excel processing API integration test completed successfully!");
     println!("   ✅ Full HTTP request/response cycle tested");
@@ -4507,18 +4608,8 @@ async fn test_excel_processing_api_integration() {
     println!("   ✅ Results retrievable via API");
 }
 
-/// API Integration test for experiment results endpoint after Excel processing
-/// This tests retrieving processed experiment results via /api/experiments/{id}
-#[tokio::test]
-async fn test_experiment_results_api_integration() {
-    println!("🧪 Starting experiment results API integration test");
-
-    let app = setup_test_app().await;
-
-    // This test builds on the Excel processing test but focuses on results retrieval
-    // We'll create a minimal experiment with some data and test the results API
-
-    // 1. Create minimal test setup via API (reusing pattern from above)
+/// Helper function to create a simple tray configuration
+async fn create_simple_tray_configuration(app: &Router, name: &str) -> Result<String, String> {
     let tray_config_response = app
         .clone()
         .oneshot(
@@ -4526,21 +4617,46 @@ async fn test_experiment_results_api_integration() {
                 .method("POST")
                 .uri("/api/tray_configurations")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({
-                    "name": "Results Test Configuration",
-                    "experiment_default": false
-                }).to_string()))
+                .body(Body::from(
+                    json!({
+                        "name": name,
+                        "experiment_default": false
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(tray_config_response.status(), StatusCode::CREATED);
-    let tray_config_body = to_bytes(tray_config_response.into_body(), usize::MAX).await.unwrap();
+    if tray_config_response.status() != StatusCode::CREATED {
+        return Err(format!(
+            "Failed to create tray configuration: {}",
+            tray_config_response.status()
+        ));
+    }
+
+    let tray_config_body = to_bytes(tray_config_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let tray_config: Value = serde_json::from_slice(&tray_config_body).unwrap();
     let tray_config_id = tray_config["id"].as_str().unwrap();
 
-    // 2. Create experiment via API
+    Ok(tray_config_id.to_string())
+}
+
+/// API Integration test for experiment results endpoint after Excel processing
+/// This tests retrieving processed experiment results via /api/experiments/{id}
+#[tokio::test]
+async fn test_experiment_results_api_integration() {
+    let app = setup_test_app().await;
+
+    // 1. Create simple test setup via API
+    let tray_config_id = create_simple_tray_configuration(&app, "Results Test Configuration")
+        .await
+        .expect("Failed to create tray configuration");
+
+    // 2. Create experiment via API with custom name
     let experiment_response = app
         .clone()
         .oneshot(
@@ -4548,23 +4664,33 @@ async fn test_experiment_results_api_integration() {
                 .method("POST")
                 .uri("/api/experiments")
                 .header("content-type", "application/json")
-                .body(Body::from(json!({
-                    "name": "Results API Integration Test",
-                    "username": "test_user@example.com",
-                    "performed_at": "2025-01-01T00:00:00Z",
-                    "is_calibration": false,
-                    "remarks": "Testing results API endpoint",
-                    "tray_configuration_id": tray_config_id
-                }).to_string()))
+                .body(Body::from(
+                    json!({
+                        "name": "Results API Integration Test",
+                        "username": "test_user@example.com",
+                        "performed_at": "2025-01-01T00:00:00Z",
+                        "is_calibration": false,
+                        "remarks": "Testing results API endpoint",
+                        "tray_configuration_id": tray_config_id
+                    })
+                    .to_string(),
+                ))
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    assert_eq!(experiment_response.status(), StatusCode::CREATED);
-    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX).await.unwrap();
+    assert!(
+        (experiment_response.status() == StatusCode::CREATED),
+        "Failed to create experiment: {}",
+        experiment_response.status()
+    );
+
+    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let experiment: Value = serde_json::from_slice(&experiment_body).unwrap();
-    let experiment_id = experiment["id"].as_str().unwrap();
+    let experiment_id = experiment["id"].as_str().unwrap().to_string();
 
     // 3. Test retrieving experiment without processed data
     let empty_results_response = app
@@ -4580,26 +4706,33 @@ async fn test_experiment_results_api_integration() {
         .unwrap();
 
     assert_eq!(empty_results_response.status(), StatusCode::OK);
-    let empty_results_body = to_bytes(empty_results_response.into_body(), usize::MAX).await.unwrap();
+    let empty_results_body = to_bytes(empty_results_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let empty_experiment_data: Value = serde_json::from_slice(&empty_results_body).unwrap();
 
     // Verify experiment data structure
     assert_eq!(empty_experiment_data["id"].as_str().unwrap(), experiment_id);
-    assert_eq!(empty_experiment_data["name"].as_str().unwrap(), "Results API Integration Test");
+    assert_eq!(
+        empty_experiment_data["name"].as_str().unwrap(),
+        "Results API Integration Test"
+    );
 
     // Check results structure (should be null or empty for experiment without data)
     let results = empty_experiment_data.get("results");
     if let Some(results_val) = results {
         if !results_val.is_null() {
             // If results exist, they should have the expected structure
-            assert!(results_val.get("summary").is_some(), "Results should have summary");
-            assert!(results_val.get("trays").is_some(), "Results should have trays array");
+            assert!(
+                results_val.get("summary").is_some(),
+                "Results should have summary"
+            );
+            assert!(
+                results_val.get("trays").is_some(),
+                "Results should have trays array"
+            );
         }
     }
-
-    println!("✅ Experiment results API structure validated");
-    println!("   📊 Empty experiment returns proper JSON structure");
-    println!("   🔍 Results field handling confirmed");
 
     // 4. Test API error handling
     let nonexistent_id = "00000000-0000-0000-0000-000000000000";
@@ -4616,7 +4749,6 @@ async fn test_experiment_results_api_integration() {
         .unwrap();
 
     assert_eq!(not_found_response.status(), StatusCode::NOT_FOUND);
-    println!("✅ API correctly returns 404 for non-existent experiments");
 
     // 5. Test invalid UUID handling
     let invalid_uuid_response = app
@@ -4632,11 +4764,4 @@ async fn test_experiment_results_api_integration() {
         .unwrap();
 
     assert_eq!(invalid_uuid_response.status(), StatusCode::BAD_REQUEST);
-    println!("✅ API correctly returns 400 for invalid UUID format");
-
-    println!("🎯 Experiment results API integration test completed successfully!");
-    println!("   ✅ GET /api/experiments/{{id}} endpoint tested");
-    println!("   ✅ JSON response structure validated");
-    println!("   ✅ Error handling confirmed");
-    println!("   ✅ Full HTTP request/response cycle working");
 }
