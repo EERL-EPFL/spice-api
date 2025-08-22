@@ -4769,3 +4769,262 @@ async fn test_experiment_results_api_integration() {
 
     assert_eq!(invalid_uuid_response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn test_seeder_experiment_structure() {
+    let app = setup_test_app().await;
+    
+    // Test the exact structure our seeder is trying to create
+    let seeder_experiment = json!({
+        "name": "Arctic Aerosol INP Characterization Exp139",
+        "username": "researcher@eerl.lab",
+        "temperature_ramp": -1.0,
+        "temperature_start": 5.0,
+        "temperature_end": -25.0,
+        "is_calibration": false,
+        "remarks": "Comprehensive characterization of Arctic atmospheric aerosol samples using SPICE droplet freezing technique",
+        "performed_at": "2025-08-15T10:30:00.000Z"
+    });
+    
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/experiments")
+                .header("content-type", "application/json")
+                .body(Body::from(seeder_experiment.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    
+    println!("SEEDER EXPERIMENT TEST - Status: {create_status}");
+    println!("SEEDER EXPERIMENT TEST - Body: {create_body:?}");
+    
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "Seeder experiment payload should create successfully. Status: {create_status}, Body: {create_body:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_seeder_sample_with_coordinates() {
+    let app = setup_test_app().await;
+    
+    // Test the enhanced sample structure with GPS coordinates
+    let seeder_sample = json!({
+        "name": "Utqiagvik Research PM10 Aerosol Filter 2025-08-15",
+        "type": "filter",
+        "latitude": "71.3230",
+        "longitude": "-156.7660",
+        "remarks": "Environmental sample collected from Utqiagvik Research Station on 2025-08-15. Sample type: filter. GPS: 71.3230°, -156.7660°"
+    });
+    
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(seeder_sample.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    
+    println!("SEEDER SAMPLE GPS TEST - Status: {create_status}");
+    println!("SEEDER SAMPLE GPS TEST - Body: {create_body:?}");
+    
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "Seeder sample with GPS should create successfully. Status: {create_status}, Body: {create_body:?}"
+    );
+    
+    // Verify GPS coordinates are stored - note: Decimal type may truncate trailing zeros
+    let latitude = create_body["latitude"].as_str().unwrap();
+    let longitude = create_body["longitude"].as_str().unwrap();
+    
+    // Check that coordinates have at least 3 decimal places and are within expected range
+    assert!(latitude.starts_with("71.32"), "Latitude should be around 71.32, got: {}", latitude);
+    assert!(longitude.starts_with("-156.76"), "Longitude should be around -156.76, got: {}", longitude);
+}
+
+/// Test temperature readings at specific timestamps, especially during phase changes
+/// Verifies that all 8 probes return correct temperature data with metadata
+#[tokio::test]
+async fn test_temperature_readings_during_phase_changes() {
+    println!("🌡️ Testing temperature readings during phase changes");
+    
+    let app = setup_test_app().await;
+
+    // 1. Create tray configuration with full probe setup (8 probes)
+    let tray_config_id = create_test_tray_configuration_with_probes(&app)
+        .await
+        .expect("Failed to create tray configuration with probes");
+
+    // 2. Create experiment
+    let experiment_id = create_test_experiment_via_api(&app, &tray_config_id)
+        .await
+        .expect("Failed to create experiment");
+
+    // 3. Process Excel file to get temperature and phase change data
+    let _processing_result = process_excel_file_via_api(&app, &experiment_id)
+        .await
+        .expect("Failed to process Excel file");
+
+    // 4. Get experiment results with temperature data
+    let results_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(results_response.status(), StatusCode::OK);
+    let results_body = to_bytes(results_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment_data: Value = serde_json::from_slice(&results_body)
+        .expect("Failed to parse experiment results");
+
+    // 5. Validate overall structure
+    let results = experiment_data.get("results")
+        .expect("Experiment should have results")
+        .as_object()
+        .expect("Results should be an object");
+
+    let trays = results.get("trays")
+        .expect("Results should have trays")
+        .as_array()
+        .expect("Trays should be an array");
+
+    assert!(!trays.is_empty(), "Should have at least one tray");
+
+    // 6. Find wells with phase changes and temperature data
+    let mut wells_with_phase_changes = 0;
+    let mut wells_with_temperatures = 0;
+    let mut total_probe_readings_checked = 0;
+
+    for tray in trays {
+        let wells = tray.get("wells")
+            .expect("Tray should have wells")
+            .as_array()
+            .expect("Wells should be an array");
+
+        for well in wells {
+            // Check if well has phase change time
+            if let Some(_phase_change_time) = well.get("first_phase_change_time") {
+                wells_with_phase_changes += 1;
+
+                // Check if well has temperature data at phase change
+                if let Some(temperatures) = well.get("temperatures") {
+                    wells_with_temperatures += 1;
+
+                    // Validate temperature structure
+                    assert!(temperatures.get("id").is_some(), "Temperature reading should have id");
+                    assert!(temperatures.get("timestamp").is_some(), "Temperature reading should have timestamp");
+                    assert!(temperatures.get("average").is_some(), "Temperature reading should have average");
+
+                    // Validate probe readings array
+                    let probe_readings = temperatures.get("probe_readings")
+                        .expect("Temperature reading should have probe_readings")
+                        .as_array()
+                        .expect("probe_readings should be an array");
+
+                    println!("   Well {}:{} has {} probe readings at phase change", 
+                        well["row_letter"].as_str().unwrap_or("?"),
+                        well["column_number"].as_i64().unwrap_or(0),
+                        probe_readings.len()
+                    );
+
+                    // Validate each probe reading
+                    for probe_reading in probe_readings {
+                        total_probe_readings_checked += 1;
+
+                        // Check probe reading structure
+                        assert!(probe_reading.get("id").is_some(), "Probe reading should have id");
+                        assert!(probe_reading.get("probe_id").is_some(), "Probe reading should have probe_id");
+                        assert!(probe_reading.get("temperature").is_some(), "Probe reading should have temperature");
+                        
+                        // Check probe metadata (new feature)
+                        assert!(probe_reading.get("probe_name").is_some(), "Probe reading should have probe_name");
+                        assert!(probe_reading.get("probe_data_column_index").is_some(), "Probe reading should have probe_data_column_index");
+                        assert!(probe_reading.get("probe_position_x").is_some(), "Probe reading should have probe_position_x");
+                        assert!(probe_reading.get("probe_position_y").is_some(), "Probe reading should have probe_position_y");
+
+                        // Validate temperature value (should be formatted to 3 decimal places)
+                        let temperature_str = probe_reading.get("temperature")
+                            .and_then(|t| t.as_str())
+                            .expect("Temperature should be a string");
+                        
+                        // Parse temperature and check it's reasonable
+                        let temperature: f64 = temperature_str.parse()
+                            .expect("Temperature should be parseable as float");
+                        
+                        // During phase changes, temperatures should be below 0°C and above -30°C (reasonable range)
+                        assert!(temperature >= -30.0 && temperature <= 5.0, 
+                            "Temperature {} should be in reasonable range (-30°C to 5°C) during phase change", temperature);
+
+                        // Validate probe metadata values
+                        let probe_name = probe_reading.get("probe_name")
+                            .and_then(|n| n.as_str())
+                            .expect("Probe name should be a string");
+                        assert!(probe_name.starts_with("Probe"), "Probe name should start with 'Probe', got: {}", probe_name);
+
+                        let data_column_index = probe_reading.get("probe_data_column_index")
+                            .and_then(|i| i.as_i64())
+                            .expect("Data column index should be an integer");
+                        assert!(data_column_index >= 1 && data_column_index <= 8, 
+                            "Data column index should be 1-8, got: {}", data_column_index);
+                    }
+
+                    // Validate average temperature
+                    if let Some(average_str) = temperatures.get("average").and_then(|a| a.as_str()) {
+                        let average: f64 = average_str.parse()
+                            .expect("Average temperature should be parseable as float");
+                        assert!(average >= -30.0 && average <= 5.0, 
+                            "Average temperature {} should be in reasonable range during phase change", average);
+                    }
+
+                    // Stop after checking a few wells to avoid test timeout
+                    if wells_with_temperatures >= 3 {
+                        break;
+                    }
+                }
+            }
+        }
+        if wells_with_temperatures >= 3 {
+            break;
+        }
+    }
+
+    // 7. Validate test results
+    assert!(wells_with_phase_changes > 0, "Should have found wells with phase changes");
+    assert!(wells_with_temperatures > 0, "Should have found wells with temperature data at phase change");
+    assert!(total_probe_readings_checked > 0, "Should have checked probe readings");
+
+    println!("✅ Temperature validation completed:");
+    println!("   - Wells with phase changes: {}", wells_with_phase_changes);
+    println!("   - Wells with temperature data: {}", wells_with_temperatures);
+    println!("   - Probe readings validated: {}", total_probe_readings_checked);
+    
+    // 8. Additional validation: Check that we have reasonable number of probe readings
+    // Since we're looking at phase change times, and each well should have readings from multiple probes
+    let expected_min_probe_readings = wells_with_temperatures * 3; // At least 3 probes per well with data
+    assert!(total_probe_readings_checked >= expected_min_probe_readings, 
+        "Expected at least {} probe readings ({}+ wells × 3+ probes), got {}", 
+        expected_min_probe_readings, wells_with_temperatures, total_probe_readings_checked);
+}

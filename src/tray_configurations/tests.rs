@@ -1526,6 +1526,53 @@ async fn test_debug_500_error_user_payload() {
 }
 
 #[tokio::test]
+async fn test_seeder_p1_p2_structure() {
+    let app = setup_test_app().await;
+    
+    // Test the exact structure our seeder is trying to create
+    let seeder_payload = json!({
+        "name": "Standard SPICE 192-Well Configuration",
+        "experiment_default": true,
+        "trays": [
+            {
+                "name": "P1",
+                "order_sequence": 1,
+                "rotation_degrees": 90
+            },
+            {
+                "name": "P2", 
+                "order_sequence": 2,
+                "rotation_degrees": 270
+            }
+        ]
+    });
+    
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tray_configurations")
+                .header("content-type", "application/json")
+                .body(Body::from(seeder_payload.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (create_status, create_body) = extract_response_body(create_response).await;
+    
+    println!("SEEDER TEST - Status: {create_status}");
+    println!("SEEDER TEST - Body: {create_body:?}");
+    
+    assert_eq!(
+        create_status,
+        StatusCode::CREATED,
+        "Seeder payload should create successfully. Status: {create_status}, Body: {create_body:?}"
+    );
+}
+
+#[tokio::test]
 async fn test_tray_configurations_have_id_fields() {
     let app = setup_test_app().await;
     
@@ -1634,3 +1681,4 @@ async fn test_tray_configurations_have_id_fields() {
         // Tray configuration has required id field
     }
 }
+

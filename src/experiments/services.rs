@@ -1,6 +1,6 @@
 use super::models::{
     ExperimentResultsResponse, ExperimentResultsSummaryCompact, TrayResultsSummary, TrayWellSummary,
-    TemperatureDataWithProbes, ProbeTemperatureData,
+    TemperatureDataWithProbes,
 };
 use crate::{
     experiments::models as experiments,
@@ -16,6 +16,7 @@ use crate::{
     locations::models as locations, samples::models as samples, treatments::models as treatments,
 };
 use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
 use uuid::Uuid;
 
@@ -73,6 +74,31 @@ async fn load_individual_temperature_data(
         return Ok((std::collections::HashMap::new(), None, None, 0));
     }
 
+    // Get the experiment to find its tray configuration
+    let experiment = experiments::Entity::find_by_id(experiment_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound("Experiment not found".to_string()))?;
+    
+    // Load all probes from the tray configuration for this experiment
+    let all_experiment_probes = if let Some(tray_config_id) = experiment.tray_configuration_id {
+        // Get all trays for this configuration
+        let trays = trays::Entity::find()
+            .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
+            .all(db)
+            .await?;
+        
+        let tray_ids: Vec<Uuid> = trays.iter().map(|t| t.id).collect();
+        
+        // Get all probes from all trays in this configuration
+        probes::Entity::find()
+            .filter(probes::Column::TrayId.is_in(tray_ids))
+            .all(db)
+            .await?
+    } else {
+        Vec::new()
+    };
+
     // Get individual probe readings for all temperature readings
     let temp_reading_ids: Vec<Uuid> = temp_readings_data.iter().map(|tr| tr.id).collect();
     
@@ -97,23 +123,65 @@ async fn load_individual_temperature_data(
     
     for temp_reading in &temp_readings_data {
         let empty_vec = Vec::new();
-        let probe_readings_for_temp = probe_readings_by_temp_id
+        let actual_probe_readings = probe_readings_by_temp_id
             .get(&temp_reading.id)
             .unwrap_or(&empty_vec);
         
-        let probe_data: Vec<ProbeTemperatureData> = probe_readings_for_temp
-            .iter()
-            .filter_map(|(probe_reading, probe_opt)| {
-                probe_opt.as_ref().map(|probe| ProbeTemperatureData {
-                    probe_temperature_reading: probe_reading.clone().into(),
-                    probe: probe.clone().into(),
-                })
-            })
-            .collect();
+        // Create a HashMap of actual readings by probe_id for quick lookup
+        let mut readings_by_probe_id: std::collections::HashMap<Uuid, Decimal> = std::collections::HashMap::new();
+        for (probe_reading, probe_opt) in actual_probe_readings {
+            if let Some(probe) = probe_opt {
+                readings_by_probe_id.insert(probe.id, probe_reading.temperature);
+            }
+        }
+        
+        // Create complete probe readings array including ALL probes from tray configuration
+        let mut complete_probe_readings = Vec::new();
+        let mut temperature_values = Vec::new();
+        
+        for probe in &all_experiment_probes {
+            let temperature_value = readings_by_probe_id.get(&probe.id).copied();
+            
+            // Only include probe readings that have actual temperature data
+            // This avoids showing misleading "0" temperatures for probes without readings
+            if let Some(actual_temp) = temperature_value {
+                // Create probe temperature reading with metadata (rounded to 3 decimal places)
+                let probe_temp_reading = super::models::ProbeTemperatureReadingWithMetadata {
+                    id: uuid::Uuid::new_v4(), // Placeholder ID for API response
+                    temperature_reading_id: temp_reading.id,
+                    temperature: actual_temp.round_dp(3), // Round to 3 decimal places
+                    created_at: temp_reading.created_at,
+                    // Probe metadata
+                    probe_id: probe.id,
+                    probe_name: probe.name.clone(),
+                    probe_data_column_index: probe.data_column_index,
+                    probe_position_x: probe.position_x,
+                    probe_position_y: probe.position_y,
+                };
+                
+                complete_probe_readings.push(probe_temp_reading);
+                temperature_values.push(actual_temp);
+            }
+        }
 
+        // Calculate average temperature from actual probe readings only (rounded to 3 decimal places)
+        let temperature_average = if temperature_values.is_empty() {
+            None
+        } else {
+            let sum: Decimal = temperature_values.iter().sum();
+            let average = sum / Decimal::from(temperature_values.len());
+            // Round to 3 decimal places
+            Some(average.round_dp(3))
+        };
+
+        // Create flattened temperature data with ALL probe readings from tray configuration
         let temp_data_with_probes = TemperatureDataWithProbes {
-            temperature_reading: temp_reading.clone().into(),
-            probe_readings: probe_data,
+            id: temp_reading.id,
+            experiment_id: temp_reading.experiment_id,
+            timestamp: temp_reading.timestamp,
+            image_filename: temp_reading.image_filename.clone(),
+            average: temperature_average,
+            probe_readings: complete_probe_readings,
         };
 
         temp_data_map.insert(temp_reading.id, temp_data_with_probes);
@@ -470,7 +538,7 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                             .get(&transition.temperature_reading_id)
                     }).cloned();
             let image_filename: Option<String> =
-                temperatures.as_ref().and_then(|t| t.temperature_reading.image_filename.clone());
+                temperatures.as_ref().and_then(|t| t.image_filename.clone());
             let image_asset_id = match image_filename {
                 Some(filename) => context.filename_to_asset_id.get(&filename).copied(),
                 None => None,

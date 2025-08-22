@@ -54,9 +54,6 @@ pub struct Model {
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable)]
     pub last_updated: DateTime<Utc>,
     #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
-    pub assets: Vec<crate::assets::models::Asset>,
-    #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false, use_target_models)]
     pub regions: Vec<crate::tray_configurations::regions::models::Region>,
     #[sea_orm(ignore)]
@@ -158,15 +155,29 @@ pub struct ExperimentResultsSummary {
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct ProbeTemperatureData {
-    pub probe_temperature_reading: crate::experiments::probe_temperature_readings::models::ProbeTemperatureReading,
-    pub probe: crate::tray_configurations::probes::models::Probe,
+pub struct ProbeTemperatureReadingWithMetadata {
+    pub id: Uuid,
+    pub temperature_reading_id: Uuid,
+    pub temperature: rust_decimal::Decimal,
+    pub created_at: DateTime<Utc>,
+    // Probe metadata
+    pub probe_id: Uuid,
+    pub probe_name: String,
+    pub probe_data_column_index: i32,
+    pub probe_position_x: rust_decimal::Decimal,
+    pub probe_position_y: rust_decimal::Decimal,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct TemperatureDataWithProbes {
-    pub temperature_reading: TemperatureReading,
-    pub probe_readings: Vec<ProbeTemperatureData>,
+    // Flattened temperature reading fields
+    pub id: Uuid,
+    pub experiment_id: Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub image_filename: Option<String>,
+    pub average: Option<rust_decimal::Decimal>,
+    // All probe readings for this timestamp with metadata
+    pub probe_readings: Vec<ProbeTemperatureReadingWithMetadata>,
 }
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -322,9 +333,7 @@ pub(super) async fn update_experiment(
     if !regions.is_empty() {
         // Delete existing regions for this experiment
         crate::tray_configurations::regions::models::Entity::delete_many()
-            .filter(
-                crate::tray_configurations::regions::models::Column::ExperimentId.eq(id),
-            )
+            .filter(crate::tray_configurations::regions::models::Column::ExperimentId.eq(id))
             .exec(&txn)
             .await?;
 

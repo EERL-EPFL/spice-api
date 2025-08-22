@@ -736,14 +736,6 @@ impl MigrationTrait for Migration {
                     .not_null(),
             )
             .col(ColumnDef::new(TemperatureReadings::ImageFilename).text())
-            .col(ColumnDef::new(TemperatureReadings::Probe_1).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_2).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_3).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_4).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_5).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_6).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_7).decimal())
-            .col(ColumnDef::new(TemperatureReadings::Probe_8).decimal())
             .col(
                 ColumnDef::new(TemperatureReadings::CreatedAt)
                     .timestamp_with_time_zone()
@@ -1528,21 +1520,12 @@ enum S3Assets {
 }
 
 #[derive(DeriveIden)]
-#[allow(non_camel_case_types)]
 enum TemperatureReadings {
     Table,
     Id,
     ExperimentId,
     Timestamp,
     ImageFilename,
-    Probe_1,
-    Probe_2,
-    Probe_3,
-    Probe_4,
-    Probe_5,
-    Probe_6,
-    Probe_7,
-    Probe_8,
     CreatedAt,
 }
 

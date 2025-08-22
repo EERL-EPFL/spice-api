@@ -57,8 +57,28 @@ pub(super) async fn fetch_experimental_results_for_sample(
                 .all(db)
                 .await?;
 
-            let temp_readings_map: std::collections::HashMap<Uuid, &temperature_readings::Model> =
+            let _temp_readings_map: std::collections::HashMap<Uuid, &temperature_readings::Model> =
                 temp_readings_data.iter().map(|tr| (tr.id, tr)).collect();
+
+            // Load all probe temperature readings for these temperature readings
+            let temp_reading_ids: Vec<Uuid> = temp_readings_data.iter().map(|tr| tr.id).collect();
+            let probe_readings_data = if temp_reading_ids.is_empty() {
+                vec![]
+            } else {
+                crate::experiments::probe_temperature_readings::models::Entity::find()
+                    .filter(crate::experiments::probe_temperature_readings::models::Column::TemperatureReadingId.is_in(temp_reading_ids))
+                    .all(db)
+                    .await?
+            };
+
+            // Group probe readings by temperature_reading_id
+            let mut probe_readings_by_temp_id: std::collections::HashMap<Uuid, Vec<&crate::experiments::probe_temperature_readings::models::Model>> = std::collections::HashMap::new();
+            for probe_reading in &probe_readings_data {
+                probe_readings_by_temp_id
+                    .entry(probe_reading.temperature_reading_id)
+                    .or_default()
+                    .push(probe_reading);
+            }
 
             let tray_ids: Vec<Uuid> = phase_transitions_data
                 .iter()
@@ -138,28 +158,20 @@ pub(super) async fn fetch_experimental_results_for_sample(
                         continue;
                     }
 
-                    // Get temperature data at nucleation time
-                    let temperature_avg = temp_readings_map
+                    // Get temperature data at nucleation time from probe readings
+                    let temperature_avg = probe_readings_by_temp_id
                         .get(&transition.temperature_reading_id)
-                        .and_then(|temp_reading| {
-                            let probe_values = [
-                                temp_reading.probe_1,
-                                temp_reading.probe_2,
-                                temp_reading.probe_3,
-                                temp_reading.probe_4,
-                                temp_reading.probe_5,
-                                temp_reading.probe_6,
-                                temp_reading.probe_7,
-                                temp_reading.probe_8,
-                            ];
-
-                            let non_null_values: Vec<Decimal> =
-                                probe_values.into_iter().flatten().collect();
-                            if non_null_values.is_empty() {
+                        .and_then(|probe_readings| {
+                            let temperature_values: Vec<Decimal> = probe_readings
+                                .iter()
+                                .map(|pr| pr.temperature)
+                                .collect();
+                            
+                            if temperature_values.is_empty() {
                                 None
                             } else {
-                                let sum: Decimal = non_null_values.iter().sum();
-                                Some(sum / Decimal::from(non_null_values.len()))
+                                let sum: Decimal = temperature_values.iter().sum();
+                                Some(sum / Decimal::from(temperature_values.len()))
                             }
                         });
 

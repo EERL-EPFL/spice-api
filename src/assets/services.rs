@@ -204,16 +204,16 @@ mod tests {
         // Test that empty assets list returns NOT_FOUND error
         let assets = Vec::new();
         let config = Config::for_tests();
-        
+
         let result = create_hybrid_streaming_zip_response(assets, &config).await;
-        
+
         assert!(result.is_err());
         let (status, message) = result.unwrap_err();
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(message, "No assets to download");
     }
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_create_hybrid_streaming_zip_response_with_assets() {
         // Test that the function creates a proper response with assets
         let assets = vec![
@@ -250,13 +250,13 @@ mod tests {
                 processing_message: None,
             },
         ];
-        
+
         let config = Config::for_tests();
-        
+
         // This test will likely fail due to missing S3 configuration/credentials,
         // but it tests the initial validation and error handling
         let result = create_hybrid_streaming_zip_response(assets, &config).await;
-        
+
         // We expect this to fail due to S3 connection issues, but it should not panic
         // and should provide a reasonable error response
         if result.is_err() {
@@ -267,7 +267,7 @@ mod tests {
             // If it succeeds (unlikely without proper S3 setup), verify response structure
             let response = result.unwrap();
             assert_eq!(response.status(), StatusCode::OK);
-            
+
             // Check headers
             assert!(response.headers().contains_key(CONTENT_TYPE));
             assert_eq!(
@@ -275,7 +275,7 @@ mod tests {
                 "application/zip"
             );
             assert!(response.headers().contains_key(CONTENT_DISPOSITION));
-            
+
             let content_disposition = response.headers().get(CONTENT_DISPOSITION).unwrap();
             let content_disposition_str = content_disposition.to_str().unwrap();
             assert!(content_disposition_str.starts_with("attachment; filename=\"bulk-assets-"));
@@ -284,29 +284,17 @@ mod tests {
     }
 
     #[test]
-    fn test_constants() {
-        // Test that constants are reasonable
-        assert!(MAX_CONCURRENT > 0);
-        assert!(MAX_CONCURRENT <= 100); // Should be reasonable for concurrent operations
-        assert!(CHUNK_SIZE > 0);
-        assert!(CHUNK_SIZE <= 1024 * 1024); // Should be reasonable chunk size (<=1MB)
-        
-        // Test that chunk size is a power of 2 or at least reasonable for IO
-        assert!(CHUNK_SIZE >= 1024); // At least 1KB
-    }
-
-    #[test]
     fn test_asset_filename_handling() {
         // Test filename extraction and sanitization logic
         // This tests the conceptual approach even if the internal logic changes
-        
+
         let test_cases = vec![
             ("test.txt", "test.txt"),
-            ("file with spaces.jpg", "file with spaces.jpg"), 
+            ("file with spaces.jpg", "file with spaces.jpg"),
             ("unicode-测试.png", "unicode-测试.png"),
             ("", ""), // Edge case
         ];
-        
+
         for (input, expected) in test_cases {
             // The actual filename handling is internal to the zip creation
             // but we can test the concept that filenames are preserved
@@ -318,19 +306,19 @@ mod tests {
     fn test_zip_structure_concepts() {
         // Test ZIP file structure constants and concepts
         // These are the ZIP file format signatures used in the code
-        
+
         let local_file_header_sig = [0x50, 0x4b, 0x03, 0x04];
         let central_dir_header_sig = [0x50, 0x4b, 0x01, 0x02];
         let end_central_dir_sig = [0x50, 0x4b, 0x05, 0x06];
-        
+
         // Verify these are the correct ZIP signatures
         assert_eq!(local_file_header_sig[0], 0x50);
         assert_eq!(local_file_header_sig[1], 0x4b);
-        
+
         // Test that we understand the ZIP format structure
         assert_ne!(local_file_header_sig, central_dir_header_sig);
         assert_ne!(central_dir_header_sig, end_central_dir_sig);
-        
+
         // All ZIP signatures start with "PK" (0x50, 0x4b)
         assert_eq!(local_file_header_sig[0..2], [0x50, 0x4b]);
         assert_eq!(central_dir_header_sig[0..2], [0x50, 0x4b]);

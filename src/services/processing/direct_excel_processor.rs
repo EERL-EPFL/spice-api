@@ -277,29 +277,21 @@ impl DirectExcelProcessor {
         }
     }
 
-    // Helper function to extract and process temperature readings
+    // Helper function to create temperature reading (without probe data)
     fn create_temperature_reading(
         experiment_id: Uuid,
         timestamp_utc: chrono::DateTime<chrono::Utc>,
-        probe_values: &[Option<Decimal>],
         image_filename: Option<String>,
     ) -> temperature_readings::ActiveModel {
         temperature_readings::ActiveModel {
             id: Set(Uuid::new_v4()),
             experiment_id: Set(experiment_id),
             timestamp: Set(timestamp_utc),
-            probe_1: Set(probe_values[0]),
-            probe_2: Set(probe_values[1]),
-            probe_3: Set(probe_values[2]),
-            probe_4: Set(probe_values[3]),
-            probe_5: Set(probe_values[4]),
-            probe_6: Set(probe_values[5]),
-            probe_7: Set(probe_values[6]),
-            probe_8: Set(probe_values[7]),
             image_filename: Set(image_filename),
             created_at: Set(chrono::Utc::now()),
         }
     }
+
 
     // Helper function to process phase transitions for wells
     fn process_well_phase_transitions(
@@ -429,7 +421,6 @@ impl DirectExcelProcessor {
             Some(Self::create_temperature_reading(
                 experiment_id,
                 timestamp_utc,
-                &probe_values,
                 image_filename,
             ))
         } else {
@@ -961,7 +952,7 @@ impl DirectExcelProcessor {
                 .await?;
 
             for probe in probes {
-                probe_mappings.insert(probe.data_column_index, probe.id);
+                probe_mappings.insert(probe.data_column_index as u32, probe.id);
             }
         }
 
@@ -982,9 +973,11 @@ impl DirectExcelProcessor {
     ) -> Vec<probe_temperature_readings::ActiveModel> {
         let mut probe_readings = Vec::new();
 
-        // Process temperature columns (2-9 correspond to probes)
+        // Process temperature columns (1-8 correspond to probes, skipping datetime columns)
+        // Excel columns: 0=Date, 1=Time, 2-9=Temperature probes → we map 2-9 to probe data_column_index 1-8
         for excel_col_index in 2..=9 {
-            if let Some(&probe_id) = self.probe_mappings.get(&excel_col_index) {
+            let probe_data_column_index = (excel_col_index - 1) as u32; // Excel col 2→probe 1, col 3→probe 2, etc.
+            if let Some(&probe_id) = self.probe_mappings.get(&probe_data_column_index) {
                 if let Some(temp_value) =
                     row.get(excel_col_index as usize)
                         .and_then(|cell| match cell {

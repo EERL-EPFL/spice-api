@@ -2,3 +2,6 @@
 .history/
 *.db
 .vscode
+*.json
+*.csv
+*.xslx

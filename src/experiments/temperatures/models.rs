@@ -23,27 +23,14 @@ pub struct Model {
     #[sea_orm(column_type = "Text", nullable)]
     #[crudcrate(sortable, filterable, fulltext)]
     pub image_filename: Option<String>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_1: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_2: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_3: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_4: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_5: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_6: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_7: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
-    pub probe_8: Option<Decimal>,
     #[crudcrate(update_model = false, create_model = false, on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub created_at: DateTime<Utc>,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = None)]
     pub average: Option<Decimal>,
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = vec![], list_model=false)]
+    pub probe_readings: Vec<crate::experiments::probe_temperature_readings::models::ProbeTemperatureReading>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -58,6 +45,8 @@ pub enum Relation {
     Experiments,
     #[sea_orm(has_many = "crate::experiments::phase_transitions::models::Entity")]
     WellPhaseTransitions,
+    #[sea_orm(has_many = "crate::experiments::probe_temperature_readings::models::Entity")]
+    ProbeTemperatureReadings,
 }
 
 impl Related<crate::experiments::models::Entity> for Entity {
@@ -69,6 +58,12 @@ impl Related<crate::experiments::models::Entity> for Entity {
 impl Related<crate::experiments::phase_transitions::models::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::WellPhaseTransitions.def()
+    }
+}
+
+impl Related<crate::experiments::probe_temperature_readings::models::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ProbeTemperatureReadings.def()
     }
 }
 
