@@ -556,26 +556,63 @@ impl DatabaseSeeder {
                         ),
                     };
 
-                    // Procedural blanks must have NULL location_id per database constraint
-                    let sample_data = if *sample_type == "procedural_blank" {
-                        json!({
-                            "name": sample_name,
-                            "location_id": null,
-                            "type": sample_type,
-                            "latitude": format!("{:.6}", sample_lat),
-                            "longitude": format!("{:.6}", sample_lon),
-                            "remarks": remarks
-                        })
-                    } else {
-                        json!({
-                            "name": sample_name,
-                            "location_id": location_id,
-                            "type": sample_type,
-                            "latitude": format!("{:.6}", sample_lat),
-                            "longitude": format!("{:.6}", sample_lon),
-                            "remarks": remarks
-                        })
-                    };
+                    // Generate realistic field values based on sample type and INSEKT document
+                    let mut sample_data = json!({
+                        "name": sample_name,
+                        "type": sample_type,
+                        "remarks": remarks,
+                        "well_volume_litres": 0.00005 // 50μL default per INSEKT document
+                    });
+
+                    // Type-specific fields based on INSEKT document specifications
+                    match *sample_type {
+                        "procedural_blank" => {
+                            // Procedural blanks have no location, dates, or volumes per INSEKT
+                            sample_data["location_id"] = json!(null);
+                        }
+                        "filter" => {
+                            // Filter sample fields from INSEKT document
+                            let mut rng = rand::rng();
+                            sample_data["location_id"] = json!(location_id);
+                            sample_data["start_time"] = json!(format!("{}T{:02}:{:02}:00Z", 
+                                collection_date, 
+                                6 + (i % 12), // Sampling hours: 6-18
+                                (i * 7) % 60  // Minutes variation
+                            ));
+                            sample_data["stop_time"] = json!(format!("{}T{:02}:{:02}:00Z", 
+                                collection_date, 
+                                8 + (i % 12), // 2 hour sampling duration
+                                (i * 7) % 60
+                            ));
+                            sample_data["flow_litres_per_minute"] = json!(rng.gen_range(8.0..15.0)); // Typical aerosol sampling rates
+                            sample_data["total_volume"] = json!(rng.gen_range(500.0..2000.0)); // Total air volume sampled
+                            sample_data["suspension_volume_litres"] = json!(rng.gen_range(0.008..0.020)); // 8-20mL suspension
+                            sample_data["filter_substrate"] = json!(match i % 3 {
+                                0 => "PTFE",
+                                1 => "Polycarbonate", 
+                                _ => "Quartz fiber"
+                            });
+                        }
+                        "bulk" => {
+                            // Bulk sample fields from INSEKT document  
+                            let mut rng = rand::rng();
+                            sample_data["location_id"] = json!(location_id);
+                            sample_data["latitude"] = json!(format!("{:.6}", sample_lat));
+                            sample_data["longitude"] = json!(format!("{:.6}", sample_lon));
+                            sample_data["start_time"] = json!(format!("{}T{:02}:{:02}:00Z", 
+                                collection_date,
+                                8 + (i % 8), // Collection hours: 8-16
+                                (i * 11) % 60
+                            ));
+                            sample_data["suspension_volume_litres"] = json!(rng.gen_range(0.010..0.050)); // 10-50mL suspension
+                            sample_data["air_volume_litres"] = json!(rng.gen_range(0.001..0.005)); // Air volume displaced
+                            sample_data["water_volume_litres"] = json!(rng.gen_range(0.008..0.045)); // Water for suspension  
+                            sample_data["initial_concentration_gram_l"] = json!(rng.gen_range(0.1..2.0)); // Initial concentration
+                        }
+                        _ => {
+                            sample_data["location_id"] = json!(location_id);
+                        }
+                    }
 
                     batch_requests.push(("POST".to_string(), "/samples".to_string(), Some(sample_data)));
                 }
@@ -667,11 +704,18 @@ impl DatabaseSeeder {
                     treatment_name
                 ));
 
-                let treatment_data = json!({
+                // Add enzyme volume for treatments based on type
+                let mut treatment_data = json!({
                     "sample_id": sample_id,
                     "name": treatment_name,
                     "notes": treatment_descriptions[treatment_name]
                 });
+
+                // Add realistic enzyme volumes for certain treatments
+                if treatment_name == "h2o2" {
+                    let mut rng = rand::rng();
+                    treatment_data["enzyme_volume_litres"] = json!(rng.gen_range(0.0001..0.0005)); // 0.1-0.5mL
+                }
 
                 let result = self
                     .make_request("POST", "/treatments", Some(treatment_data))
