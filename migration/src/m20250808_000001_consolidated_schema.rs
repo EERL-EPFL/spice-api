@@ -9,7 +9,7 @@ impl MigrationTrait for Migration {
     #[allow(clippy::too_many_lines)] // Large migration requires extensive table definitions
     #[allow(clippy::match_wildcard_for_single_variants)] // Wildcard matches for unsupported databases are semantically correct
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Enable UUID and PostGIS extensions for PostgreSQL
+        // Enable UUID, PostGIS, and trigram extensions for PostgreSQL
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             manager
                 .get_connection()
@@ -18,6 +18,11 @@ impl MigrationTrait for Migration {
             manager
                 .get_connection()
                 .execute_unprepared("CREATE EXTENSION IF NOT EXISTS \"postgis\";")
+                .await?;
+            // Enable trigram extension for similarity-based search
+            manager
+                .get_connection()
+                .execute_unprepared("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 .await?;
         }
 
@@ -239,6 +244,28 @@ impl MigrationTrait for Migration {
         }
 
         manager.create_table(samples_table).await?;
+
+        // Add check constraint to prevent procedural blanks from having a location_id
+        // Procedural blanks should be location-independent quality control samples
+        match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                manager
+                    .get_connection()
+                    .execute_unprepared(
+                        "ALTER TABLE samples ADD CONSTRAINT chk_procedural_blank_no_location 
+                         CHECK (type != 'procedural_blank' OR location_id IS NULL)"
+                    )
+                    .await?;
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                // SQLite doesn't support ADD CONSTRAINT for CHECK constraints on existing tables
+                // We would need to recreate the table, but since this is a business rule,
+                // we'll enforce it in the application layer instead
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        }
 
         // Add PostGIS geometry column for PostgreSQL only
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
@@ -494,6 +521,11 @@ impl MigrationTrait for Migration {
             .col(ColumnDef::new(Trays::QtyCols).integer())
             .col(ColumnDef::new(Trays::QtyRows).integer())
             .col(ColumnDef::new(Trays::WellRelativeDiameter).decimal())
+            // Image coordinate columns for probe positioning
+            .col(ColumnDef::new(Trays::UpperLeftCornerX).integer())
+            .col(ColumnDef::new(Trays::UpperLeftCornerY).integer())
+            .col(ColumnDef::new(Trays::LowerRightCornerX).integer())
+            .col(ColumnDef::new(Trays::LowerRightCornerY).integer())
             .foreign_key(
                 ForeignKey::create()
                     .name("fk_tray_assignment_to_configuration")
@@ -788,6 +820,146 @@ impl MigrationTrait for Migration {
         }
 
         manager.create_table(temperature_readings_table).await?;
+
+        // Create probes table directly linked to trays
+        let mut probes_table = Table::create()
+            .table(Probes::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(Probes::TrayId).uuid().not_null())
+            .col(ColumnDef::new(Probes::Name).text().not_null())
+            .col(ColumnDef::new(Probes::DataColumnIndex).integer().not_null())
+            .col(ColumnDef::new(Probes::PositionX).decimal().not_null())
+            .col(ColumnDef::new(Probes::PositionY).decimal().not_null())
+            .col(
+                ColumnDef::new(Probes::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Probes::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_probes_tray_id")
+                    .from(Probes::Table, Probes::TrayId)
+                    .to(Trays::Table, Trays::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::NoAction),
+            )
+            // Ensure unique data column per tray
+            .index(
+                Index::create()
+                    .name("probes_tray_data_column_unique")
+                    .col(Probes::TrayId)
+                    .col(Probes::DataColumnIndex)
+                    .unique(),
+            )
+            .to_owned();
+
+        // Add ID column with appropriate type and default based on database backend
+        match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                probes_table.col(
+                    ColumnDef::new(Probes::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key()
+                        .default(Expr::cust("uuid_generate_v4()")),
+                );
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                probes_table.col(ColumnDef::new(Probes::Id).uuid().not_null().primary_key());
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        }
+
+        manager.create_table(probes_table).await?;
+
+        // Create probe_temperature_readings table to link individual probes to temperature readings
+        let mut probe_temperature_readings_table = Table::create()
+            .table(ProbeTemperatureReadings::Table)
+            .if_not_exists()
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::ProbeId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::TemperatureReadingId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::Temperature)
+                    .decimal()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_probe_temp_readings_probe")
+                    .from(ProbeTemperatureReadings::Table, ProbeTemperatureReadings::ProbeId)
+                    .to(Probes::Table, Probes::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::NoAction),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_probe_temp_readings_temp_reading")
+                    .from(
+                        ProbeTemperatureReadings::Table,
+                        ProbeTemperatureReadings::TemperatureReadingId,
+                    )
+                    .to(TemperatureReadings::Table, TemperatureReadings::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::NoAction),
+            )
+            // Composite primary key
+            .index(
+                Index::create()
+                    .name("probe_temp_readings_pk")
+                    .col(ProbeTemperatureReadings::ProbeId)
+                    .col(ProbeTemperatureReadings::TemperatureReadingId)
+                    .unique(),
+            )
+            .to_owned();
+
+        // Add ID column for SeaORM compatibility
+        match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                probe_temperature_readings_table.col(
+                    ColumnDef::new(ProbeTemperatureReadings::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key()
+                        .default(Expr::cust("uuid_generate_v4()")),
+                );
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                probe_temperature_readings_table.col(
+                    ColumnDef::new(ProbeTemperatureReadings::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        }
+
+        manager.create_table(probe_temperature_readings_table).await?;
 
         // Create well_phase_transitions table
         let mut well_phase_transitions_table = Table::create()
@@ -1127,6 +1299,525 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ============ COMPREHENSIVE PERFORMANCE INDEXES ============
+        
+        // ============ LOCATIONS TABLE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_locations_comment")
+                    .table(Locations::Table)
+                    .col(Locations::Comment)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_locations_created_at")
+                    .table(Locations::Table)
+                    .col(Locations::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_locations_last_updated")
+                    .table(Locations::Table)
+                    .col(Locations::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Locations fulltext index
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_locations_fulltext ON locations USING GIN (to_tsvector('english', name || ' ' || comment))"
+                )
+                .await?;
+        }
+
+        // ============ PROJECTS TABLE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_projects_note")
+                    .table(Projects::Table)
+                    .col(Projects::Note)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_projects_colour")
+                    .table(Projects::Table)
+                    .col(Projects::Colour)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_projects_created_at")
+                    .table(Projects::Table)
+                    .col(Projects::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_projects_last_updated")
+                    .table(Projects::Table)
+                    .col(Projects::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Projects fulltext index
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_projects_fulltext ON projects USING GIN (to_tsvector('english', name || ' ' || note || ' ' || colour))"
+                )
+                .await?;
+        }
+
+        // ============ SAMPLES TABLE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_name")
+                    .table(Samples::Table)
+                    .col(Samples::Name)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_type")
+                    .table(Samples::Table)
+                    .col(Samples::Type)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_flow_litres_per_minute")
+                    .table(Samples::Table)
+                    .col(Samples::FlowLitresPerMinute)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_total_volume")
+                    .table(Samples::Table)
+                    .col(Samples::TotalVolume)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_material_description")
+                    .table(Samples::Table)
+                    .col(Samples::MaterialDescription)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_extraction_procedure")
+                    .table(Samples::Table)
+                    .col(Samples::ExtractionProcedure)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_filter_substrate")
+                    .table(Samples::Table)
+                    .col(Samples::FilterSubstrate)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_suspension_volume_litres")
+                    .table(Samples::Table)
+                    .col(Samples::SuspensionVolumeLitres)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_air_volume_litres")
+                    .table(Samples::Table)
+                    .col(Samples::AirVolumeLitres)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_water_volume_litres")
+                    .table(Samples::Table)
+                    .col(Samples::WaterVolumeLitres)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_initial_concentration_gram_l")
+                    .table(Samples::Table)
+                    .col(Samples::InitialConcentrationGramL)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_well_volume_litres")
+                    .table(Samples::Table)
+                    .col(Samples::WellVolumeLitres)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_remarks")
+                    .table(Samples::Table)
+                    .col(Samples::Remarks)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_start_time")
+                    .table(Samples::Table)
+                    .col(Samples::StartTime)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_stop_time")
+                    .table(Samples::Table)
+                    .col(Samples::StopTime)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_created_at")
+                    .table(Samples::Table)
+                    .col(Samples::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_samples_last_updated")
+                    .table(Samples::Table)
+                    .col(Samples::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Samples fulltext index
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_samples_fulltext ON samples USING GIN (to_tsvector('english', name || ' ' || material_description || ' ' || extraction_procedure || ' ' || filter_substrate || ' ' || remarks))"
+                )
+                .await?;
+        }
+
+        // ============ S3_ASSETS TABLE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_uploaded_by")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::UploadedBy)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_is_deleted")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::IsDeleted)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_type")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::Type)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_role")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::Role)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_processing_status")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::ProcessingStatus)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_processing_message")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::ProcessingMessage)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_size_bytes")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::SizeBytes)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_uploaded_at")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::UploadedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_created_at")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_s3_assets_last_updated")
+                    .table(S3Assets::Table)
+                    .col(S3Assets::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
+        // S3Assets fulltext index
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_s3_assets_fulltext ON s3_assets USING GIN (to_tsvector('english', original_filename || ' ' || s3_key || ' ' || uploaded_by || ' ' || type || ' ' || role))"
+                )
+                .await?;
+        }
+
+        // ============ TRAY_CONFIGURATIONS TABLE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tray_configurations_experiment_default")
+                    .table(TrayConfigurations::Table)
+                    .col(TrayConfigurations::ExperimentDefault)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tray_configurations_created_at")
+                    .table(TrayConfigurations::Table)
+                    .col(TrayConfigurations::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_tray_configurations_last_updated")
+                    .table(TrayConfigurations::Table)
+                    .col(TrayConfigurations::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Tray configurations fulltext index
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_tray_configurations_fulltext ON tray_configurations USING GIN (to_tsvector('english', name))"
+                )
+                .await?;
+        }
+
+        // ============ TREATMENTS TABLE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_treatments_name")
+                    .table(Treatments::Table)
+                    .col(Treatments::Name)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_treatments_notes")
+                    .table(Treatments::Table)
+                    .col(Treatments::Notes)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_treatments_sample_id")
+                    .table(Treatments::Table)
+                    .col(Treatments::SampleId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_treatments_enzyme_volume_litres")
+                    .table(Treatments::Table)
+                    .col(Treatments::EnzymeVolumeLitres)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_treatments_created_at")
+                    .table(Treatments::Table)
+                    .col(Treatments::CreatedAt)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_treatments_last_updated")
+                    .table(Treatments::Table)
+                    .col(Treatments::LastUpdated)
+                    .to_owned(),
+            )
+            .await?;
+
+        // Treatments fulltext index
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared(
+                    "CREATE INDEX idx_treatments_fulltext ON treatments USING GIN (to_tsvector('english', notes))"
+                )
+                .await?;
+        }
+
+        // ============ PROBE INDEXES ============
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_probes_tray_id")
+                    .table(Probes::Table)
+                    .col(Probes::TrayId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_probe_temp_readings_probe_id")
+                    .table(ProbeTemperatureReadings::Table)
+                    .col(ProbeTemperatureReadings::ProbeId)
+                    .to_owned(),
+            )
+            .await?;
+
         // Add spatial indexes for PostGIS geometry column (PostgreSQL only)
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             // Spatial index on samples.geom for efficient spatial queries
@@ -1163,6 +1854,476 @@ impl MigrationTrait for Migration {
     #[allow(clippy::too_many_lines)] // Large rollback requires extensive table drops
     #[allow(clippy::match_wildcard_for_single_variants)] // Wildcard matches for unsupported databases are semantically correct
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // ============ DROP COMPREHENSIVE PERFORMANCE INDEXES ============
+        
+        // Drop PostgreSQL fulltext indexes if they exist
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_locations_fulltext")
+                .await
+                .ok();
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_projects_fulltext")
+                .await
+                .ok();
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_samples_fulltext")
+                .await
+                .ok();
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_s3_assets_fulltext")
+                .await
+                .ok();
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_tray_configurations_fulltext")
+                .await
+                .ok();
+            manager
+                .get_connection()
+                .execute_unprepared("DROP INDEX IF EXISTS idx_treatments_fulltext")
+                .await
+                .ok();
+        }
+
+        // Drop probe indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_probe_temp_readings_probe_id")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_probes_tray_id")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop treatments indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_treatments_last_updated")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_treatments_created_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_treatments_enzyme_volume_litres")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_treatments_sample_id")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_treatments_notes")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_treatments_name")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop tray configurations indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_tray_configurations_last_updated")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_tray_configurations_created_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_tray_configurations_experiment_default")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop S3Assets indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_last_updated")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_created_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_uploaded_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_size_bytes")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_processing_message")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_processing_status")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_role")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_type")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_is_deleted")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_s3_assets_uploaded_by")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop Samples indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_last_updated")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_created_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_stop_time")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_start_time")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_remarks")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_well_volume_litres")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_initial_concentration_gram_l")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_water_volume_litres")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_air_volume_litres")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_suspension_volume_litres")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_filter_substrate")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_extraction_procedure")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_material_description")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_total_volume")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_flow_litres_per_minute")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_type")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_samples_name")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop Projects indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_projects_last_updated")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_projects_created_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_projects_colour")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_projects_note")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop Locations indexes
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_locations_last_updated")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_locations_created_at")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+        manager
+            .drop_index(
+                Index::drop()
+                    .name("idx_locations_comment")
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await
+            .ok();
+
+        // Drop procedural blank constraint
+        match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                manager
+                    .get_connection()
+                    .execute_unprepared("ALTER TABLE samples DROP CONSTRAINT IF EXISTS chk_procedural_blank_no_location")
+                    .await
+                    .ok();
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                // No constraint to remove in SQLite
+            }
+            _ => {}
+        }
+
         // Drop spatial indexes for PostgreSQL
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
             manager
@@ -1216,6 +2377,18 @@ impl MigrationTrait for Migration {
             .await?;
         manager
             .drop_table(Table::drop().table(Regions::Table).if_exists().to_owned())
+            .await?;
+        // Drop probe tables (probe_temperature_readings first due to foreign keys)
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ProbeTemperatureReadings::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Probes::Table).if_exists().to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(Wells::Table).if_exists().to_owned())
@@ -1479,6 +2652,10 @@ enum Trays {
     QtyCols,
     QtyRows,
     WellRelativeDiameter,
+    UpperLeftCornerX,
+    UpperLeftCornerY,
+    LowerRightCornerX,
+    LowerRightCornerY,
 }
 
 #[derive(DeriveIden)]
@@ -1550,6 +2727,29 @@ enum WellPhaseTransitions {
     Timestamp,
     PreviousState,
     NewState,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum Probes {
+    Table,
+    Id,
+    TrayId,
+    Name,
+    DataColumnIndex,
+    PositionX,
+    PositionY,
+    CreatedAt,
+    LastUpdated,
+}
+
+#[derive(DeriveIden)]
+enum ProbeTemperatureReadings {
+    Table,
+    Id,
+    ProbeId,
+    TemperatureReadingId,
+    Temperature,
     CreatedAt,
 }
 
