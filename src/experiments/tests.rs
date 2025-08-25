@@ -4,6 +4,7 @@ use axum::body::Body;
 use axum::body::to_bytes;
 use axum::http::{Request, StatusCode};
 use chrono::{DateTime, NaiveDateTime};
+use core::panic;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -169,13 +170,10 @@ async fn assign_tray_config_to_experiment_via_api(
         .unwrap();
 
     let status = response.status();
-    if !status.is_success() {
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let error_body = String::from_utf8_lossy(&body_bytes);
-        panic!("Failed to assign tray configuration. Status: {status}, Body: {error_body}");
-    }
+    assert!(
+        status.is_success(),
+        "Failed to assign tray configuration. Status: {status}"
+    );
 }
 
 /// Integration test helper to create a sample via API
@@ -364,11 +362,10 @@ async fn test_experiment_crud_operations() {
         .unwrap();
 
     let status = response.status();
-    if !status.is_success() {
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let body = String::from_utf8_lossy(&bytes);
-        panic!("Failed to create experiment. Status: {status}, Body: {body}");
-    }
+    assert!(
+        status.is_success(),
+        "Failed to create experiment. Status: {status}"
+    );
 
     // Test getting all experiments
     let response = app
@@ -439,8 +436,7 @@ async fn test_time_point_endpoint() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            // eprintln!("Test setup failed, skipping test: {e}");
-            return;
+            panic!("Test setup failed, skipping test: {e}");
         }
     };
 
@@ -517,9 +513,10 @@ async fn test_time_point_endpoint() {
         .unwrap();
     let response_text = String::from_utf8_lossy(&body_bytes);
 
-    if status != StatusCode::OK {
-        // eprintln!("Request failed with status {status}: {response_text}");
-    }
+    assert!(
+        (status == StatusCode::OK),
+        "Request failed with status {status}: {response_text}"
+    );
 
     assert_eq!(status, StatusCode::OK, "Time point creation should work");
 
@@ -548,8 +545,7 @@ async fn test_time_point_with_96_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            // eprintln!("Test setup failed, skipping test: {e}");
-            return;
+            panic!("Test setup failed, skipping test: {e}");
         }
     };
 
@@ -644,8 +640,7 @@ async fn test_time_point_with_384_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            // eprintln!("Test setup failed, skipping test: {e}");
-            return;
+            panic!("Test setup failed, skipping test: {e}");
         }
     };
 
@@ -740,8 +735,7 @@ async fn test_time_point_with_custom_tray_configuration() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            // eprintln!("Test setup failed, skipping test: {e}");
-            return;
+            panic!("Test setup failed, skipping test: {e}");
         }
     };
 
@@ -857,8 +851,7 @@ async fn test_time_point_with_minimal_data() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-            // eprintln!("Test setup failed, skipping test: {e}");
-            return;
+            panic!("Test setup failed, skipping test: {e}");
         }
     };
 
@@ -1075,8 +1068,7 @@ async fn test_experiment_with_phase_transitions_data() {
     let experiment_id = match setup_experiment_with_tray_config(&app).await {
         Ok(id) => id,
         Err(e) => {
-            // eprintln!("Test setup failed, skipping test: {e}");
-            return;
+            panic!("Test setup failed, skipping test: {e}");
         }
     };
 
@@ -1151,13 +1143,13 @@ async fn test_time_point_creation(app: &axum::Router, experiment_id: &str) {
 
     if response.status() == StatusCode::NOT_FOUND {
         // println!("Time points endpoint not implemented yet, skipping time point creation");
-    } else if response.status() != StatusCode::OK {
-        let status = response.status();
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let error_text = String::from_utf8_lossy(&body_bytes);
-        // println!("Time point creation failed: {status} - {error_text}");
+    } else {
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Time point creation failed: {}",
+            response.status()
+        );
     }
 }
 
@@ -1414,13 +1406,6 @@ async fn test_experiment_list_with_results_summary() {
 
     assert!(experiments_list.is_array(), "Response should be an array");
     let experiments = experiments_list.as_array().unwrap();
-
-    if let Some(first_exp) = experiments.first() {
-        // println!(
-        //     "First experiment structure: {}",
-        //     serde_json::to_string_pretty(first_exp).unwrap()
-        // );
-    }
 
     // Verify each experiment in the list
     for (i, exp) in experiments.iter().enumerate() {
@@ -1925,8 +1910,8 @@ async fn test_asset_upload_endpoint() {
     let body_bytes = axum::body::to_bytes(upload_response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let body_str = String::from_utf8_lossy(&body_bytes);
-    // println!("📝 Upload response body: {body_str}");
+    let _body_str = String::from_utf8_lossy(&body_bytes);
+    // println!("📝 Upload response body: {_body_str}");
 
     // In test environment without S3, we expect either:
     // - 500 Internal Server Error (S3 connection failure)
@@ -1963,8 +1948,12 @@ async fn test_asset_download_endpoint() {
         .await
         .unwrap();
 
-    assert_eq!(token_response.status(), axum::http::StatusCode::OK, "Token creation should succeed");
-    
+    assert_eq!(
+        token_response.status(),
+        axum::http::StatusCode::OK,
+        "Token creation should succeed"
+    );
+
     let token_body_bytes = axum::body::to_bytes(token_response.into_body(), usize::MAX)
         .await
         .unwrap();
@@ -2039,7 +2028,7 @@ async fn test_asset_upload_duplicate_file() {
 
     // First upload
     let app_clone = app.clone();
-    let first_response = app_clone
+    let _first_response = app_clone
         .oneshot(
             axum::http::Request::builder()
                 .method("POST")
@@ -2054,7 +2043,7 @@ async fn test_asset_upload_duplicate_file() {
         .await
         .unwrap();
 
-    // println!("📤 First upload status: {}", first_response.status());
+    // println!("📤 First upload status: {}", _first_response.status());
 
     // Second upload (should detect duplicate if first succeeded)
     let second_response = app
@@ -2077,8 +2066,8 @@ async fn test_asset_upload_duplicate_file() {
     let body_bytes = axum::body::to_bytes(second_response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let body_str = String::from_utf8_lossy(&body_bytes);
-    // println!("📝 Second upload response: {body_str}");
+    let _body_str = String::from_utf8_lossy(&body_bytes);
+    // println!("📝 Second upload response: {_body_str}");
 
     // We expect either:
     // - 409 Conflict if the first upload succeeded and duplicate is detected
@@ -3436,19 +3425,11 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
         .unwrap();
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
-    if status != StatusCode::CREATED {
-        // println!("❌ Failed to create tray config");
-        // println!("   Status: {status}");
-        // println!("   Request payload: {tray_config_data}");
-        // println!("   Response body: {body_str}");
-
-        // Try to parse the error message from JSON
-        if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&body_str) {
-            // println!("   Parsed error: {error_json:?}");
-        }
-
-        panic!("Failed to create tray config. Status: {status}, Body: {body_str}");
-    }
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Failed to create tray config. Status: {status}, Body: {body_str}"
+    );
 
     body_str
 }
@@ -3783,7 +3764,7 @@ fn validate_experiment_timing(results: &Value) {
     let first_timestamp = results["summary"]["first_timestamp"]
         .as_str()
         .expect("Should have first_timestamp");
-    let last_timestamp = results["summary"]["last_timestamp"]
+    let _last_timestamp = results["summary"]["last_timestamp"]
         .as_str()
         .expect("Should have last_timestamp");
 
@@ -3798,7 +3779,7 @@ fn validate_experiment_timing(results: &Value) {
     );
 
     // println!("   ✅ Experiment start: {first_timestamp} ✓");
-    // println!("   ✅ Experiment end: {last_timestamp} ✓");
+    // println!("   ✅ Experiment end: {_last_timestamp} ✓");
 
     // Calculate duration (should be about 1 hour 6 minutes based on CSV)
     // This is a rough validation - exact timing depends on processing
@@ -4227,11 +4208,11 @@ async fn test_excel_processing_with_images() {
     );
 
     // Count wells that have freeze time data (may be 0 without phase transitions)
-    let wells_with_freeze_data = all_wells
+    let _wells_with_freeze_data = all_wells
         .iter()
         .filter(|well| !well["first_phase_change_time"].is_null())
         .count();
-    // println!("📈 Wells with phase change data: {wells_with_freeze_data}");
+    // println!("📈 Wells with phase change data: {_wells_with_freeze_data}");
 
     // 7. Test that assets can be accessed via the by-filename endpoint
     for image_filename in &image_filenames {
@@ -4476,7 +4457,7 @@ fn validate_excel_processing_results(processing_result: &Value) -> Result<(), St
     let temp_readings_created = processing_result["temperature_readings_created"]
         .as_u64()
         .unwrap_or(0);
-    let probe_readings_created = processing_result["probe_temperature_readings_created"]
+    let _probe_readings_created = processing_result["probe_temperature_readings_created"]
         .as_u64()
         .unwrap_or(0);
     let phase_transitions_created = processing_result["phase_transitions_created"]
@@ -4859,6 +4840,7 @@ async fn test_seeder_sample_with_coordinates() {
 
 /// Test temperature readings at specific timestamps, especially during phase changes
 /// Verifies that all 8 probes return correct temperature data with metadata
+#[allow(clippy::too_many_lines)]
 #[tokio::test]
 async fn test_temperature_readings_during_phase_changes() {
     println!("🌡️ Testing temperature readings during phase changes");
@@ -5076,15 +5058,9 @@ async fn test_temperature_readings_during_phase_changes() {
     );
 
     println!("✅ Temperature validation completed:");
-    println!(
-        "   - Wells with phase changes: {wells_with_phase_changes}"
-    );
-    println!(
-        "   - Wells with temperature data: {wells_with_temperatures}"
-    );
-    println!(
-        "   - Probe readings validated: {total_probe_readings_checked}"
-    );
+    println!("   - Wells with phase changes: {wells_with_phase_changes}");
+    println!("   - Wells with temperature data: {wells_with_temperatures}");
+    println!("   - Probe readings validated: {total_probe_readings_checked}");
 
     // 8. Additional validation: Check that we have reasonable number of probe readings
     // Since we're looking at phase change times, and each well should have readings from multiple probes

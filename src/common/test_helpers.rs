@@ -1,18 +1,18 @@
 /// Shared test helper functions for creating test objects across the test suite
-/// 
+///
 /// This module provides standardized builders for creating test entities that follow
 /// the object hierarchy: Projects → Locations → Samples → Treatments
 /// and `TrayConfigurations` → Trays → {Probes, Wells}
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tower::ServiceExt;
 use uuid::Uuid;
 
 /// Extract response body as JSON for testing
 pub async fn extract_response_body(response: axum::response::Response) -> (StatusCode, Value) {
     use axum::body::to_bytes;
-    
+
     let status = response.status();
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
@@ -68,7 +68,9 @@ pub async fn create_test_project_with_params(
         let project_id = body["id"].as_str().unwrap().to_string();
         Ok((project_id, body))
     } else {
-        Err(format!("Failed to create project: Status {status}, Body: {body}"))
+        Err(format!(
+            "Failed to create project: Status {status}, Body: {body}"
+        ))
     }
 }
 
@@ -121,7 +123,9 @@ pub async fn create_test_location_with_params(
         let location_id = body["id"].as_str().unwrap().to_string();
         Ok((location_id, body))
     } else {
-        Err(format!("Failed to create location: Status {status}, Body: {body}"))
+        Err(format!(
+            "Failed to create location: Status {status}, Body: {body}"
+        ))
     }
 }
 
@@ -177,7 +181,9 @@ pub async fn create_test_sample_with_params(
         let sample_id = body["id"].as_str().unwrap().to_string();
         Ok((sample_id, body))
     } else {
-        Err(format!("Failed to create sample: Status {status}, Body: {body}"))
+        Err(format!(
+            "Failed to create sample: Status {status}, Body: {body}"
+        ))
     }
 }
 
@@ -230,14 +236,14 @@ pub async fn create_test_treatment_with_params(
         let treatment_id = body["id"].as_str().unwrap().to_string();
         Ok((treatment_id, body))
     } else {
-        Err(format!("Failed to create treatment: Status {status}, Body: {body}"))
+        Err(format!(
+            "Failed to create treatment: Status {status}, Body: {body}"
+        ))
     }
 }
 
 /// Create a test experiment with default parameters
-pub async fn create_test_experiment(
-    app: &axum::Router,
-) -> Result<(String, Value), String> {
+pub async fn create_test_experiment(app: &axum::Router) -> Result<(String, Value), String> {
     create_test_experiment_with_params(
         app,
         &format!("Test Experiment {}", Uuid::new_v4()),
@@ -286,7 +292,9 @@ pub async fn create_test_experiment_with_params(
         let experiment_id = body["id"].as_str().unwrap().to_string();
         Ok((experiment_id, body))
     } else {
-        Err(format!("Failed to create experiment: Status {status}, Body: {body}"))
+        Err(format!(
+            "Failed to create experiment: Status {status}, Body: {body}"
+        ))
     }
 }
 
@@ -296,13 +304,13 @@ pub async fn create_full_object_hierarchy(
 ) -> Result<FullObjectHierarchy, String> {
     // Create project
     let (project_id, project) = create_test_project(app).await?;
-    
+
     // Create location
     let (location_id, location) = create_test_location(app, &project_id).await?;
-    
-    // Create sample  
+
+    // Create sample
     let (sample_id, sample) = create_test_sample(app, &location_id).await?;
-    
+
     // Create treatment
     let (treatment_id, treatment) = create_test_treatment(app, &sample_id).await?;
 

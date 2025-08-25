@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::config::test_helpers::setup_test_app;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
@@ -414,13 +416,8 @@ async fn test_location_update(app: &axum::Router, location_id: &str) -> bool {
             );
             true
         }
-        StatusCode::METHOD_NOT_ALLOWED => {
-            // println!("⚠️  Location update not implemented (405) - This is expected");
-            false
-        }
         _ => {
-            // println!("📋 Location update returned: {update_status}");
-            false
+            panic!("Location update failed");
         }
     }
 }
@@ -440,11 +437,7 @@ async fn test_location_deletion(app: &axum::Router, location_id: &str) -> bool {
         .unwrap();
 
     let delete_status = delete_response.status();
-    match delete_status {
-        status if status.is_success() => true,
-
-        _ => false,
-    }
+    delete_status.is_success()
 }
 
 #[tokio::test]
@@ -744,7 +737,7 @@ async fn test_location_related_data_structure() {
 
             // Check that experiments array is present
             if get_body["experiments"].is_array() {
-                let experiments = get_body["experiments"].as_array().unwrap();
+                let _experiments = get_body["experiments"].as_array().unwrap();
                 // println!(
                 //     "   ✅ Experiments array present ({} items)",
                 //     experiments.len()
@@ -801,7 +794,7 @@ async fn test_location_complex_queries() {
 
     if pagination_status == StatusCode::OK {
         // println!("   ✅ Pagination query successful");
-        let locations = pagination_body.as_array().unwrap();
+        let _locations = pagination_body.as_array().unwrap();
     // println!("   Returned {} locations with limit=5", locations.len());
     } else {
         // println!("   ⚠️  Pagination query failed: {pagination_status}");
@@ -860,8 +853,8 @@ async fn test_location_complete_lifecycle() {
 
             // println!("✅ Complete location lifecycle test passed using helper functions");
         }
-        Err(error) => {
-            // println!("📋 Location lifecycle test failed: {error}");
+        Err(_error) => {
+            // println!("📋 Location lifecycle test failed: {_error}");
             // Test still passes - documents that the API may not be fully implemented
         }
     }
@@ -878,7 +871,7 @@ async fn test_multiple_location_operations() {
     // Create multiple locations using the helper function
     let mut location_ids = Vec::new();
 
-    for i in 1..=3 {
+    for _i in 1..=3 {
         match create_test_location(&app, &project_id_str).await {
             Ok((location_id, body)) => {
                 // println!("✅ Location {i} created: {location_id}");
@@ -890,21 +883,21 @@ async fn test_multiple_location_operations() {
                 );
                 location_ids.push(location_id);
             }
-            Err(error) => {
-                // println!("📋 Location {i} creation failed: {error}");
+            Err(e) => {
+                panic!("Location creation failed during multiple operations test: {e}");
             }
         }
     }
 
     // Test retrieval of all created locations
-    for (i, location_id) in location_ids.iter().enumerate() {
-        // println!("Testing retrieval of location {}", i + 1);
+    for location_id in location_ids.iter() {
+        // println!("Testing retrieval of location {}", _i + 1);
         test_location_retrieval(&app, location_id).await;
     }
 
     // Test updates on all locations
-    for (i, location_id) in location_ids.iter().enumerate() {
-        // println!("Testing update of location {}", i + 1);
+    for location_id in location_ids.iter() {
+        // println!("Testing update of location {}", _i + 1);
         let _update_success = test_location_update(&app, location_id).await;
     }
 
@@ -962,8 +955,8 @@ async fn test_location_helper_functions_consistency() {
 
             // println!("✅ Helper functions consistency test passed");
         }
-        Err(error) => {
-            // println!("📋 Consistency test skipped due to creation failure: {error}");
+        Err(_error) => {
+            // println!("📋 Consistency test skipped due to creation failure: {_error}");
         }
     }
 }

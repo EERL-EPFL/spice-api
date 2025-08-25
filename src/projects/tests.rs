@@ -883,13 +883,10 @@ async fn test_multiple_project_batch_operations() {
     let projects = create_multiple_test_projects(&app, 5).await;
 
     if projects.is_empty() {
-        // println!("📋 Skipping batch operations test - no projects created");
+        panic!("No projects created for batch operations test");
     } else {
-        // println!("✅ Batch project creation successful");
-
         // Test retrieval of all created projects
-        for (i, (project_id, _)) in projects.iter().enumerate() {
-            // println!("Testing retrieval of project {}", i + 1);
+        for (project_id, _) in projects.iter() {
             test_project_retrieval(&app, project_id).await;
         }
 
@@ -900,8 +897,6 @@ async fn test_multiple_project_batch_operations() {
             // println!("Testing update of project {} with colour {}", i + 1, colour);
             let _update_success = test_project_update(&app, project_id, colour).await;
         }
-
-        // println!("✅ Multiple project operations test completed");
     }
 }
 

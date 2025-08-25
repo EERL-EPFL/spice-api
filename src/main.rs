@@ -13,9 +13,6 @@ mod samples;
 mod tray_configurations;
 mod treatments;
 
-#[cfg(test)]
-pub mod test_helpers;
-
 use crate::config::Config;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection};
