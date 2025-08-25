@@ -37,8 +37,8 @@ mod tests {
         let unknown = Role::Unknown("test".to_string());
         
         // Test Debug trait
-        assert_eq!(format!("{:?}", admin), "Administrator");
-        assert!(format!("{:?}", unknown).contains("Unknown"));
+        assert_eq!(format!("{admin:?}"), "Administrator");
+        assert!(format!("{unknown:?}").contains("Unknown"));
         
         // Test Clone and PartialEq
         let admin2 = admin.clone();
@@ -69,10 +69,10 @@ mod tests {
         let unknown = Role::Unknown("test".to_string());
         
         // Test Debug trait
-        let admin_debug = format!("{:?}", admin);
+        let admin_debug = format!("{admin:?}");
         assert!(admin_debug.contains("Administrator"));
         
-        let unknown_debug = format!("{:?}", unknown);
+        let unknown_debug = format!("{unknown:?}");
         assert!(unknown_debug.contains("Unknown"));
         assert!(unknown_debug.contains("test"));
     }
@@ -101,7 +101,7 @@ mod tests {
         let role = Role::Administrator;
         
         // These calls ensure the traits are implemented and compiles successfully
-        let _debug = format!("{:?}", role);
+        let _debug = format!("{role:?}");
         let _clone = role.clone();
         
         // Test that we can create different role variants

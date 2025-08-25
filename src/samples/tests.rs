@@ -1215,7 +1215,7 @@ async fn test_sample_experimental_results_comprehensive() {
         let treatment_name = treatment["name"].as_str().unwrap();
         assert!(
             treatment_name == "none" || treatment_name == "heat",
-            "Expected none or heat treatment, got {}", treatment_name
+            "Expected none or heat treatment, got {treatment_name}"
         );
 
         // The experimental_results array may be empty if no experiments are linked

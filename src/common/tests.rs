@@ -9,10 +9,10 @@ fn test_processing_status_variants() {
     let failed = ProcessingStatus::Failed;
 
     // Test Debug trait
-    assert_eq!(format!("{:?}", pending), "Pending");
-    assert_eq!(format!("{:?}", in_progress), "InProgress");
-    assert_eq!(format!("{:?}", completed), "Completed");
-    assert_eq!(format!("{:?}", failed), "Failed");
+    assert_eq!(format!("{pending:?}"), "Pending");
+    assert_eq!(format!("{in_progress:?}"), "InProgress");
+    assert_eq!(format!("{completed:?}"), "Completed");
+    assert_eq!(format!("{failed:?}"), "Failed");
 }
 
 #[test]

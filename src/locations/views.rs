@@ -176,7 +176,7 @@ pub async fn get_location_experiments(
             .map_err(|e| {
                 (
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Database error: {}", e),
+                    format!("Database error: {e}"),
                 )
             })?;
 

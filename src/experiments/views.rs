@@ -934,7 +934,7 @@ mod view_helper_tests {
             processing_message: Some("File processed successfully".to_string()),
         };
 
-        assert_eq!(result1.auto_processed, true);
+        assert!(result1.auto_processed);
         assert_eq!(
             result1.processing_message,
             Some("File processed successfully".to_string())
@@ -945,7 +945,7 @@ mod view_helper_tests {
             processing_message: None,
         };
 
-        assert_eq!(result2.auto_processed, false);
+        assert!(!result2.auto_processed);
         assert_eq!(result2.processing_message, None);
     }
 
@@ -969,10 +969,10 @@ mod view_helper_tests {
 
         // Test deserialization
         let deserialized: UploadResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.success, true);
+        assert!(deserialized.success);
         assert_eq!(deserialized.filename, "test.xlsx");
         assert_eq!(deserialized.size, 1024);
-        assert_eq!(deserialized.auto_processed, true);
+        assert!(deserialized.auto_processed);
         assert_eq!(
             deserialized.processing_message,
             Some("Excel file processed".to_string())
@@ -993,10 +993,10 @@ mod view_helper_tests {
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: UploadResponse = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.success, false);
+        assert!(!deserialized.success);
         assert_eq!(deserialized.filename, "failed.txt");
         assert_eq!(deserialized.size, 0);
-        assert_eq!(deserialized.auto_processed, false);
+        assert!(!deserialized.auto_processed);
         assert_eq!(deserialized.processing_message, None);
     }
 
@@ -1032,13 +1032,11 @@ mod view_helper_tests {
 
             assert_eq!(
                 extension, expected_ext,
-                "Extension mismatch for {}",
-                filename
+                "Extension mismatch for {filename}"
             );
             assert_eq!(
                 file_type, expected_type,
-                "File type mismatch for {}",
-                filename
+                "File type mismatch for {filename}"
             );
         }
     }
@@ -1052,8 +1050,7 @@ mod view_helper_tests {
         let filename = "test_file.xlsx";
 
         let expected_pattern = format!(
-            "{}/{}/experiments/{}/{}",
-            app_name, deployment, experiment_id, filename
+            "{app_name}/{deployment}/experiments/{experiment_id}/{filename}"
         );
 
         // Test that the pattern follows expected structure
@@ -1097,9 +1094,9 @@ mod view_helper_tests {
         ];
 
         for pattern in route_patterns {
-            assert!(pattern.starts_with("/"));
+            assert!(pattern.starts_with('/'));
             assert!(pattern.contains("{experiment_id}"));
-            assert!(!pattern.contains(" ")); // No spaces in routes
+            assert!(!pattern.contains(' ')); // No spaces in routes
             assert!(pattern.len() > 10); // Reasonable length
             assert!(pattern.len() < 50); // Not too long
         }
@@ -1113,7 +1110,7 @@ mod view_helper_tests {
         assert!(overwrite_header.starts_with("x-")); // Custom header prefix
         assert!(overwrite_header.contains("allow"));
         assert!(overwrite_header.contains("overwrite"));
-        assert!(!overwrite_header.contains(" ")); // No spaces in header names
+        assert!(!overwrite_header.contains(' ')); // No spaces in header names
         assert!(
             overwrite_header
                 .chars()
@@ -1127,7 +1124,7 @@ mod view_helper_tests {
         let expected_field_name = "file";
 
         assert_eq!(expected_field_name, "file");
-        assert!(expected_field_name.len() > 0);
+        assert!(!expected_field_name.is_empty());
         assert!(expected_field_name.chars().all(|c| c.is_ascii_alphabetic()));
     }
 }

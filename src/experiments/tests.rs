@@ -4849,13 +4849,11 @@ async fn test_seeder_sample_with_coordinates() {
     // Check that coordinates have at least 3 decimal places and are within expected range
     assert!(
         latitude.starts_with("71.32"),
-        "Latitude should be around 71.32, got: {}",
-        latitude
+        "Latitude should be around 71.32, got: {latitude}"
     );
     assert!(
         longitude.starts_with("-156.76"),
-        "Longitude should be around -156.76, got: {}",
-        longitude
+        "Longitude should be around -156.76, got: {longitude}"
     );
 }
 
@@ -5015,9 +5013,8 @@ async fn test_temperature_readings_during_phase_changes() {
 
                         // During phase changes, temperatures should be below 0°C and above -30°C (reasonable range)
                         assert!(
-                            temperature >= -30.0 && temperature <= 5.0,
-                            "Temperature {} should be in reasonable range (-30°C to 5°C) during phase change",
-                            temperature
+                            (-30.0..=5.0).contains(&temperature),
+                            "Temperature {temperature} should be in reasonable range (-30°C to 5°C) during phase change"
                         );
 
                         // Validate probe metadata values
@@ -5027,18 +5024,16 @@ async fn test_temperature_readings_during_phase_changes() {
                             .expect("Probe name should be a string");
                         assert!(
                             probe_name.starts_with("Probe"),
-                            "Probe name should start with 'Probe', got: {}",
-                            probe_name
+                            "Probe name should start with 'Probe', got: {probe_name}"
                         );
 
                         let data_column_index = probe_reading
                             .get("probe_data_column_index")
-                            .and_then(|i| i.as_i64())
+                            .and_then(serde_json::Value::as_i64)
                             .expect("Data column index should be an integer");
                         assert!(
-                            data_column_index >= 1 && data_column_index <= 8,
-                            "Data column index should be 1-8, got: {}",
-                            data_column_index
+                            (1..=8).contains(&data_column_index),
+                            "Data column index should be 1-8, got: {data_column_index}"
                         );
                     }
 
@@ -5049,9 +5044,8 @@ async fn test_temperature_readings_during_phase_changes() {
                             .parse()
                             .expect("Average temperature should be parseable as float");
                         assert!(
-                            average >= -30.0 && average <= 5.0,
-                            "Average temperature {} should be in reasonable range during phase change",
-                            average
+                            (-30.0..=5.0).contains(&average),
+                            "Average temperature {average} should be in reasonable range during phase change"
                         );
                     }
 
@@ -5083,16 +5077,13 @@ async fn test_temperature_readings_during_phase_changes() {
 
     println!("✅ Temperature validation completed:");
     println!(
-        "   - Wells with phase changes: {}",
-        wells_with_phase_changes
+        "   - Wells with phase changes: {wells_with_phase_changes}"
     );
     println!(
-        "   - Wells with temperature data: {}",
-        wells_with_temperatures
+        "   - Wells with temperature data: {wells_with_temperatures}"
     );
     println!(
-        "   - Probe readings validated: {}",
-        total_probe_readings_checked
+        "   - Probe readings validated: {total_probe_readings_checked}"
     );
 
     // 8. Additional validation: Check that we have reasonable number of probe readings
@@ -5100,9 +5091,6 @@ async fn test_temperature_readings_during_phase_changes() {
     let expected_min_probe_readings = wells_with_temperatures * 3; // At least 3 probes per well with data
     assert!(
         total_probe_readings_checked >= expected_min_probe_readings,
-        "Expected at least {} probe readings ({}+ wells × 3+ probes), got {}",
-        expected_min_probe_readings,
-        wells_with_temperatures,
-        total_probe_readings_checked
+        "Expected at least {expected_min_probe_readings} probe readings ({wells_with_temperatures}+ wells × 3+ probes), got {total_probe_readings_checked}"
     );
 }

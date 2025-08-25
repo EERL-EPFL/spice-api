@@ -2,7 +2,7 @@
 /// 
 /// This module provides standardized builders for creating test entities that follow
 /// the object hierarchy: Projects → Locations → Samples → Treatments
-/// and TrayConfigurations → Trays → {Probes, Wells}
+/// and `TrayConfigurations` → Trays → {Probes, Wells}
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};

@@ -56,22 +56,22 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
         .merge(crate::common::views::router(&app_state)) // Root routes
         .nest(
             "/api/locations",
-            locations::views::router(&app_state).into(),
+            locations::views::router(&app_state),
         )
-        .nest("/api/projects", projects::views::router(&app_state).into())
+        .nest("/api/projects", projects::views::router(&app_state))
         .nest(
             "/api/experiments",
-            experiments::views::router(&app_state).into(),
+            experiments::views::router(&app_state),
         )
-        .nest("/api/samples", samples::views::router(&app_state).into())
-        .nest("/api/assets", assets::views::router(&app_state).into())
+        .nest("/api/samples", samples::views::router(&app_state))
+        .nest("/api/assets", assets::views::router(&app_state))
         .nest(
             "/api/tray_configurations",
-            tray_configurations::views::router(&app_state).into(),
+            tray_configurations::views::router(&app_state),
         )
         .nest(
             "/api/treatments",
-            treatments::views::router(&app_state).into(),
+            treatments::views::router(&app_state),
         )
         .split_for_parts();
 

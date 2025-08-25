@@ -111,7 +111,7 @@ mod tests {
             let addr: Result<std::net::SocketAddr, _> = addr_str.parse();
             if addr_str != "localhost:3000" {
                 // localhost requires name resolution which might fail in test env
-                assert!(addr.is_ok(), "Failed to parse address: {}", addr_str);
+                assert!(addr.is_ok(), "Failed to parse address: {addr_str}");
             }
         }
     }
@@ -129,7 +129,7 @@ mod tests {
 
         for addr_str in invalid_addresses {
             let addr: Result<std::net::SocketAddr, _> = addr_str.parse();
-            assert!(addr.is_err(), "Expected parsing to fail for: {}", addr_str);
+            assert!(addr.is_err(), "Expected parsing to fail for: {addr_str}");
         }
     }
 

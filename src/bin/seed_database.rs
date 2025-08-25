@@ -73,7 +73,7 @@ fn generate_nearby_coordinate(base_lat: f64, base_lon: f64) -> (f64, f64) {
 }
 
 impl DatabaseSeeder {
-    pub fn new(base_url: String, jwt_token: String) -> Self {
+    #[must_use] pub fn new(base_url: String, jwt_token: String) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -139,9 +139,9 @@ impl DatabaseSeeder {
                     Ok(resp) => {
                         let status = resp.status();
                         let error_text = resp.text().await.unwrap_or_default();
-                        Err(format!("HTTP {} {}: {}", status, endpoint, error_text))
+                        Err(format!("HTTP {status} {endpoint}: {error_text}"))
                     },
-                    Err(e) => Err(format!("Request error {}: {e}", endpoint)),
+                    Err(e) => Err(format!("Request error {endpoint}: {e}")),
                 };
 
                 pb_clone.inc(1);
@@ -154,7 +154,7 @@ impl DatabaseSeeder {
         let results: Result<Vec<_>, String> = join_all(tasks).await
             .into_iter()
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("Task join error: {}", e))?
+            .map_err(|e| format!("Task join error: {e}"))?
             .into_iter()
             .collect();
 
@@ -211,7 +211,7 @@ impl DatabaseSeeder {
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            Err(format!("HTTP {} {}: {}", status, endpoint, error_text).into())
+            Err(format!("HTTP {status} {endpoint}: {error_text}").into())
         }
     }
 
@@ -247,7 +247,7 @@ impl DatabaseSeeder {
         } else {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            Err(format!("HTTP {} {}: {}", status, endpoint, error_text).into())
+            Err(format!("HTTP {status} {endpoint}: {error_text}").into())
         }
     }
 
@@ -293,7 +293,7 @@ impl DatabaseSeeder {
 
         for project_data in projects_data {
             let name = project_data["name"].as_str().unwrap();
-            pb.set_message(format!("Creating: {}", name));
+            pb.set_message(format!("Creating: {name}"));
 
             let result = self
                 .make_request("POST", "/projects", Some(project_data))
@@ -407,7 +407,7 @@ impl DatabaseSeeder {
             ],
         ];
 
-        let total_locations: usize = location_sets.iter().map(|set| set.len()).sum();
+        let total_locations: usize = location_sets.iter().map(std::vec::Vec::len).sum();
         let pb = ProgressBar::new(total_locations as u64);
         pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
@@ -419,7 +419,7 @@ impl DatabaseSeeder {
             let locations_for_project = &location_sets[i % location_sets.len()];
 
             for (name, comment, latitude, longitude) in locations_for_project {
-                pb.set_message(format!("Creating: {}", name));
+                pb.set_message(format!("Creating: {name}"));
 
                 let location_data = json!({
                     "name": name,
@@ -619,7 +619,7 @@ impl DatabaseSeeder {
 
                 // Execute this batch with limited concurrency
                 let batch_results = self.make_parallel_requests(batch_requests, 5, &pb).await
-                    .map_err(|e| format!("Batch sample creation failed: {}", e))?;
+                    .map_err(|e| format!("Batch sample creation failed: {e}"))?;
                 
                 self.created_objects.samples.extend(batch_results);
                 
@@ -834,7 +834,7 @@ impl DatabaseSeeder {
 
         for config_data in tray_configs {
             let name = config_data["name"].as_str().unwrap();
-            pb.set_message(format!("Creating: {}", name));
+            pb.set_message(format!("Creating: {name}"));
 
             let result = self
                 .make_request("POST", "/tray_configurations", Some(config_data))
@@ -991,7 +991,7 @@ impl DatabaseSeeder {
 
         for (i, mut template) in experiment_templates.into_iter().enumerate() {
             let name = template["name"].as_str().unwrap();
-            pb.set_message(format!("Creating: {}", name));
+            pb.set_message(format!("Creating: {name}"));
 
             // Add realistic timestamp
             let performed_at = (Utc::now() - ChronoDuration::days((i as i64 * 7) + 2))
@@ -1093,7 +1093,7 @@ impl DatabaseSeeder {
 
         match self
             .make_multipart_request(
-                &format!("/experiments/{}/process-excel", experiment_id),
+                &format!("/experiments/{experiment_id}/process-excel"),
                 &excel_file_path,
             )
             .await
