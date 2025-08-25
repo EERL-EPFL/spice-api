@@ -5,6 +5,8 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    #[allow(clippy::too_many_lines)] // Probe configuration migration requires extensive table modifications
+    #[allow(clippy::match_wildcard_for_single_variants)] // Wildcard matches for unsupported databases are semantically correct
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Add image coordinate columns to existing trays table (SQLite requires separate ALTER statements)
         manager

@@ -6,6 +6,8 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    #[allow(clippy::too_many_lines)] // Large migration requires extensive table definitions
+    #[allow(clippy::match_wildcard_for_single_variants)] // Wildcard matches for unsupported databases are semantically correct
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Enable UUID and PostGIS extensions for PostgreSQL
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
@@ -1158,6 +1160,8 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)] // Large rollback requires extensive table drops
+    #[allow(clippy::match_wildcard_for_single_variants)] // Wildcard matches for unsupported databases are semantically correct
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Drop spatial indexes for PostgreSQL
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {

@@ -48,6 +48,7 @@ fn row_letter_to_index(row_letter: &str) -> i32 {
 }
 
 // Helper function to load temperature readings with individual probe data
+#[allow(clippy::too_many_lines)] // Complex data loading logic requires extensive processing
 async fn load_individual_temperature_data(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,

@@ -18,6 +18,7 @@
 use chrono::{Duration as ChronoDuration, Utc};
 use clap::{Arg, Command};
 use console::style;
+use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::Rng;
 use reqwest::{Client, multipart};
@@ -28,7 +29,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, sleep};
-use futures::future::join_all;
 
 #[derive(Debug, Clone)]
 pub struct SeedingConfig {
@@ -73,7 +73,10 @@ fn generate_nearby_coordinate(base_lat: f64, base_lon: f64) -> (f64, f64) {
 }
 
 impl DatabaseSeeder {
-    #[must_use] pub fn new(base_url: String, jwt_token: String) -> Self {
+    #[must_use]
+    #[allow(clippy::needless_pass_by_value)] // Both strings are consumed and stored in the struct
+    #[allow(clippy::missing_panics_doc)] // Constructor panics are acceptable for seeding tool
+    pub fn new(base_url: String, jwt_token: String) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
@@ -103,10 +106,10 @@ impl DatabaseSeeder {
             let sem = Arc::clone(&semaphore);
             let config = self.config.clone();
             let pb_clone = pb.clone();
-            
+
             let task = tokio::spawn(async move {
                 let _permit = sem.acquire().await.unwrap();
-                
+
                 let client = &config.client;
                 let url = format!("{}{}", config.base_url, endpoint);
 
@@ -120,38 +123,39 @@ impl DatabaseSeeder {
                             request = request.json(&json_data);
                         }
                         request.send().await
-                    },
+                    }
                     "GET" => {
                         client
                             .get(&url)
                             .header("authorization", format!("Bearer {}", config.jwt_token))
                             .send()
                             .await
-                    },
+                    }
                     _ => return Err("Unsupported HTTP method".to_string()),
                 };
 
                 let result = match response {
-                    Ok(resp) if resp.status().is_success() => {
-                        resp.json::<Value>().await
-                            .map_err(|e| format!("JSON parse error: {e}"))
-                    },
+                    Ok(resp) if resp.status().is_success() => resp
+                        .json::<Value>()
+                        .await
+                        .map_err(|e| format!("JSON parse error: {e}")),
                     Ok(resp) => {
                         let status = resp.status();
                         let error_text = resp.text().await.unwrap_or_default();
                         Err(format!("HTTP {status} {endpoint}: {error_text}"))
-                    },
+                    }
                     Err(e) => Err(format!("Request error {endpoint}: {e}")),
                 };
 
                 pb_clone.inc(1);
                 result
             });
-            
+
             tasks.push(task);
         }
 
-        let results: Result<Vec<_>, String> = join_all(tasks).await
+        let results: Result<Vec<_>, String> = join_all(tasks)
+            .await
             .into_iter()
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Task join error: {e}"))?
@@ -251,11 +255,14 @@ impl DatabaseSeeder {
         }
     }
 
+    #[allow(clippy::missing_errors_doc)] // Seeding utility function
+    #[allow(clippy::unused_async)] // Kept async for consistency with other utility functions
     pub async fn test_connection(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Health check removed for load balancer compatibility
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
     pub async fn create_projects(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{} Creating research projects...",
@@ -314,32 +321,34 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)] // Location creation requires extensive coordinate definitions
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
     pub async fn create_locations(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{} Creating sampling locations...",
             style("[2/7]").bold().dim()
         );
 
-        let location_sets = vec![
+        let location_sets = [
             // Arctic research sites
             vec![
                 (
                     "Utqiagvik Research Station",
                     "Arctic Ocean coastal site, formerly Barrow - continuous atmospheric monitoring",
-                    71.323020,
-                    -156.766045, // Utqiagvik, Alaska
+                    71.323_020,
+                    -156.766_045, // Utqiagvik, Alaska
                 ),
                 (
                     "Greenland Summit Station",
                     "High-altitude ice sheet site at 3200m elevation - pristine atmospheric conditions",
-                    72.579630,
-                    -38.459210, // Summit Station, Greenland
+                    72.579_630,
+                    -38.459_210, // Summit Station, Greenland
                 ),
                 (
                     "Svalbard Zeppelin Observatory",
                     "Arctic atmospheric research station - long-term aerosol monitoring",
-                    78.906700,
-                    11.888315, // Ny-Ålesund, Svalbard
+                    78.906_700,
+                    11.888_315, // Ny-Ålesund, Svalbard
                 ),
             ],
             // Agricultural research sites
@@ -347,20 +356,20 @@ impl DatabaseSeeder {
                 (
                     "Iowa State Agricultural Research",
                     "Midwest corn belt sampling site - agricultural aerosol characterization",
-                    42.030800,
-                    -93.631925, // Ames, Iowa
+                    42.030_800,
+                    -93.631_925, // Ames, Iowa
                 ),
                 (
                     "California Central Valley Station",
                     "Prime agricultural region - dust and biological aerosol source",
-                    36.778315,
-                    -119.417865, // Fresno, California
+                    36.778_315,
+                    -119.417_865, // Fresno, California
                 ),
                 (
                     "Wisconsin Dairy Research Facility",
                     "Rural agricultural site - biological particle emissions",
-                    43.064200,
-                    -89.401230, // Madison, Wisconsin
+                    43.064_200,
+                    -89.401_230, // Madison, Wisconsin
                 ),
             ],
             // Marine boundary layer sites
@@ -368,20 +377,20 @@ impl DatabaseSeeder {
                 (
                     "Point Reyes Marine Laboratory",
                     "California coastal site - marine boundary layer sampling",
-                    38.098415,
-                    -122.819445, // Point Reyes, California
+                    38.098_415,
+                    -122.819_445, // Point Reyes, California
                 ),
                 (
                     "Bermuda Atlantic Time-series",
                     "Mid-Atlantic marine aerosol characterization site",
-                    32.169025,
-                    -64.834050, // Bermuda
+                    32.169_025,
+                    -64.834_050, // Bermuda
                 ),
                 (
                     "Cape Cod Marine Station",
                     "Northwest Atlantic coastal marine aerosol research",
-                    41.668835,
-                    -70.296240, // Cape Cod, Massachusetts
+                    41.668_835,
+                    -70.296_240, // Cape Cod, Massachusetts
                 ),
             ],
             // Climate validation sites
@@ -389,20 +398,20 @@ impl DatabaseSeeder {
                 (
                     "NOAA Mauna Loa Observatory",
                     "High-altitude atmospheric baseline measurements",
-                    19.536250,
-                    -155.576300, // Mauna Loa, Hawaii
+                    19.536_250,
+                    -155.576_300, // Mauna Loa, Hawaii
                 ),
                 (
                     "ARM Southern Great Plains",
                     "Continental atmospheric research facility - comprehensive measurements",
-                    36.605800,
-                    -97.488750, // Lamont, Oklahoma
+                    36.605_800,
+                    -97.488_750, // Lamont, Oklahoma
                 ),
                 (
                     "Jungfraujoch High Altitude Station",
                     "European high-altitude atmospheric research - 3580m elevation",
-                    46.547735,
-                    7.985025, // Jungfraujoch, Switzerland
+                    46.547_735,
+                    7.985_025, // Jungfraujoch, Switzerland
                 ),
             ],
         ];
@@ -427,8 +436,7 @@ impl DatabaseSeeder {
                     "project_id": project_id
                 });
 
-                // Store coordinates for use in samples
-                let _location_coords = (latitude, longitude);
+                // Store coordinates for use in samples (coordinates stored in location_with_coords below)
 
                 let result = self
                     .make_request("POST", "/locations", Some(location_data))
@@ -456,6 +464,8 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
+    #[allow(clippy::too_many_lines)] // Sample creation requires extensive type-specific logic
     pub async fn create_samples(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{} Creating environmental samples...",
@@ -481,9 +491,13 @@ impl DatabaseSeeder {
 
         let samples_per_location = 100; // Generate 100 samples per location for geographic spread
         let total_samples = self.created_objects.locations.len() * samples_per_location;
-        
-        println!("DEBUG: Planning to create {} total samples ({} locations × {} samples/location)", 
-                 total_samples, self.created_objects.locations.len(), samples_per_location);
+
+        println!(
+            "DEBUG: Planning to create {} total samples ({} locations × {} samples/location)",
+            total_samples,
+            self.created_objects.locations.len(),
+            samples_per_location
+        );
 
         let pb = ProgressBar::new(total_samples as u64);
         pb.set_style(ProgressStyle::default_bar()
@@ -506,7 +520,10 @@ impl DatabaseSeeder {
                 .parse::<f64>()
                 .unwrap_or(0.0);
 
-            pb.set_message(format!("Creating samples for {}", &location_name[..location_name.len().min(20)]));
+            pb.set_message(format!(
+                "Creating samples for {}",
+                &location_name[..location_name.len().min(20)]
+            ));
 
             // Create samples for this location in smaller batches
             let batch_size = 10;
@@ -522,6 +539,8 @@ impl DatabaseSeeder {
                         generate_nearby_coordinate(base_latitude, base_longitude);
 
                     // Vary collection dates over several months
+                    // i is in range 0..samples_per_location, safe to cast to i64
+                    #[allow(clippy::cast_possible_wrap)]
                     let days_offset = ((i as i64 * 3) % 180) + 1; // 1-180 days ago
                     let collection_date = (Utc::now() - ChronoDuration::days(days_offset))
                         .format("%Y-%m-%d")
@@ -574,61 +593,79 @@ impl DatabaseSeeder {
                             // Filter sample fields from INSEKT document
                             let mut rng = rand::rng();
                             sample_data["location_id"] = json!(location_id);
-                            sample_data["start_time"] = json!(format!("{}T{:02}:{:02}:00Z", 
-                                collection_date, 
+                            sample_data["start_time"] = json!(format!(
+                                "{}T{:02}:{:02}:00Z",
+                                collection_date,
                                 6 + (i % 12), // Sampling hours: 6-18
                                 (i * 7) % 60  // Minutes variation
                             ));
-                            sample_data["stop_time"] = json!(format!("{}T{:02}:{:02}:00Z", 
-                                collection_date, 
+                            sample_data["stop_time"] = json!(format!(
+                                "{}T{:02}:{:02}:00Z",
+                                collection_date,
                                 8 + (i % 12), // 2 hour sampling duration
                                 (i * 7) % 60
                             ));
-                            sample_data["flow_litres_per_minute"] = json!(rng.gen_range(8.0..15.0)); // Typical aerosol sampling rates
-                            sample_data["total_volume"] = json!(rng.gen_range(500.0..2000.0)); // Total air volume sampled
-                            sample_data["suspension_volume_litres"] = json!(rng.gen_range(0.008..0.020)); // 8-20mL suspension
+                            sample_data["flow_litres_per_minute"] =
+                                json!(rng.random_range(8.0..15.0)); // Typical aerosol sampling rates
+                            sample_data["total_volume"] = json!(rng.random_range(500.0..2000.0)); // Total air volume sampled
+                            sample_data["suspension_volume_litres"] =
+                                json!(rng.random_range(0.008..0.020)); // 8-20mL suspension
                             sample_data["filter_substrate"] = json!(match i % 3 {
                                 0 => "PTFE",
-                                1 => "Polycarbonate", 
-                                _ => "Quartz fiber"
+                                1 => "Polycarbonate",
+                                _ => "Quartz fiber",
                             });
                         }
                         "bulk" => {
-                            // Bulk sample fields from INSEKT document  
+                            // Bulk sample fields from INSEKT document
                             let mut rng = rand::rng();
                             sample_data["location_id"] = json!(location_id);
                             sample_data["latitude"] = json!(format!("{:.6}", sample_lat));
                             sample_data["longitude"] = json!(format!("{:.6}", sample_lon));
-                            sample_data["start_time"] = json!(format!("{}T{:02}:{:02}:00Z", 
+                            sample_data["start_time"] = json!(format!(
+                                "{}T{:02}:{:02}:00Z",
                                 collection_date,
                                 8 + (i % 8), // Collection hours: 8-16
                                 (i * 11) % 60
                             ));
-                            sample_data["suspension_volume_litres"] = json!(rng.gen_range(0.010..0.050)); // 10-50mL suspension
-                            sample_data["air_volume_litres"] = json!(rng.gen_range(0.001..0.005)); // Air volume displaced
-                            sample_data["water_volume_litres"] = json!(rng.gen_range(0.008..0.045)); // Water for suspension  
-                            sample_data["initial_concentration_gram_l"] = json!(rng.gen_range(0.1..2.0)); // Initial concentration
+                            sample_data["suspension_volume_litres"] =
+                                json!(rng.random_range(0.010..0.050)); // 10-50mL suspension
+                            sample_data["air_volume_litres"] =
+                                json!(rng.random_range(0.001..0.005)); // Air volume displaced
+                            sample_data["water_volume_litres"] =
+                                json!(rng.random_range(0.008..0.045)); // Water for suspension
+                            sample_data["initial_concentration_gram_l"] =
+                                json!(rng.random_range(0.1..2.0)); // Initial concentration
                         }
                         _ => {
                             sample_data["location_id"] = json!(location_id);
                         }
                     }
 
-                    batch_requests.push(("POST".to_string(), "/samples".to_string(), Some(sample_data)));
+                    batch_requests.push((
+                        "POST".to_string(),
+                        "/samples".to_string(),
+                        Some(sample_data),
+                    ));
                 }
 
                 // Execute this batch with limited concurrency
-                let batch_results = self.make_parallel_requests(batch_requests, 5, &pb).await
+                let batch_results = self
+                    .make_parallel_requests(batch_requests, 5, &pb)
+                    .await
                     .map_err(|e| format!("Batch sample creation failed: {e}"))?;
-                
+
                 self.created_objects.samples.extend(batch_results);
-                
+
                 // Small delay between batches to avoid overwhelming the server
                 sleep(Duration::from_millis(100)).await;
             }
         }
 
-        println!("DEBUG: Final sample count: {}", self.created_objects.samples.len());
+        println!(
+            "DEBUG: Final sample count: {}",
+            self.created_objects.samples.len()
+        );
 
         pb.finish_with_message("Samples created!");
         println!(
@@ -640,6 +677,7 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
     pub async fn create_treatments(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{} Creating laboratory treatments...",
@@ -670,11 +708,13 @@ impl DatabaseSeeder {
             let treatment_count = match sample_type {
                 "procedural_blank" | "pure_water" => 1, // only "none"
                 "filter" | "bulk" => 3,                 // none, heat, h2o2
-                _ => 2,                                  // none, heat
+                _ => 2,                                 // none, heat
             };
             total_treatments += treatment_count;
         }
 
+        // total_treatments is computed from sample count, which is positive
+        #[allow(clippy::cast_sign_loss)]
         let pb = ProgressBar::new(total_treatments as u64);
         pb.set_style(ProgressStyle::default_bar()
             .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
@@ -691,8 +731,7 @@ impl DatabaseSeeder {
 
             // Determine treatments based on sample type
             let treatments = match sample_type {
-                "procedural_blank" => vec!["none"],
-                "pure_water" => vec!["none"],
+                "procedural_blank" | "pure_water" => vec!["none"], // Both only get "none" treatment
                 "filter" | "bulk" => vec!["none", "heat", "h2o2"],
                 _ => vec!["none", "heat"],
             };
@@ -714,7 +753,8 @@ impl DatabaseSeeder {
                 // Add realistic enzyme volumes for certain treatments
                 if treatment_name == "h2o2" {
                     let mut rng = rand::rng();
-                    treatment_data["enzyme_volume_litres"] = json!(rng.gen_range(0.0001..0.0005)); // 0.1-0.5mL
+                    treatment_data["enzyme_volume_litres"] =
+                        json!(rng.random_range(0.0001..0.0005)); // 0.1-0.5mL
                 }
 
                 let result = self
@@ -737,6 +777,8 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
+    #[allow(clippy::too_many_lines)] // Tray configuration requires extensive JSON definitions
     pub async fn create_tray_configurations(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{} Creating tray configurations...",
@@ -855,6 +897,8 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
+    #[allow(clippy::too_many_lines)] // Experiment creation requires extensive template definitions
     pub async fn create_experiments(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("{} Creating experiments...", style("[6/7]").bold().dim());
 
@@ -994,6 +1038,8 @@ impl DatabaseSeeder {
             pb.set_message(format!("Creating: {name}"));
 
             // Add realistic timestamp
+            // i is bounded by experiment_templates.len(), safe to cast to i64
+            #[allow(clippy::cast_possible_wrap)]
             let performed_at = (Utc::now() - ChronoDuration::days((i as i64 * 7) + 2))
                 .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                 .to_string();
@@ -1048,6 +1094,7 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
     pub async fn process_excel_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!("{} Processing Excel file...", style("[7/7]").bold().dim());
 
@@ -1055,9 +1102,9 @@ impl DatabaseSeeder {
         let excel_file_path = PathBuf::from("src/experiments/test_resources/merged.xlsx");
         if !excel_file_path.exists() {
             println!(
-                "{} Excel file not found at {:?}, skipping processing",
+                "{} Excel file not found at {}, skipping processing",
                 style("⚠️").yellow(),
-                excel_file_path
+                excel_file_path.display()
             );
             return Ok(());
         }
@@ -1139,6 +1186,7 @@ impl DatabaseSeeder {
         Ok(())
     }
 
+    #[allow(clippy::missing_errors_doc, clippy::missing_panics_doc)] // Seeding utility function
     pub async fn seed_database(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         println!();
         println!("{}", style("SPICE Database Seeder").bold().blue());

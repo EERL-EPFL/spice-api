@@ -952,7 +952,10 @@ impl DirectExcelProcessor {
                 .await?;
 
             for probe in probes {
-                probe_mappings.insert(probe.data_column_index as u32, probe.id);
+                // data_column_index is guaranteed to be positive (1-8 range from probes)
+                #[allow(clippy::cast_sign_loss)]
+                let key = probe.data_column_index as u32;
+                probe_mappings.insert(key, probe.id);
             }
         }
 
@@ -965,6 +968,7 @@ impl DirectExcelProcessor {
     }
 
     /// Create individual probe temperature readings from row data
+    #[allow(clippy::cast_sign_loss)] // Excel column indices are always positive in this context
     fn create_individual_probe_readings(
         &self,
         row: &[Data],
@@ -976,9 +980,11 @@ impl DirectExcelProcessor {
         // Process temperature columns (1-8 correspond to probes, skipping datetime columns)
         // Excel columns: 0=Date, 1=Time, 2-9=Temperature probes → we map 2-9 to probe data_column_index 1-8
         for excel_col_index in 2..=9 {
+            // excel_col_index is in range 2-9, so (excel_col_index - 1) is always positive
             let probe_data_column_index = (excel_col_index - 1) as u32; // Excel col 2→probe 1, col 3→probe 2, etc.
             if let Some(&probe_id) = self.probe_mappings.get(&probe_data_column_index) {
                 if let Some(temp_value) =
+                    // excel_col_index is in range 2-9, always positive
                     row.get(excel_col_index as usize)
                         .and_then(|cell| match cell {
                             Data::Float(f) => Some(*f),

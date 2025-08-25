@@ -5,6 +5,7 @@ pub struct Migration;
 
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
+    #[allow(clippy::too_many_lines)] // Performance indexes migration requires extensive index definitions
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Enable PostgreSQL extensions for enhanced search capabilities
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
@@ -514,6 +515,7 @@ impl MigrationTrait for Migration {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)] // Performance indexes rollback requires extensive index drops
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // Drop PostgreSQL fulltext indexes if they exist
         if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
