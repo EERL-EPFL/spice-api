@@ -1950,12 +1950,33 @@ async fn test_asset_download_endpoint() {
     let experiment_id = experiment_result["id"].as_str().unwrap();
     // println!("✅ Created experiment for asset download test: {experiment_id}");
 
-    // Make download request (should return 404 since no assets exist)
+    // First get a download token (should succeed even if no assets)
+    let token_response = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri(format!("/api/experiments/{experiment_id}/download-token"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(token_response.status(), axum::http::StatusCode::OK, "Token creation should succeed");
+    
+    let token_body_bytes = axum::body::to_bytes(token_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let token_body: serde_json::Value = serde_json::from_slice(&token_body_bytes).unwrap();
+    let token = token_body["token"].as_str().unwrap();
+
+    // Now make download request with token (should return 404 since no assets exist)
     let download_response = app
         .oneshot(
             axum::http::Request::builder()
                 .method("GET")
-                .uri(format!("/api/experiments/{experiment_id}/download"))
+                .uri(format!("/api/assets/download/{token}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -4293,39 +4314,40 @@ async fn create_test_tray_configuration_with_probes(app: &Router) -> Result<Stri
                     "experiment_default": false,
                     "trays": [
                         {
-                            "order_sequence": 1,
-                            "rotation_degrees": 0,
                             "name": "P1",
+                            "rotation_degrees": 90,
+                            "well_relative_diameter": 6.4,
                             "qty_cols": 12,
                             "qty_rows": 8,
-                            "well_relative_diameter": 1.0,
-                            "upper_left_corner_x": 0,
-                            "upper_left_corner_y": 0,
-                            "lower_right_corner_x": 200,
-                            "lower_right_corner_y": 150,
-                            "probes": [
-                                {"name": "Probe 1", "data_column_index": 2, "position_x": 20, "position_y": 15},
-                                {"name": "Probe 2", "data_column_index": 3, "position_x": 40, "position_y": 30},
-                                {"name": "Probe 3", "data_column_index": 4, "position_x": 60, "position_y": 45},
-                                {"name": "Probe 4", "data_column_index": 5, "position_x": 80, "position_y": 60},
-                                {"name": "Probe 5", "data_column_index": 6, "position_x": 100, "position_y": 75},
-                                {"name": "Probe 6", "data_column_index": 7, "position_x": 120, "position_y": 90},
-                                {"name": "Probe 7", "data_column_index": 8, "position_x": 140, "position_y": 105},
-                                {"name": "Probe 8", "data_column_index": 9, "position_x": 160, "position_y": 120}
-                            ]
+                            "probe_locations": [
+                                {"name": "Probe 1", "data_column_index": 1, "position_x": 22.1, "position_y": 77.6},
+                                {"name": "Probe 2", "data_column_index": 2, "position_x": 47.1, "position_y": 20},
+                                {"name": "Probe 3", "data_column_index": 3, "position_x": 113, "position_y": 19.5},
+                                {"name": "Probe 4", "data_column_index": 4, "position_x": 143.5, "position_y": 79.5}
+                            ],
+                            "upper_left_corner_x": 416,
+                            "upper_left_corner_y": 75,
+                            "lower_right_corner_x": 135,
+                            "lower_right_corner_y": 542,
+                            "order_sequence": 1
                         },
                         {
-                            "order_sequence": 2,
-                            "rotation_degrees": 0,
                             "name": "P2",
+                            "rotation_degrees": 270,
+                            "well_relative_diameter": 6.4,
                             "qty_cols": 12,
                             "qty_rows": 8,
-                            "well_relative_diameter": 1.0,
-                            "upper_left_corner_x": 0,
-                            "upper_left_corner_y": 0,
-                            "lower_right_corner_x": 200,
-                            "lower_right_corner_y": 150,
-                            "probes": []
+                            "probe_locations": [
+                                {"name": "Probe 5", "data_column_index": 5, "position_x": 140.8, "position_y": 80},
+                                {"name": "Probe 6", "data_column_index": 6, "position_x": 103.1, "position_y": 21.9},
+                                {"name": "Probe 7", "data_column_index": 7, "position_x": 48.1, "position_y": 22.4},
+                                {"name": "Probe 8", "data_column_index": 8, "position_x": 7.2, "position_y": 93.3}
+                            ],
+                            "upper_left_corner_x": 536,
+                            "upper_left_corner_y": 529,
+                            "lower_right_corner_x": 823,
+                            "lower_right_corner_y": 67,
+                            "order_sequence": 2
                         }
                     ]
                 }).to_string()))
