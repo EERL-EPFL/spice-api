@@ -482,9 +482,16 @@ impl DatabaseSeeder {
         let samples_per_location = 100; // Generate 100 samples per location for geographic spread
         let total_samples = self.created_objects.locations.len() * samples_per_location;
         
-        // Build all sample requests for parallel execution
-        let mut all_sample_requests = Vec::new();
-        
+        println!("DEBUG: Planning to create {} total samples ({} locations × {} samples/location)", 
+                 total_samples, self.created_objects.locations.len(), samples_per_location);
+
+        let pb = ProgressBar::new(total_samples as u64);
+        pb.set_style(ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
+            .unwrap()
+            .progress_chars("##-"));
+
+        // Process each location sequentially but with batch creation for reliability
         for location in &self.created_objects.locations {
             let location_id = location["id"].as_str().unwrap();
             let location_name = location["name"].as_str().unwrap();
@@ -499,76 +506,92 @@ impl DatabaseSeeder {
                 .parse::<f64>()
                 .unwrap_or(0.0);
 
-            // Build sample requests for this location
-            for i in 0..samples_per_location {
-                let (pattern_name, sample_type) = &sample_patterns[i % sample_patterns.len()];
+            pb.set_message(format!("Creating samples for {}", &location_name[..location_name.len().min(20)]));
 
-                // Generate nearby coordinates within ~1km radius
-                let (sample_lat, sample_lon) =
-                    generate_nearby_coordinate(base_latitude, base_longitude);
+            // Create samples for this location in smaller batches
+            let batch_size = 10;
+            for batch_start in (0..samples_per_location).step_by(batch_size) {
+                let batch_end = (batch_start + batch_size).min(samples_per_location);
+                let mut batch_requests = Vec::new();
 
-                // Vary collection dates over several months
-                let days_offset = ((i as i64 * 3) % 180) + 1; // 1-180 days ago
-                let collection_date = (Utc::now() - ChronoDuration::days(days_offset))
-                    .format("%Y-%m-%d")
-                    .to_string();
+                for i in batch_start..batch_end {
+                    let (pattern_name, sample_type) = &sample_patterns[i % sample_patterns.len()];
 
-                // Add sequence number for uniqueness
-                let sample_name = format!(
-                    "{} {} {} S{:03}",
-                    &location_name[..location_name.len().min(15)],
-                    pattern_name,
-                    collection_date,
-                    i + 1
-                );
+                    // Generate nearby coordinates within ~1km radius
+                    let (sample_lat, sample_lon) =
+                        generate_nearby_coordinate(base_latitude, base_longitude);
 
-                let remarks = match *sample_type {
-                    "procedural_blank" => format!(
-                        "Quality control {} (S{:03}) processed alongside environmental samples on {}. GPS: {:.6}°, {:.6}°",
-                        pattern_name.to_lowercase(),
-                        i + 1,
+                    // Vary collection dates over several months
+                    let days_offset = ((i as i64 * 3) % 180) + 1; // 1-180 days ago
+                    let collection_date = (Utc::now() - ChronoDuration::days(days_offset))
+                        .format("%Y-%m-%d")
+                        .to_string();
+
+                    // Add sequence number for uniqueness
+                    let sample_name = format!(
+                        "{} {} {} S{:03}",
+                        &location_name[..location_name.len().min(15)],
+                        pattern_name,
                         collection_date,
-                        sample_lat,
-                        sample_lon
-                    ),
-                    _ => format!(
-                        "Environmental sample S{:03} collected from {} region on {}. Sample type: {}. GPS: {:.6}°, {:.6}°",
-                        i + 1,
-                        location_name,
-                        collection_date,
-                        sample_type,
-                        sample_lat,
-                        sample_lon
-                    ),
-                };
+                        i + 1
+                    );
 
-                let sample_data = json!({
-                    "name": sample_name,
-                    "location_id": location_id,
-                    "type": sample_type,
-                    "latitude": format!("{:.6}", sample_lat),
-                    "longitude": format!("{:.6}", sample_lon),
-                    "remarks": remarks
-                });
+                    let remarks = match *sample_type {
+                        "procedural_blank" => format!(
+                            "Quality control {} (S{:03}) processed alongside environmental samples on {}. GPS: {:.6}°, {:.6}°",
+                            pattern_name.to_lowercase(),
+                            i + 1,
+                            collection_date,
+                            sample_lat,
+                            sample_lon
+                        ),
+                        _ => format!(
+                            "Environmental sample S{:03} collected from {} region on {}. Sample type: {}. GPS: {:.6}°, {:.6}°",
+                            i + 1,
+                            location_name,
+                            collection_date,
+                            sample_type,
+                            sample_lat,
+                            sample_lon
+                        ),
+                    };
 
-                all_sample_requests.push(("POST".to_string(), "/samples".to_string(), Some(sample_data)));
+                    // Procedural blanks must have NULL location_id per database constraint
+                    let sample_data = if *sample_type == "procedural_blank" {
+                        json!({
+                            "name": sample_name,
+                            "location_id": null,
+                            "type": sample_type,
+                            "latitude": format!("{:.6}", sample_lat),
+                            "longitude": format!("{:.6}", sample_lon),
+                            "remarks": remarks
+                        })
+                    } else {
+                        json!({
+                            "name": sample_name,
+                            "location_id": location_id,
+                            "type": sample_type,
+                            "latitude": format!("{:.6}", sample_lat),
+                            "longitude": format!("{:.6}", sample_lon),
+                            "remarks": remarks
+                        })
+                    };
+
+                    batch_requests.push(("POST".to_string(), "/samples".to_string(), Some(sample_data)));
+                }
+
+                // Execute this batch with limited concurrency
+                let batch_results = self.make_parallel_requests(batch_requests, 5, &pb).await
+                    .map_err(|e| format!("Batch sample creation failed: {}", e))?;
+                
+                self.created_objects.samples.extend(batch_results);
+                
+                // Small delay between batches to avoid overwhelming the server
+                sleep(Duration::from_millis(100)).await;
             }
         }
 
-        // Execute sample creation in parallel with controlled concurrency
-        let pb = ProgressBar::new(total_samples as u64);
-        pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
-            .unwrap()
-            .progress_chars("##-"));
-        pb.set_message("Creating samples in parallel...");
-
-        let max_concurrent = 20; // Limit concurrent requests to avoid overwhelming the server
-        let results = self.make_parallel_requests(all_sample_requests, max_concurrent, &pb).await
-            .map_err(|e| format!("Sample creation failed: {}", e))?;
-        
-        // Store all created samples
-        self.created_objects.samples.extend(results);
+        println!("DEBUG: Final sample count: {}", self.created_objects.samples.len());
 
         pb.finish_with_message("Samples created!");
         println!(
@@ -609,8 +632,8 @@ impl DatabaseSeeder {
                 .unwrap_or("bulk");
             let treatment_count = match sample_type {
                 "procedural_blank" | "pure_water" => 1, // only "none"
-                "filter" => 3,                          // none, heat, h2o2
-                _ => 2,                                 // none, heat
+                "filter" | "bulk" => 3,                 // none, heat, h2o2
+                _ => 2,                                  // none, heat
             };
             total_treatments += treatment_count;
         }
@@ -632,7 +655,8 @@ impl DatabaseSeeder {
             // Determine treatments based on sample type
             let treatments = match sample_type {
                 "procedural_blank" => vec!["none"],
-                "filter" => vec!["none", "heat", "h2o2"],
+                "pure_water" => vec!["none"],
+                "filter" | "bulk" => vec!["none", "heat", "h2o2"],
                 _ => vec!["none", "heat"],
             };
 

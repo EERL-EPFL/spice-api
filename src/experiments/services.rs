@@ -1,16 +1,14 @@
 use super::models::{
-    ExperimentResultsResponse, ExperimentResultsSummaryCompact, TrayResultsSummary, TrayWellSummary,
-    TemperatureDataWithProbes,
+    ExperimentResultsResponse, ExperimentResultsSummaryCompact, TemperatureDataWithProbes,
+    TrayResultsSummary, TrayWellSummary,
 };
 use crate::{
     experiments::models as experiments,
     experiments::phase_transitions::models as well_phase_transitions,
-    experiments::temperatures::models as temperature_readings,
     experiments::probe_temperature_readings::models as probe_temperature_readings,
-    tray_configurations::regions::models as regions, 
-    tray_configurations::trays::models as trays,
-    tray_configurations::wells::models as wells,
-    tray_configurations::probes::models as probes,
+    experiments::temperatures::models as temperature_readings,
+    tray_configurations::probes::models as probes, tray_configurations::regions::models as regions,
+    tray_configurations::trays::models as trays, tray_configurations::wells::models as wells,
 };
 use crate::{
     locations::models as locations, samples::models as samples, treatments::models as treatments,
@@ -49,7 +47,6 @@ fn row_letter_to_index(row_letter: &str) -> i32 {
         .map_or(0, |c| c as i32 - 'A' as i32)
 }
 
-
 // Helper function to load temperature readings with individual probe data
 async fn load_individual_temperature_data(
     experiment_id: Uuid,
@@ -79,7 +76,7 @@ async fn load_individual_temperature_data(
         .one(db)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound("Experiment not found".to_string()))?;
-    
+
     // Load all probes from the tray configuration for this experiment
     let all_experiment_probes = if let Some(tray_config_id) = experiment.tray_configuration_id {
         // Get all trays for this configuration
@@ -87,9 +84,9 @@ async fn load_individual_temperature_data(
             .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
             .all(db)
             .await?;
-        
+
         let tray_ids: Vec<Uuid> = trays.iter().map(|t| t.id).collect();
-        
+
         // Get all probes from all trays in this configuration
         probes::Entity::find()
             .filter(probes::Column::TrayId.is_in(tray_ids))
@@ -101,7 +98,7 @@ async fn load_individual_temperature_data(
 
     // Get individual probe readings for all temperature readings
     let temp_reading_ids: Vec<Uuid> = temp_readings_data.iter().map(|tr| tr.id).collect();
-    
+
     let probe_readings = probe_temperature_readings::Entity::find()
         .filter(probe_temperature_readings::Column::TemperatureReadingId.is_in(temp_reading_ids))
         .find_also_related(probes::Entity)
@@ -109,8 +106,11 @@ async fn load_individual_temperature_data(
         .await?;
 
     // Group probe readings by temperature_reading_id
-    let mut probe_readings_by_temp_id: std::collections::HashMap<Uuid, Vec<(probe_temperature_readings::Model, Option<probes::Model>)>> = std::collections::HashMap::new();
-    
+    let mut probe_readings_by_temp_id: std::collections::HashMap<
+        Uuid,
+        Vec<(probe_temperature_readings::Model, Option<probes::Model>)>,
+    > = std::collections::HashMap::new();
+
     for (probe_reading, probe_opt) in probe_readings {
         probe_readings_by_temp_id
             .entry(probe_reading.temperature_reading_id)
@@ -120,28 +120,29 @@ async fn load_individual_temperature_data(
 
     // Build temperature data with probes using crudcrate models
     let mut temp_data_map = std::collections::HashMap::new();
-    
+
     for temp_reading in &temp_readings_data {
         let empty_vec = Vec::new();
         let actual_probe_readings = probe_readings_by_temp_id
             .get(&temp_reading.id)
             .unwrap_or(&empty_vec);
-        
+
         // Create a HashMap of actual readings by probe_id for quick lookup
-        let mut readings_by_probe_id: std::collections::HashMap<Uuid, Decimal> = std::collections::HashMap::new();
+        let mut readings_by_probe_id: std::collections::HashMap<Uuid, Decimal> =
+            std::collections::HashMap::new();
         for (probe_reading, probe_opt) in actual_probe_readings {
             if let Some(probe) = probe_opt {
                 readings_by_probe_id.insert(probe.id, probe_reading.temperature);
             }
         }
-        
+
         // Create complete probe readings array including ALL probes from tray configuration
         let mut complete_probe_readings = Vec::new();
         let mut temperature_values = Vec::new();
-        
+
         for probe in &all_experiment_probes {
             let temperature_value = readings_by_probe_id.get(&probe.id).copied();
-            
+
             // Only include probe readings that have actual temperature data
             // This avoids showing misleading "0" temperatures for probes without readings
             if let Some(actual_temp) = temperature_value {
@@ -158,7 +159,7 @@ async fn load_individual_temperature_data(
                     probe_position_x: probe.position_x,
                     probe_position_y: probe.position_y,
                 };
-                
+
                 complete_probe_readings.push(probe_temp_reading);
                 temperature_values.push(actual_temp);
             }
@@ -530,13 +531,13 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                 .map(|transition| transition.timestamp.with_timezone(&Utc));
 
             // Get temperature data with individual probes at first phase change
-            let temperatures: Option<TemperatureDataWithProbes> =
-                first_phase_change_transition
-                    .and_then(|transition| {
-                        context
-                            .temp_readings_map
-                            .get(&transition.temperature_reading_id)
-                    }).cloned();
+            let temperatures: Option<TemperatureDataWithProbes> = first_phase_change_transition
+                .and_then(|transition| {
+                    context
+                        .temp_readings_map
+                        .get(&transition.temperature_reading_id)
+                })
+                .cloned();
             let image_filename: Option<String> =
                 temperatures.as_ref().and_then(|t| t.image_filename.clone());
             let image_asset_id = match image_filename {
@@ -597,7 +598,6 @@ fn build_tray_summaries(context: &WellSummaryContext) -> Vec<TrayResultsSummary>
                 column_number: well.column_number,
                 coordinate,
                 sample,
-                treatment_name,
                 treatment,
                 dilution_factor: region.and_then(|r| r.dilution_factor),
                 first_phase_change_time,

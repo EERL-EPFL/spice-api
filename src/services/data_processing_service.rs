@@ -30,34 +30,39 @@ impl DataProcessingService {
             .process_excel_file_direct(file_data, experiment_id)
             .await
         {
-            Ok(result) => Ok(ExcelProcessingResult {
-                status: ProcessingStatus::Completed,
-                success: result.success,
-                temperature_readings_created: result.temperature_readings_created,
-                probe_temperature_readings_created: result.probe_temperature_readings_created,
-                phase_transitions_created: result.phase_transitions_created,
-                wells_tracked: result.wells_tracked,
-                processing_time_ms: result.processing_time_ms,
-                started_at,
-                completed_at: Some(Utc::now()),
-                error: None,
-                errors: result.errors,
-            }),
-            Err(e) => Ok(ExcelProcessingResult {
-                status: ProcessingStatus::Failed,
-                success: false,
-                temperature_readings_created: 0,
-                probe_temperature_readings_created: 0,
-                phase_transitions_created: 0,
-                wells_tracked: 0,
-                processing_time_ms: 0,
-                started_at,
-                completed_at: Some(Utc::now()),
-                error: Some(e.to_string()),
-                errors: vec![e.to_string()],
-            }),
+            Ok(result) => {
+                Ok(ExcelProcessingResult {
+                    status: ProcessingStatus::Completed,
+                    success: result.success,
+                    temperature_readings_created: result.temperature_readings_created,
+                    probe_temperature_readings_created: result.probe_temperature_readings_created,
+                    phase_transitions_created: result.phase_transitions_created,
+                    wells_tracked: result.wells_tracked,
+                    processing_time_ms: result.processing_time_ms,
+                    started_at,
+                    completed_at: Some(Utc::now()),
+                    error: None,
+                    errors: result.errors,
+                })
+            }
+            Err(e) => {
+                Ok(ExcelProcessingResult {
+                    status: ProcessingStatus::Failed,
+                    success: false,
+                    temperature_readings_created: 0,
+                    probe_temperature_readings_created: 0,
+                    phase_transitions_created: 0,
+                    wells_tracked: 0,
+                    processing_time_ms: 0,
+                    started_at,
+                    completed_at: Some(Utc::now()),
+                    error: Some(e.to_string()),
+                    errors: vec![e.to_string()],
+                })
+            }
         }
     }
+
 }
 
 /// Result of Excel file processing

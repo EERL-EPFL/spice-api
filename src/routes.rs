@@ -7,8 +7,7 @@ use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
-// Temporarily disable scalar to isolate stack overflow issue
-// use utoipa_scalar::{Scalar, Servable};
+use utoipa_scalar::{Scalar, Servable};
 
 pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
     #[derive(OpenApi)]
@@ -52,26 +51,31 @@ pub fn build_router(db: &DatabaseConnection, config: &Config) -> Router {
 
     let app_state: AppState = AppState::new(db.clone(), config.clone(), keycloak_instance);
 
-    // Build the router without OpenAPI to completely isolate stack overflow issue
-    Router::new()
+    // Build the router with OpenAPI documentation
+    let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(crate::common::views::router(&app_state)) // Root routes
-        .nest("/api/locations", locations::views::router(&app_state).into())
+        .nest(
+            "/api/locations",
+            locations::views::router(&app_state).into(),
+        )
         .nest("/api/projects", projects::views::router(&app_state).into())
-        .nest("/api/experiments", experiments::views::router(&app_state).into())
+        .nest(
+            "/api/experiments",
+            experiments::views::router(&app_state).into(),
+        )
         .nest("/api/samples", samples::views::router(&app_state).into())
         .nest("/api/assets", assets::views::router(&app_state).into())
         .nest(
             "/api/tray_configurations",
             tray_configurations::views::router(&app_state).into(),
         )
-        .nest("/api/treatments", treatments::views::router(&app_state).into())
         .nest(
-            "/api/experiments",
-            experiments::views::excel_upload_router().with_state(app_state.clone()),
+            "/api/treatments",
+            treatments::views::router(&app_state).into(),
         )
-        .nest(
-            "/api/experiments",
-            experiments::views::asset_router().with_state(app_state),
-        )
+        .split_for_parts();
+
+    router
+        .merge(Scalar::with_url("/api/docs", api))
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024))
 }

@@ -6,7 +6,7 @@ use crudcrate::{CRUDResource, EntityToModels};
 use rust_decimal::Decimal;
 use sea_orm::QuerySelect;
 use sea_orm::{
-    ActiveValue::Set, Condition, ConnectionTrait, EntityTrait, Order, QueryOrder, TransactionTrait,
+    ActiveValue::Set, Condition, EntityTrait, Order, QueryOrder, TransactionTrait,
     entity::prelude::*,
 };
 use uuid::Uuid;
@@ -53,8 +53,6 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable)]
     pub last_updated: DateTime<Utc>,
-    #[crudcrate(sortable, filterable)]
-    pub has_results: bool,
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = vec![], list_model=false, use_target_models)]
     pub regions: Vec<crate::tray_configurations::regions::models::Region>,
@@ -188,7 +186,6 @@ pub struct TrayWellSummary {
     pub column_number: i32,
     pub coordinate: String, // e.g., "A1", "B2"
     pub sample: Option<crate::samples::models::Sample>,
-    pub treatment_name: Option<String>,
     pub treatment: Option<crate::treatments::models::Treatment>, // Full treatment object with enzyme volume
     pub dilution_factor: Option<i32>,
     pub first_phase_change_time: Option<DateTime<Utc>>,
@@ -217,6 +214,93 @@ pub struct ExperimentResultsResponse {
     pub trays: Vec<TrayResultsSummary>,
 }
 
+// Helper function to enhance regions with treatment and sample data
+async fn enhance_regions_with_treatment_data(
+    region_models: Vec<crate::tray_configurations::regions::models::Model>,
+    db: &DatabaseConnection,
+) -> Result<Vec<crate::tray_configurations::regions::models::Region>, DbErr> {
+    // Extract all unique treatment IDs from regions
+    let treatment_ids: Vec<Uuid> = region_models
+        .iter()
+        .filter_map(|r| r.treatment_id)
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    // If no treatments to load, return regions as-is
+    if treatment_ids.is_empty() {
+        return Ok(region_models.into_iter().map(Into::into).collect());
+    }
+
+    // Load all treatments with their samples in one query
+    let treatments_with_samples = crate::treatments::models::Entity::find()
+        .filter(crate::treatments::models::Column::Id.is_in(treatment_ids))
+        .find_with_related(crate::samples::models::Entity)
+        .all(db)
+        .await?;
+
+    // Build a map of treatment_id -> (treatment, sample)
+    let mut treatment_map: std::collections::HashMap<
+        Uuid,
+        (
+            crate::treatments::models::Treatment,
+            Option<crate::samples::models::Sample>,
+        ),
+    > = std::collections::HashMap::new();
+
+    for (treatment_model, samples) in treatments_with_samples {
+        let treatment: crate::treatments::models::Treatment = treatment_model.into();
+        let sample = samples.into_iter().next().map(Into::into);
+        treatment_map.insert(treatment.id, (treatment, sample));
+    }
+
+    // Convert region models to Region structs with embedded treatment data
+    let enhanced_regions = region_models
+        .into_iter()
+        .map(|region_model| {
+            // Get treatment data if available
+            let treatment = if let Some(treatment_id) = region_model.treatment_id {
+                treatment_map.get(&treatment_id).map(|(treatment, sample)| {
+                    crate::tray_configurations::regions::models::RegionTreatmentSummary {
+                        id: treatment.id,
+                        name: match treatment.name {
+                            crate::treatments::models::TreatmentName::None => "none".to_string(),
+                            crate::treatments::models::TreatmentName::Heat => "heat".to_string(),
+                            crate::treatments::models::TreatmentName::H2o2 => "h2o2".to_string(),
+                        },
+                        notes: treatment.notes.clone(),
+                        enzyme_volume_litres: treatment.enzyme_volume_litres,
+                        sample: sample.clone(),
+                    }
+                })
+            } else {
+                None
+            };
+
+            // Create Region with treatment data
+            crate::tray_configurations::regions::models::Region {
+                id: region_model.id,
+                experiment_id: region_model.experiment_id,
+                treatment_id: region_model.treatment_id,
+                name: region_model.name,
+                display_colour_hex: region_model.display_colour_hex,
+                tray_id: region_model.tray_id,
+                col_min: region_model.col_min,
+                row_min: region_model.row_min,
+                col_max: region_model.col_max,
+                row_max: region_model.row_max,
+                dilution_factor: region_model.dilution_factor,
+                is_background_key: region_model.is_background_key,
+                created_at: region_model.created_at,
+                last_updated: region_model.last_updated,
+                treatment,
+            }
+        })
+        .collect();
+
+    Ok(enhanced_regions)
+}
+
 pub(super) async fn get_one_experiment(
     db: &DatabaseConnection,
     id: Uuid,
@@ -232,16 +316,12 @@ pub(super) async fn get_one_experiment(
         .all(db)
         .await?;
 
-    // Load regions without enhancement for now to avoid stack overflow
-    let enhanced_regions: Vec<crate::tray_configurations::regions::models::Region> = region_models
-        .into_iter()
-        .map(Into::into)
-        .collect();
+    // Enhance regions with treatment and sample data
+    let enhanced_regions = enhance_regions_with_treatment_data(region_models, db).await?;
 
     let mut experiment: Experiment = model.into();
     experiment.regions = enhanced_regions;
-    // Temporarily disable results loading to isolate stack overflow
-    // experiment.results = build_tray_centric_results(id, db).await?;
+    experiment.results = build_tray_centric_results(id, db).await?;
 
     Ok(experiment)
 }
@@ -390,7 +470,7 @@ pub(super) async fn get_all_experiments(
         .all(db)
         .await?;
 
-    let mut experiments = Vec::new();
+    let mut experiment_lists = Vec::new();
 
     for model in models {
         let regions: Vec<crate::tray_configurations::regions::models::Region> = model
@@ -403,14 +483,12 @@ pub(super) async fn get_all_experiments(
 
         let mut experiment: Experiment = model.into();
         experiment.regions = regions;
-        // has_results is now a database field, no need to compute it
 
-        experiments.push(experiment);
+        // Convert to ExperimentList
+        let experiment_list: ExperimentList = experiment.into();
+
+        experiment_lists.push(experiment_list);
     }
 
-    // Convert to ExperimentList
-    Ok(experiments
-        .into_iter()
-        .map(std::convert::Into::into)
-        .collect())
+    Ok(experiment_lists)
 }

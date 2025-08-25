@@ -3,8 +3,7 @@ use crudcrate::{CRUDResource, EntityToModels};
 use sea_orm::entity::prelude::*;
 use uuid::Uuid;
 
-// Removed circular dependency structures completely
-// UI should fetch treatment/sample data separately via treatment_id
+// Region model without embedded treatment/sample data to avoid circular dependencies
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "regions")]
@@ -47,10 +46,19 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
     #[crudcrate(update_model = false, create_model = false, on_update = chrono::Utc::now(), on_create = chrono::Utc::now(), sortable, list_model=false)]
     pub last_updated: DateTime<Utc>,
-    // Temporarily removed to isolate stack overflow issue
-    // #[sea_orm(ignore)]
-    // #[crudcrate(non_db_attr = true, default = None, list_model=false)]
-    // pub treatment: Option<RegionTreatmentSummary>,
+    // Treatment data enhancement - now enabled to show treatment and sample info
+    #[sea_orm(ignore)]
+    #[crudcrate(non_db_attr = true, default = None, list_model=false)]
+    pub treatment: Option<RegionTreatmentSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+pub struct RegionTreatmentSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub notes: Option<String>,
+    pub enzyme_volume_litres: Option<rust_decimal::Decimal>,
+    pub sample: Option<crate::samples::models::Sample>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

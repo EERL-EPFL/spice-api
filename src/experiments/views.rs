@@ -9,7 +9,6 @@ use crate::external::s3::get_client;
 use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{
-    Router,
     extract::Multipart,
     http::{HeaderMap, status::StatusCode},
     response::{Json, Response},
@@ -19,10 +18,13 @@ use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::CRUDResource;
 use sea_orm::ActiveValue::Set;
 use sea_orm::entity::prelude::*;
+use sea_orm::QuerySelect;
 use serde::Serialize;
+use serde_json::{json, Value};
 use std::convert::TryInto;
 use utoipa::ToSchema;
 use utoipa_axum::router::OpenApiRouter;
+use uuid::Uuid;
 
 // Helper struct for file upload processing
 struct FileUploadData {
@@ -39,6 +41,7 @@ struct AssetProcessingResult {
     auto_processed: bool,
     processing_message: Option<String>,
 }
+
 
 /// Process multipart field into file upload data
 async fn process_multipart_field(
@@ -188,6 +191,7 @@ async fn process_excel_if_needed(
                 .exec(&state.db)
                 .await;
 
+
             AssetProcessingResult {
                 auto_processed: true,
                 processing_message: message,
@@ -209,6 +213,7 @@ async fn process_excel_if_needed(
                 .filter(crate::assets::models::Column::Id.eq(asset_id))
                 .exec(&state.db)
                 .await;
+
 
             AssetProcessingResult {
                 auto_processed: false,
@@ -281,13 +286,220 @@ fn determine_asset_role(filename: &str, file_type: &str, _extension: &str) -> St
     }
 }
 
+/// Get all samples for a specific experiment
+/// Returns lightweight sample data for UI optimization
+#[utoipa::path(
+    get,
+    path = "/experiments/{id}/samples",
+    params(
+        ("id" = Uuid, Path, description = "Experiment ID to fetch samples for")
+    ),
+    responses(
+        (status = 200, description = "List of samples for this experiment", body = Vec<crate::samples::models::Sample>),
+        (status = 404, description = "Experiment not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "experiments",
+    summary = "Get experiment samples",
+    description = "Retrieve all samples associated with a specific experiment via regions -> treatments -> samples"
+)]
+pub async fn get_experiment_samples(
+    Path(experiment_id): Path<Uuid>,
+    State(app_state): State<AppState>,
+) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
+    let db = &app_state.db;
+
+    // Query samples related to this experiment via the relationship chain:
+    // experiment -> regions -> treatments -> samples
+    let samples_query = r"
+        SELECT DISTINCT s.id, s.name, s.type, s.start_time, s.stop_time,
+                       s.flow_litres_per_minute, s.total_volume, s.material_description,
+                       s.extraction_procedure, s.filter_substrate, s.suspension_volume_litres,
+                       s.air_volume_litres, s.water_volume_litres, s.initial_concentration_gram_l,
+                       s.well_volume_litres, s.remarks, s.longitude, s.latitude,
+                       s.location_id, s.created_at, s.last_updated
+        FROM samples s
+        JOIN treatments t ON t.sample_id = s.id
+        JOIN regions r ON r.treatment_id = t.id
+        WHERE r.experiment_id = $1
+        ORDER BY s.name
+    ";
+
+    let samples: Vec<crate::samples::models::Model> =
+        crate::samples::models::Entity::find()
+            .from_raw_sql(sea_orm::Statement::from_sql_and_values(
+                db.get_database_backend(),
+                samples_query,
+                vec![experiment_id.into()],
+            ))
+            .all(db)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+
+    // Convert to JSON format
+    let samples_data: Vec<Value> = samples
+        .into_iter()
+        .map(|s| json!({
+            "id": s.id,
+            "name": s.name,
+            "type": s.r#type,
+            "start_time": s.start_time,
+            "stop_time": s.stop_time,
+            "flow_litres_per_minute": s.flow_litres_per_minute,
+            "total_volume": s.total_volume,
+            "material_description": s.material_description,
+            "extraction_procedure": s.extraction_procedure,
+            "filter_substrate": s.filter_substrate,
+            "suspension_volume_litres": s.suspension_volume_litres,
+            "air_volume_litres": s.air_volume_litres,
+            "water_volume_litres": s.water_volume_litres,
+            "initial_concentration_gram_l": s.initial_concentration_gram_l,
+            "well_volume_litres": s.well_volume_litres,
+            "remarks": s.remarks,
+            "longitude": s.longitude,
+            "latitude": s.latitude,
+            "location_id": s.location_id,
+            "created_at": s.created_at,
+            "last_updated": s.last_updated
+        }))
+        .collect();
+
+    Ok(Json(json!(samples_data)))
+}
+
+/// Get all locations for a specific experiment
+/// Returns lightweight location data for UI optimization
+#[utoipa::path(
+    get,
+    path = "/experiments/{id}/locations",
+    params(
+        ("id" = Uuid, Path, description = "Experiment ID to fetch locations for")
+    ),
+    responses(
+        (status = 200, description = "List of locations for this experiment", body = Vec<crate::locations::models::Location>),
+        (status = 404, description = "Experiment not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "experiments",
+    summary = "Get experiment locations",
+    description = "Retrieve all locations associated with a specific experiment via regions -> treatments -> samples -> locations"
+)]
+pub async fn get_experiment_locations(
+    Path(experiment_id): Path<Uuid>,
+    State(app_state): State<AppState>,
+) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
+    let db = &app_state.db;
+
+    // Query locations related to this experiment via the relationship chain:
+    // experiment -> regions -> treatments -> samples -> locations
+    let locations_query = r"
+        SELECT DISTINCT l.id, l.name, l.comment, l.project_id, l.created_at, l.last_updated
+        FROM locations l
+        JOIN samples s ON s.location_id = l.id
+        JOIN treatments t ON t.sample_id = s.id
+        JOIN regions r ON r.treatment_id = t.id
+        WHERE r.experiment_id = $1
+        ORDER BY l.name
+    ";
+
+    let locations: Vec<crate::locations::models::Model> =
+        crate::locations::models::Entity::find()
+            .from_raw_sql(sea_orm::Statement::from_sql_and_values(
+                db.get_database_backend(),
+                locations_query,
+                vec![experiment_id.into()],
+            ))
+            .all(db)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+
+    // Convert to JSON format
+    let locations_data: Vec<Value> = locations
+        .into_iter()
+        .map(|l| json!({
+            "id": l.id,
+            "name": l.name,
+            "comment": l.comment,
+            "project_id": l.project_id,
+            "created_at": l.created_at,
+            "last_updated": l.last_updated
+        }))
+        .collect();
+
+    Ok(Json(json!(locations_data)))
+}
+
+/// Get all treatments for a specific experiment
+/// Returns lightweight treatment data for UI optimization
+#[utoipa::path(
+    get,
+    path = "/experiments/{id}/treatments",
+    params(
+        ("id" = Uuid, Path, description = "Experiment ID to fetch treatments for")
+    ),
+    responses(
+        (status = 200, description = "List of treatments for this experiment", body = Vec<crate::treatments::models::Treatment>),
+        (status = 404, description = "Experiment not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "experiments",
+    summary = "Get experiment treatments",
+    description = "Retrieve all treatments associated with a specific experiment via regions -> treatments"
+)]
+pub async fn get_experiment_treatments(
+    Path(experiment_id): Path<Uuid>,
+    State(app_state): State<AppState>,
+) -> Result<Json<Value>, (axum::http::StatusCode, String)> {
+    let db = &app_state.db;
+
+    // Use a direct find with JOIN instead of raw SQL to handle enum types properly
+    let treatments: Vec<crate::treatments::models::Model> = crate::treatments::models::Entity::find()
+        .join(sea_orm::JoinType::InnerJoin, crate::treatments::models::Relation::Regions.def())
+        .filter(crate::tray_configurations::regions::models::Column::ExperimentId.eq(experiment_id))
+        .all(db)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+
+    // Convert to JSON format
+    let treatments_data: Vec<Value> = treatments
+        .into_iter()
+        .map(|t| json!({
+            "id": t.id,
+            "sample_id": t.sample_id,
+            "name": t.name,
+            "notes": t.notes,
+            "enzyme_volume_litres": t.enzyme_volume_litres,
+            "created_at": t.created_at,
+            "last_updated": t.last_updated
+        }))
+        .collect();
+
+    Ok(Json(json!(treatments_data)))
+}
+
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Experiment: CRUDResource,
 {
+    use axum::extract::DefaultBodyLimit;
+    
     let mut mutating_router = crudrouter(&state.db.clone());
-    // Excel upload endpoint is handled separately in excel_upload_router()
-    // Asset upload/download endpoints are handled separately in asset_router()
+    
+    // Add lightweight endpoints for UI optimization
+    mutating_router = mutating_router
+        .route("/{id}/samples", get(get_experiment_samples).with_state(state.clone()))
+        .route("/{id}/locations", get(get_experiment_locations).with_state(state.clone()))
+        .route("/{id}/treatments", get(get_experiment_treatments).with_state(state.clone()))
+        // Excel processing endpoints (previously in excel_upload_router)
+        .route("/{experiment_id}/process-excel", post(super::excel_upload::process_excel_upload).with_state(state.clone()))
+        .route("/{experiment_id}/process-asset", post(process_asset_data).with_state(state.clone()))
+        .route("/{experiment_id}/clear-results", post(clear_experiment_results).with_state(state.clone()))
+        .route("/{experiment_id}/results", get(get_experiment_results).with_state(state.clone()))
+        // Asset upload/download endpoints (previously in asset_router)
+        .route("/{experiment_id}/uploads", post(upload_file).with_state(state.clone()))
+        .route("/{experiment_id}/download", get(download_experiment_assets).with_state(state.clone()))
+        .route("/{experiment_id}/download-token", post(create_experiment_download_token).with_state(state.clone()))
+        .layer(DefaultBodyLimit::max(30 * 1024 * 1024)); // 30MB limit for file uploads
 
     if let Some(instance) = &state.keycloak_auth_instance {
         mutating_router = mutating_router.layer(
@@ -309,37 +521,6 @@ where
     mutating_router
 }
 
-/// Separate router for Excel upload endpoint (uses regular Axum Router, not `OpenApiRouter`)
-pub fn excel_upload_router() -> Router<AppState> {
-    use axum::extract::DefaultBodyLimit;
-
-    Router::new()
-        .route(
-            "/{experiment_id}/process-excel",
-            post(super::excel_upload::process_excel_upload),
-        )
-        .route("/{experiment_id}/process-asset", post(process_asset_data))
-        .route(
-            "/{experiment_id}/clear-results",
-            post(clear_experiment_results),
-        )
-        .route("/{experiment_id}/results", get(get_experiment_results))
-        .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit to match main router
-}
-
-/// Separate router for asset upload/download endpoints (uses regular Axum Router, not `OpenApiRouter`)
-pub fn asset_router() -> Router<AppState> {
-    use axum::extract::DefaultBodyLimit;
-
-    Router::new()
-        .route("/{experiment_id}/uploads", post(upload_file))
-        .route("/{experiment_id}/download", get(download_experiment_assets))
-        .route(
-            "/{experiment_id}/download-token",
-            post(create_experiment_download_token),
-        )
-        .layer(DefaultBodyLimit::max(30 * 1024 * 1024)) // 30MB limit for file uploads
-}
 
 #[derive(Serialize, serde::Deserialize, ToSchema)]
 pub struct UploadResponse {
@@ -471,7 +652,21 @@ pub async fn upload_file(
     Err((StatusCode::BAD_REQUEST, "No file uploaded".to_string()))
 }
 
-/// Create a download token for experiment assets
+#[utoipa::path(
+    post,
+    path = "/{experiment_id}/download-token",
+    params(
+        ("experiment_id" = Uuid, Path, description = "Experiment UUID")
+    ),
+    responses(
+        (status = 200, description = "Download token created successfully", body = serde_json::Value),
+        (status = 404, description = "Experiment not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "experiments",
+    summary = "Create download token",
+    description = "Create a secure download token for accessing experiment assets"
+)]
 pub async fn create_experiment_download_token(
     State(state): State<AppState>,
     Path(experiment_id): Path<uuid::Uuid>,
@@ -547,7 +742,23 @@ pub async fn download_experiment_assets(
         })
 }
 
-/// Process asset data for an experiment
+#[utoipa::path(
+    post,
+    path = "/{experiment_id}/process-asset",
+    params(
+        ("experiment_id" = Uuid, Path, description = "Experiment UUID")
+    ),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Asset processing completed successfully", body = serde_json::Value),
+        (status = 400, description = "Bad request"),
+        (status = 404, description = "Experiment not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "experiments",
+    summary = "Process asset data",
+    description = "Process uploaded asset data for an experiment (Excel files, images, etc.)"
+)]
 #[allow(clippy::too_many_lines)]
 pub async fn process_asset_data(
     State(app_state): State<AppState>,
@@ -711,6 +922,7 @@ pub async fn process_asset_data(
                     .exec(&app_state.db)
                     .await;
 
+
                 Ok(Json(serde_json::json!({
                     "success": true,
                     "message": success_message,
@@ -737,6 +949,7 @@ pub async fn process_asset_data(
                     .exec(&app_state.db)
                     .await;
 
+
                 Err((StatusCode::UNPROCESSABLE_ENTITY, error_message))
             }
         }
@@ -754,12 +967,28 @@ pub async fn process_asset_data(
                 .exec(&app_state.db)
                 .await;
 
+
             Err((StatusCode::INTERNAL_SERVER_ERROR, error_message))
         }
     }
 }
 
-/// Clear all processed results for an experiment
+#[utoipa::path(
+    post,
+    path = "/{experiment_id}/clear-results",
+    params(
+        ("experiment_id" = Uuid, Path, description = "Experiment UUID")
+    ),
+    request_body = serde_json::Value,
+    responses(
+        (status = 200, description = "Results cleared successfully", body = serde_json::Value),
+        (status = 404, description = "Experiment not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "experiments", 
+    summary = "Clear experiment results",
+    description = "Clear all processed results (temperature readings, phase transitions) for an experiment"
+)]
 pub async fn clear_experiment_results(
     State(app_state): State<AppState>,
     Path(experiment_id): Path<Uuid>,
@@ -814,6 +1043,7 @@ pub async fn clear_experiment_results(
     let _ = s3_assets::Entity::update(update_asset)
         .exec(&app_state.db)
         .await;
+
 
     Ok(Json(serde_json::json!({
         "success": true,

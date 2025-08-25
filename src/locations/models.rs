@@ -2,7 +2,7 @@ use crate::services::convex_hull_service;
 use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels};
 use sea_orm::entity::prelude::*;
-use sea_orm::{QueryOrder, QuerySelect, Statement};
+use sea_orm::{QueryOrder, QuerySelect};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, EntityToModels)]
 #[sea_orm(table_name = "locations")]
@@ -40,12 +40,8 @@ pub struct Model {
     #[sea_orm(ignore)]
     #[crudcrate(non_db_attr = true, default = None, create_model = false, update_model = false)]
     pub project_name: Option<String>,
-    #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = None, list_model = false, create_model = false, update_model = false)]
-    pub samples: Option<Vec<crate::samples::models::Sample>>,
-    #[sea_orm(ignore)]
-    #[crudcrate(non_db_attr = true, default = None, list_model = false, create_model = false, update_model = false)]
-    pub experiments: Option<Vec<crate::experiments::models::Experiment>>,
+    // Removed embedded samples and experiments to prevent circular dependency
+    // Use /experiments/{id}/samples and /experiments/{id}/locations endpoints instead
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -76,16 +72,12 @@ impl Related<crate::samples::models::Entity> for Entity {
 
 impl ActiveModelBehavior for ActiveModel {}
 
-/// Custom `get_one` that loads area (convex hull), related samples with treatments, and associated experiments
+/// Custom `get_one` that loads area (convex hull) and project info only
+/// Removed samples/experiments loading to prevent circular dependency
 async fn get_one_location(db: &DatabaseConnection, id: Uuid) -> Result<Location, DbErr> {
-    let model = Entity::find_by_id(id)
-        .find_with_related(crate::samples::models::Entity)
-        .all(db)
-        .await?;
-
-    let (location_model, samples) = model
-        .into_iter()
-        .next()
+    let location_model = Entity::find_by_id(id)
+        .one(db)
+        .await?
         .ok_or_else(|| DbErr::RecordNotFound("Location not found".to_string()))?;
 
     // Get area (convex hull, returns None for SQLite)
@@ -105,46 +97,12 @@ async fn get_one_location(db: &DatabaseConnection, id: Uuid) -> Result<Location,
         (None, None)
     };
 
-    // Get associated experiments via samples -> treatments -> regions -> experiments
-    let experiments_query = r"
-        SELECT DISTINCT e.*
-        FROM experiments e
-        JOIN regions r ON r.experiment_id = e.id
-        JOIN treatments t ON t.id = r.treatment_id
-        JOIN samples s ON s.id = t.sample_id
-        WHERE s.location_id = $1
-        ORDER BY e.performed_at DESC
-    ";
-
-    let experiments: Vec<crate::experiments::models::Model> =
-        crate::experiments::models::Entity::find()
-            .from_raw_sql(Statement::from_sql_and_values(
-                db.get_database_backend(),
-                experiments_query,
-                vec![id.into()],
-            ))
-            .all(db)
-            .await?;
-
-    // Load treatments for each sample
-    let mut enriched_samples = Vec::new();
-    for sample in samples {
-        let treatments = crate::treatments::models::Entity::find()
-            .filter(crate::treatments::models::Column::SampleId.eq(sample.id))
-            .all(db)
-            .await?;
-
-        let mut sample_with_treatments: crate::samples::models::Sample = sample.into();
-        sample_with_treatments.treatments = treatments.into_iter().map(std::convert::Into::into).collect();
-        enriched_samples.push(sample_with_treatments);
-    }
-
     let mut location: Location = location_model.into();
     location.area = area;
     location.color = project_color;
     location.project_name = project_name;
-    location.samples = Some(enriched_samples);
-    location.experiments = Some(experiments.into_iter().map(std::convert::Into::into).collect());
+    // Note: samples and experiments removed to prevent circular dependency
+    // Use /experiments/{id}/samples and /experiments/{id}/locations endpoints instead
 
     Ok(location)
 }
