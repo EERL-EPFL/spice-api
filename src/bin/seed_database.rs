@@ -712,26 +712,26 @@ impl DatabaseSeeder {
                     "probe_locations": [
                         {
                             "data_column_index": 1,
-                            "position_x": 21.7,
-                            "position_y": 11.4,
+                            "position_x": 22.1,
+                            "position_y": 77.6,
                             "name": "Probe 1"
                         },
                         {
                             "data_column_index": 2,
-                            "position_x": 49.4,
-                            "position_y": 34.3,
+                            "position_x": 47.1,
+                            "position_y": 20,
                             "name": "Probe 2"
                         },
                         {
                             "data_column_index": 3,
-                            "position_x": 47.1,
-                            "position_y": 74.3,
+                            "position_x": 113,
+                            "position_y": 19.5,
                             "name": "Probe 3"
                         },
                         {
                             "data_column_index": 4,
-                            "position_x": 9,
-                            "position_y": 96.7,
+                            "position_x": 143.5,
+                            "position_y": 79.5,
                             "name": "Probe 4"
                         }
                     ],
@@ -750,26 +750,26 @@ impl DatabaseSeeder {
                     "probe_locations": [
                         {
                             "data_column_index": 5,
-                            "position_x": 0,
-                            "position_y": 8.1,
+                            "position_x": 140.8,
+                            "position_y": 80,
                             "name": "Probe 5"
                         },
                         {
                             "data_column_index": 6,
-                            "position_x": 43.1,
-                            "position_y": 24.3,
+                            "position_x": 103.1,
+                            "position_y": 21.9,
                             "name": "Probe 6"
                         },
                         {
                             "data_column_index": 7,
-                            "position_x": 46.3,
-                            "position_y": 70,
+                            "position_x": 48.1,
+                            "position_y": 22.4,
                             "name": "Probe 7"
                         },
                         {
                             "data_column_index": 8,
-                            "position_x": 3.5,
-                            "position_y": 92.9,
+                            "position_x": 7.2,
+                            "position_y": 93.3,
                             "name": "Probe 8"
                         }
                     ],

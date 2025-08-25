@@ -473,6 +473,7 @@ async fn bulk_download_assets(
     super::services::create_hybrid_streaming_zip_response(assets, &state.config).await
 }
 
+
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Asset: CRUDResource,

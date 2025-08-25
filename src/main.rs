@@ -77,16 +77,16 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     // Test that all required modules are properly declared and accessible
-    
+
     #[test]
     fn test_module_declarations() {
         // This is a compilation test to ensure all modules are properly declared
         // and can be accessed. The actual module loading is tested by compilation.
-        
+
         // Test that we can access the module paths (compilation test)
         let _config_type: Option<crate::config::Config> = None;
         let _routes_exist = crate::routes::build_router;
-        
+
         // Test that module structure is correct
         assert!(true); // If we get here, modules compiled successfully
     }
@@ -96,7 +96,7 @@ mod tests {
         // Test that the socket address used in main can be parsed
         let addr: Result<std::net::SocketAddr, _> = "0.0.0.0:3000".parse();
         assert!(addr.is_ok());
-        
+
         let addr = addr.unwrap();
         assert_eq!(addr.port(), 3000);
         assert!(addr.ip().is_unspecified()); // 0.0.0.0 is unspecified
@@ -105,12 +105,8 @@ mod tests {
     #[test]
     fn test_alternative_socket_addresses() {
         // Test other valid socket addresses that could be used
-        let test_addresses = vec![
-            "127.0.0.1:3000",
-            "0.0.0.0:8080", 
-            "localhost:3000",
-        ];
-        
+        let test_addresses = vec!["127.0.0.1:3000", "0.0.0.0:8080", "localhost:3000"];
+
         for addr_str in test_addresses {
             let addr: Result<std::net::SocketAddr, _> = addr_str.parse();
             if addr_str != "localhost:3000" {
@@ -120,7 +116,7 @@ mod tests {
         }
     }
 
-    #[test] 
+    #[test]
     fn test_invalid_socket_addresses() {
         // Test that invalid socket addresses fail to parse
         let invalid_addresses = vec![
@@ -130,7 +126,7 @@ mod tests {
             "0.0.0.0:-1",           // Invalid port (negative)
             "",                     // Empty string
         ];
-        
+
         for addr_str in invalid_addresses {
             let addr: Result<std::net::SocketAddr, _> = addr_str.parse();
             assert!(addr.is_err(), "Expected parsing to fail for: {}", addr_str);
@@ -141,9 +137,9 @@ mod tests {
     async fn test_database_connection_concept() {
         // Test database connection concepts without requiring actual DB
         use crate::config::Config;
-        
+
         let config = Config::for_tests();
-        
+
         // Test that we can create a database URL (even if it might not be valid)
         if let Some(db_url) = config.db_url.as_ref() {
             assert!(!db_url.is_empty());
@@ -156,12 +152,12 @@ mod tests {
     fn test_app_configuration_concepts() {
         // Test application configuration concepts
         use crate::config::Config;
-        
+
         let config = Config::for_tests();
-        
+
         // Test that config has required fields
         assert!(!config.app_name.is_empty());
-        
+
         // Test that deployment can be formatted to uppercase
         let deployment_upper = config.deployment.to_uppercase();
         assert!(!deployment_upper.is_empty());

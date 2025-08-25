@@ -1502,9 +1502,9 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crudcrate"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfdc0ef68c21613a65f62bb91d2e5cd0567cef5ef8b388f6dcdf59c08db545b7"
+checksum = "90bf17ade652995d6491bc9f0cdcd9f25629153cefe98106e9b35860bbdc9a51"
 dependencies = [
  "async-trait",
  "axum",

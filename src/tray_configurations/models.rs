@@ -99,10 +99,10 @@ pub async fn get_one_tray_configuration(
             .filter(crate::tray_configurations::probes::models::Column::TrayId.eq(tray_model.id))
             .all(db)
             .await?;
-        
+
         let mut tray_api: crate::tray_configurations::trays::models::Tray = tray_model.into();
         tray_api.probe_locations = probes.into_iter().map(Into::into).collect();
-        
+
         tray_api_structs.push(tray_api);
     }
 
@@ -133,20 +133,34 @@ pub async fn get_all_tray_configurations(
         .all(db)
         .await?;
 
-    let tray_configs: Vec<TrayConfigurationList> = models_with_trays
-        .into_iter()
-        .map(|(model, mut trays)| {
-            let mut tray_config: TrayConfigurationList = model.into();
+    let mut tray_configs = Vec::new();
 
-            // Sort trays by order_sequence
-            trays.sort_by_key(|t| t.order_sequence);
+    for (model, mut trays) in models_with_trays {
+        // Sort trays by order_sequence
+        trays.sort_by_key(|t| t.order_sequence);
 
-            // Convert trays to TrayList
-            tray_config.trays = trays.into_iter().map(Into::into).collect();
+        // For each tray, load probe locations
+        let mut tray_list_structs = Vec::new();
+        for tray_model in trays {
+            let probes = crate::tray_configurations::probes::models::Entity::find()
+                .filter(
+                    crate::tray_configurations::probes::models::Column::TrayId.eq(tray_model.id),
+                )
+                .all(db)
+                .await?;
 
-            tray_config
-        })
-        .collect();
+            let mut tray_api: crate::tray_configurations::trays::models::TrayList =
+                tray_model.into();
+            tray_api.probe_locations = probes.into_iter().map(Into::into).collect();
+
+            tray_list_structs.push(tray_api);
+        }
+
+        let mut tray_config: TrayConfigurationList = model.into();
+        tray_config.trays = tray_list_structs;
+
+        tray_configs.push(tray_config);
+    }
 
     Ok(tray_configs)
 }
@@ -319,10 +333,23 @@ pub async fn update_tray_configuration(
                     let probe_active = crate::tray_configurations::probes::models::ActiveModel {
                         id: Set(Uuid::new_v4()),
                         tray_id: Set(tray_id),
-                        name: Set(probe_data.name.clone().unwrap_or_default().unwrap_or_else(|| "Unnamed Probe".to_string())),
-                        data_column_index: Set(probe_data.data_column_index.unwrap_or_default().unwrap_or(1)),
-                        position_x: Set(probe_data.position_x.unwrap_or_default().unwrap_or_else(|| 0.into())),
-                        position_y: Set(probe_data.position_y.unwrap_or_default().unwrap_or_else(|| 0.into())),
+                        name: Set(probe_data
+                            .name
+                            .clone()
+                            .unwrap_or_default()
+                            .unwrap_or_else(|| "Unnamed Probe".to_string())),
+                        data_column_index: Set(probe_data
+                            .data_column_index
+                            .unwrap_or_default()
+                            .unwrap_or(1)),
+                        position_x: Set(probe_data
+                            .position_x
+                            .unwrap_or_default()
+                            .unwrap_or_else(|| 0.into())),
+                        position_y: Set(probe_data
+                            .position_y
+                            .unwrap_or_default()
+                            .unwrap_or_else(|| 0.into())),
                         created_at: Set(now),
                         last_updated: Set(now),
                     };
