@@ -375,13 +375,13 @@ async fn test_location_retrieval(app: &axum::Router, location_id: &str) {
 
         // Validate related data structure
         if get_body["experiments"].is_array() {
-// println!("   ✅ Experiments array present");
+            // println!("   ✅ Experiments array present");
         }
         if get_body["samples"].is_array() {
-// println!("   ✅ Samples array present");
+            // println!("   ✅ Samples array present");
         }
     } else {
-// println!("⚠️  Location retrieval failed: {get_status}");
+        // println!("⚠️  Location retrieval failed: {get_status}");
     }
 }
 
@@ -415,11 +415,11 @@ async fn test_location_update(app: &axum::Router, location_id: &str) -> bool {
             true
         }
         StatusCode::METHOD_NOT_ALLOWED => {
-// println!("⚠️  Location update not implemented (405) - This is expected");
+            // println!("⚠️  Location update not implemented (405) - This is expected");
             false
         }
         _ => {
-// println!("📋 Location update returned: {update_status}");
+            // println!("📋 Location update returned: {update_status}");
             false
         }
     }
@@ -441,24 +441,9 @@ async fn test_location_deletion(app: &axum::Router, location_id: &str) -> bool {
 
     let delete_status = delete_response.status();
     match delete_status {
-        status if status.is_success() => {
-// println!("✅ Location delete successful");
-            true
-        }
-        StatusCode::METHOD_NOT_ALLOWED => {
-// println!("⚠️  Location delete not implemented (405) - This is expected");
-            false
-        }
-        StatusCode::NOT_FOUND => {
-            // println!(
-            //     "📋 Location delete returned 404 (location not found) - This is expected for non-existent resources"
-            // );
-            false
-        }
-        _ => {
-// println!("📋 Location delete returned: {delete_status}");
-            false
-        }
+        status if status.is_success() => true,
+
+        _ => false,
     }
 }
 
@@ -506,7 +491,7 @@ async fn test_location_list_operations() {
             );
         }
     } else {
-// println!("⚠️  Location listing failed: Status {list_status}");
+        // println!("⚠️  Location listing failed: Status {list_status}");
         assert!(
             list_status.is_client_error() || list_status.is_server_error(),
             "Location listing should either succeed or fail gracefully"
@@ -583,7 +568,7 @@ async fn test_location_filtering_and_sorting() {
             }
 
             if non_matching_count == 0 && !filtered_locations.is_empty() {
-// println!("✅ Location filtering appears to work correctly");
+                // println!("✅ Location filtering appears to work correctly");
             } else if filtered_locations.is_empty() {
                 // println!(
                 //     "📋 Location filtering returned no results (may be working or not implemented)"
@@ -596,7 +581,7 @@ async fn test_location_filtering_and_sorting() {
                 // );
             }
         } else {
-// println!("⚠️  Location filtering failed: Status {filter_status}");
+            // println!("⚠️  Location filtering failed: Status {filter_status}");
         }
 
         // Test sorting by name
@@ -615,9 +600,9 @@ async fn test_location_filtering_and_sorting() {
         let (sort_status, _) = extract_response_body(sort_response).await;
 
         if sort_status == StatusCode::OK {
-// println!("✅ Location sorting endpoint accessible");
+            // println!("✅ Location sorting endpoint accessible");
         } else {
-// println!("⚠️  Location sorting failed: Status {sort_status}");
+            // println!("⚠️  Location sorting failed: Status {sort_status}");
         }
     }
 }
@@ -678,7 +663,7 @@ async fn test_location_project_assignment() {
     let (status, body) = extract_response_body(response).await;
 
     if status == StatusCode::CREATED {
-// println!("✅ Location with project assignment created successfully");
+        // println!("✅ Location with project assignment created successfully");
         assert_eq!(
             uuid::Uuid::parse_str(body["project_id"].as_str().unwrap()).unwrap(),
             project_id
@@ -700,14 +685,14 @@ async fn test_location_project_assignment() {
 
         let (get_status, get_body) = extract_response_body(get_response).await;
         if get_status == StatusCode::OK {
-// println!("✅ Location with project retrieved successfully");
+            // println!("✅ Location with project retrieved successfully");
             assert_eq!(
                 uuid::Uuid::parse_str(get_body["project_id"].as_str().unwrap()).unwrap(),
                 project_id
             );
         }
     } else {
-// println!("📋 Location with project assignment failed: Status {status}");
+        // println!("📋 Location with project assignment failed: Status {status}");
     }
 }
 
@@ -755,7 +740,7 @@ async fn test_location_related_data_structure() {
         let (get_status, get_body) = extract_response_body(get_response).await;
 
         if get_status == StatusCode::OK {
-// println!("✅ Location related data structure test");
+            // println!("✅ Location related data structure test");
 
             // Check that experiments array is present
             if get_body["experiments"].is_array() {
@@ -765,30 +750,30 @@ async fn test_location_related_data_structure() {
                 //     experiments.len()
                 // );
             } else {
-// println!("   ⚠️  Experiments array missing or wrong type");
+                // println!("   ⚠️  Experiments array missing or wrong type");
             }
 
             // Check that samples array is present
             if get_body["samples"].is_array() {
                 let samples = get_body["samples"].as_array().unwrap();
-// println!("   ✅ Samples array present ({} items)", samples.len());
+                // println!("   ✅ Samples array present ({} items)", samples.len());
 
                 // Check sample structure if samples exist
                 for sample in samples {
                     if sample["treatments"].is_array() {
-// println!("   ✅ Sample treatments array present");
+                        // println!("   ✅ Sample treatments array present");
                     }
                 }
             } else {
-// println!("   ⚠️  Samples array missing or wrong type");
+                // println!("   ⚠️  Samples array missing or wrong type");
             }
 
-// println!("   📋 Related data loading appears to be working");
+        // println!("   📋 Related data loading appears to be working");
         } else {
-// println!("📋 Could not test related data - location retrieval failed: {get_status}");
+            // println!("📋 Could not test related data - location retrieval failed: {get_status}");
         }
     } else {
-// println!("📋 Skipping related data test - couldn't create location");
+        // println!("📋 Skipping related data test - couldn't create location");
     }
 }
 
@@ -796,8 +781,8 @@ async fn test_location_related_data_structure() {
 async fn test_location_complex_queries() {
     let app = setup_test_app().await;
 
-// println!("📋 LOCATION COMPLEX QUERIES TEST");
-// println!("   Testing complex location query scenarios");
+    // println!("📋 LOCATION COMPLEX QUERIES TEST");
+    // println!("   Testing complex location query scenarios");
 
     // Test pagination
     let pagination_response = app
@@ -815,11 +800,11 @@ async fn test_location_complex_queries() {
     let (pagination_status, pagination_body) = extract_response_body(pagination_response).await;
 
     if pagination_status == StatusCode::OK {
-// println!("   ✅ Pagination query successful");
+        // println!("   ✅ Pagination query successful");
         let locations = pagination_body.as_array().unwrap();
-// println!("   Returned {} locations with limit=5", locations.len());
+    // println!("   Returned {} locations with limit=5", locations.len());
     } else {
-// println!("   ⚠️  Pagination query failed: {pagination_status}");
+        // println!("   ⚠️  Pagination query failed: {pagination_status}");
     }
 
     // Test multiple filters
@@ -838,9 +823,9 @@ async fn test_location_complex_queries() {
     let (multi_filter_status, _) = extract_response_body(multi_filter_response).await;
 
     if multi_filter_status == StatusCode::OK {
-// println!("   ✅ Multi-filter query successful");
+        // println!("   ✅ Multi-filter query successful");
     } else {
-// println!("   ⚠️  Multi-filter query failed: {multi_filter_status}");
+        // println!("   ⚠️  Multi-filter query failed: {multi_filter_status}");
     }
 
     // This test always passes - it's for documenting query capabilities
@@ -862,7 +847,7 @@ async fn test_location_complete_lifecycle() {
 
     match location_result {
         Ok((location_id, _body)) => {
-// println!("✅ Location created using helper function: {location_id}");
+            // println!("✅ Location created using helper function: {location_id}");
 
             // Use the unused retrieval helper function
             test_location_retrieval(&app, &location_id).await;
@@ -873,10 +858,10 @@ async fn test_location_complete_lifecycle() {
             // Use the unused deletion helper function
             let _delete_success = test_location_deletion(&app, &location_id).await;
 
-// println!("✅ Complete location lifecycle test passed using helper functions");
+            // println!("✅ Complete location lifecycle test passed using helper functions");
         }
         Err(error) => {
-// println!("📋 Location lifecycle test failed: {error}");
+            // println!("📋 Location lifecycle test failed: {error}");
             // Test still passes - documents that the API may not be fully implemented
         }
     }
@@ -896,7 +881,7 @@ async fn test_multiple_location_operations() {
     for i in 1..=3 {
         match create_test_location(&app, &project_id_str).await {
             Ok((location_id, body)) => {
-// println!("✅ Location {i} created: {location_id}");
+                // println!("✅ Location {i} created: {location_id}");
                 assert!(
                     body["name"]
                         .as_str()
@@ -906,24 +891,24 @@ async fn test_multiple_location_operations() {
                 location_ids.push(location_id);
             }
             Err(error) => {
-// println!("📋 Location {i} creation failed: {error}");
+                // println!("📋 Location {i} creation failed: {error}");
             }
         }
     }
 
     // Test retrieval of all created locations
     for (i, location_id) in location_ids.iter().enumerate() {
-// println!("Testing retrieval of location {}", i + 1);
+        // println!("Testing retrieval of location {}", i + 1);
         test_location_retrieval(&app, location_id).await;
     }
 
     // Test updates on all locations
     for (i, location_id) in location_ids.iter().enumerate() {
-// println!("Testing update of location {}", i + 1);
+        // println!("Testing update of location {}", i + 1);
         let _update_success = test_location_update(&app, location_id).await;
     }
 
-// println!("✅ Multiple location operations test completed");
+    // println!("✅ Multiple location operations test completed");
 }
 
 #[tokio::test]
@@ -932,20 +917,20 @@ async fn test_location_error_handling() {
 
     // Test retrieval of non-existent location using helper
     let fake_location_id = uuid::Uuid::new_v4().to_string();
-// println!("Testing retrieval of non-existent location: {fake_location_id}");
+    // println!("Testing retrieval of non-existent location: {fake_location_id}");
 
     // This should not panic but handle the error gracefully
     test_location_retrieval(&app, &fake_location_id).await;
 
     // Test update of non-existent location using helper
-// println!("Testing update of non-existent location: {fake_location_id}");
+    // println!("Testing update of non-existent location: {fake_location_id}");
     let _update_success = test_location_update(&app, &fake_location_id).await;
 
     // Test deletion of non-existent location using helper
-// println!("Testing deletion of non-existent location: {fake_location_id}");
+    // println!("Testing deletion of non-existent location: {fake_location_id}");
     let _delete_success = test_location_deletion(&app, &fake_location_id).await;
 
-// println!("✅ Location error handling test completed");
+    // println!("✅ Location error handling test completed");
 }
 
 #[tokio::test]
@@ -959,7 +944,7 @@ async fn test_location_helper_functions_consistency() {
     // Create a location using the helper
     match create_test_location(&app, &project_id_str).await {
         Ok((location_id, create_body)) => {
-// println!("✅ Location created for consistency test: {location_id}");
+            // println!("✅ Location created for consistency test: {location_id}");
 
             // Verify the created location has all expected fields
             assert!(create_body["id"].is_string());
@@ -975,10 +960,10 @@ async fn test_location_helper_functions_consistency() {
             let _update_success = test_location_update(&app, &location_id).await;
             test_location_retrieval(&app, &location_id).await;
 
-// println!("✅ Helper functions consistency test passed");
+            // println!("✅ Helper functions consistency test passed");
         }
         Err(error) => {
-// println!("📋 Consistency test skipped due to creation failure: {error}");
+            // println!("📋 Consistency test skipped due to creation failure: {error}");
         }
     }
 }
