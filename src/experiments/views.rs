@@ -39,7 +39,6 @@ struct AssetProcessingResult {
     processing_message: Option<String>,
 }
 
-
 /// Process multipart field into file upload data
 async fn process_multipart_field(
     field: &mut axum::extract::multipart::Field<'_>,
@@ -188,7 +187,6 @@ async fn process_excel_if_needed(
                 .exec(&state.db)
                 .await;
 
-
             AssetProcessingResult {
                 auto_processed: true,
                 processing_message: message,
@@ -210,7 +208,6 @@ async fn process_excel_if_needed(
                 .filter(crate::assets::models::Column::Id.eq(asset_id))
                 .exec(&state.db)
                 .await;
-
 
             AssetProcessingResult {
                 auto_processed: false,
@@ -283,24 +280,37 @@ fn determine_asset_role(filename: &str, file_type: &str, _extension: &str) -> St
     }
 }
 
-
-
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Experiment: CRUDResource,
 {
     use axum::extract::DefaultBodyLimit;
-    
+
     let mut mutating_router = crudrouter(&state.db.clone());
-    
+
     // Excel processing endpoints (previously in excel_upload_router)
     mutating_router = mutating_router
-        .route("/{experiment_id}/process-excel", post(super::excel_upload::process_excel_upload).with_state(state.clone()))
-        .route("/{experiment_id}/process-asset", post(process_asset_data).with_state(state.clone()))
-        .route("/{experiment_id}/clear-results", post(clear_experiment_results).with_state(state.clone()))
+        .route(
+            "/{experiment_id}/process-excel",
+            post(super::excel_upload::process_excel_upload).with_state(state.clone()),
+        )
+        .route(
+            "/{experiment_id}/process-asset",
+            post(process_asset_data).with_state(state.clone()),
+        )
+        .route(
+            "/{experiment_id}/clear-results",
+            post(clear_experiment_results).with_state(state.clone()),
+        )
         // Asset upload/download endpoints (previously in asset_router)
-        .route("/{experiment_id}/uploads", post(upload_file).with_state(state.clone()))
-        .route("/{experiment_id}/download-token", post(create_experiment_download_token).with_state(state.clone()))
+        .route(
+            "/{experiment_id}/uploads",
+            post(upload_file).with_state(state.clone()),
+        )
+        .route(
+            "/{experiment_id}/download-token",
+            post(create_experiment_download_token).with_state(state.clone()),
+        )
         .layer(DefaultBodyLimit::max(30 * 1024 * 1024)); // 30MB limit for file uploads
 
     if let Some(instance) = &state.keycloak_auth_instance {
@@ -322,7 +332,6 @@ where
 
     mutating_router
 }
-
 
 #[derive(Serialize, serde::Deserialize, ToSchema)]
 pub struct UploadResponse {
@@ -497,7 +506,6 @@ pub async fn create_experiment_download_token(
         "download_url": format!("/api/assets/download/{}", token)
     })))
 }
-
 
 #[utoipa::path(
     post,
@@ -679,7 +687,6 @@ pub async fn process_asset_data(
                     .exec(&app_state.db)
                     .await;
 
-
                 Ok(Json(serde_json::json!({
                     "success": true,
                     "message": success_message,
@@ -706,7 +713,6 @@ pub async fn process_asset_data(
                     .exec(&app_state.db)
                     .await;
 
-
                 Err((StatusCode::UNPROCESSABLE_ENTITY, error_message))
             }
         }
@@ -723,7 +729,6 @@ pub async fn process_asset_data(
             let _ = s3_assets::Entity::update(update_asset)
                 .exec(&app_state.db)
                 .await;
-
 
             Err((StatusCode::INTERNAL_SERVER_ERROR, error_message))
         }
@@ -742,7 +747,7 @@ pub async fn process_asset_data(
         (status = 404, description = "Experiment not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "experiments", 
+    tag = "experiments",
     summary = "Clear experiment results",
     description = "Clear all processed results (temperature readings, phase transitions) for an experiment"
 )]
@@ -801,13 +806,11 @@ pub async fn clear_experiment_results(
         .exec(&app_state.db)
         .await;
 
-
     Ok(Json(serde_json::json!({
         "success": true,
         "message": "Experiment results cleared successfully"
     })))
 }
-
 
 #[cfg(test)]
 mod asset_role_tests {
@@ -932,7 +935,10 @@ mod view_helper_tests {
         };
 
         assert_eq!(result1.auto_processed, true);
-        assert_eq!(result1.processing_message, Some("File processed successfully".to_string()));
+        assert_eq!(
+            result1.processing_message,
+            Some("File processed successfully".to_string())
+        );
 
         let result2 = AssetProcessingResult {
             auto_processed: false,
@@ -967,7 +973,10 @@ mod view_helper_tests {
         assert_eq!(deserialized.filename, "test.xlsx");
         assert_eq!(deserialized.size, 1024);
         assert_eq!(deserialized.auto_processed, true);
-        assert_eq!(deserialized.processing_message, Some("Excel file processed".to_string()));
+        assert_eq!(
+            deserialized.processing_message,
+            Some("Excel file processed".to_string())
+        );
     }
 
     #[test]
@@ -983,7 +992,7 @@ mod view_helper_tests {
 
         let json = serde_json::to_string(&response).unwrap();
         let deserialized: UploadResponse = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(deserialized.success, false);
         assert_eq!(deserialized.filename, "failed.txt");
         assert_eq!(deserialized.size, 0);
@@ -1021,8 +1030,16 @@ mod view_helper_tests {
                 _ => "unknown".to_string(),
             };
 
-            assert_eq!(extension, expected_ext, "Extension mismatch for {}", filename);
-            assert_eq!(file_type, expected_type, "File type mismatch for {}", filename);
+            assert_eq!(
+                extension, expected_ext,
+                "Extension mismatch for {}",
+                filename
+            );
+            assert_eq!(
+                file_type, expected_type,
+                "File type mismatch for {}",
+                filename
+            );
         }
     }
 
@@ -1060,8 +1077,8 @@ mod view_helper_tests {
     fn test_body_limit_constants() {
         // Test that body limits are reasonable
         let max_body_limit = 30 * 1024 * 1024; // 30MB as used in routers
-        
-        assert_eq!(max_body_limit, 31457280); // 30MB in bytes
+
+        assert_eq!(max_body_limit, 31_457_280); // 30MB in bytes
         assert!(max_body_limit > 1024 * 1024); // At least 1MB
         assert!(max_body_limit < 100 * 1024 * 1024); // Less than 100MB (reasonable limit)
     }
@@ -1071,7 +1088,7 @@ mod view_helper_tests {
         // Test that route paths follow expected patterns
         let route_patterns = vec![
             "/{experiment_id}/process-excel",
-            "/{experiment_id}/process-asset", 
+            "/{experiment_id}/process-asset",
             "/{experiment_id}/clear-results",
             "/{experiment_id}/results",
             "/{experiment_id}/uploads",
@@ -1092,19 +1109,23 @@ mod view_helper_tests {
     fn test_header_constants() {
         // Test header names used in the code
         let overwrite_header = "x-allow-overwrite";
-        
+
         assert!(overwrite_header.starts_with("x-")); // Custom header prefix
         assert!(overwrite_header.contains("allow"));
         assert!(overwrite_header.contains("overwrite"));
         assert!(!overwrite_header.contains(" ")); // No spaces in header names
-        assert!(overwrite_header.chars().all(|c| c.is_ascii_lowercase() || c == '-'));
+        assert!(
+            overwrite_header
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c == '-')
+        );
     }
 
     #[test]
     fn test_multipart_field_name() {
         // Test that we expect the correct multipart field name
         let expected_field_name = "file";
-        
+
         assert_eq!(expected_field_name, "file");
         assert!(expected_field_name.len() > 0);
         assert!(expected_field_name.chars().all(|c| c.is_ascii_alphabetic()));

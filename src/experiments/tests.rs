@@ -429,34 +429,6 @@ async fn test_experiment_filtering() {
 }
 
 #[tokio::test]
-async fn test_experiment_validation() {
-    let app = setup_test_app().await;
-
-    // Test creating experiment with invalid temperature range
-    let invalid_data = json!({
-        "name": "Invalid Experiment",
-        "temperature_start": -25.0,
-        "temperature_end": 5.0  // End temp higher than start - should be invalid
-    });
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/experiments")
-                .header("content-type", "application/json")
-                .body(Body::from(invalid_data.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    // Note: This test might pass if validation isn't implemented yet
-    // The test documents expected behavior
-// println!("Temperature validation response: {}", response.status());
-}
-
-#[tokio::test]
 async fn test_time_point_endpoint() {
     let app = setup_test_app().await;
 
@@ -467,7 +439,7 @@ async fn test_time_point_endpoint() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-// eprintln!("Test setup failed, skipping test: {e}");
+            // eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -546,7 +518,7 @@ async fn test_time_point_endpoint() {
     let response_text = String::from_utf8_lossy(&body_bytes);
 
     if status != StatusCode::OK {
-// eprintln!("Request failed with status {status}: {response_text}");
+        // eprintln!("Request failed with status {status}: {response_text}");
     }
 
     assert_eq!(status, StatusCode::OK, "Time point creation should work");
@@ -563,7 +535,7 @@ async fn test_time_point_endpoint() {
         "INP_49640_2025-03-20_15-14-17.jpg"
     );
 
-// println!("Time point response: {time_point}");
+    // println!("Time point response: {time_point}");
 }
 
 #[tokio::test]
@@ -576,7 +548,7 @@ async fn test_time_point_with_96_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-// eprintln!("Test setup failed, skipping test: {e}");
+            // eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -672,7 +644,7 @@ async fn test_time_point_with_384_well_plates() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-// eprintln!("Test setup failed, skipping test: {e}");
+            // eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -768,7 +740,7 @@ async fn test_time_point_with_custom_tray_configuration() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-// eprintln!("Test setup failed, skipping test: {e}");
+            // eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -885,7 +857,7 @@ async fn test_time_point_with_minimal_data() {
     let (_tray_id, config_id) = match tray_setup_result {
         Ok(result) => result,
         Err(e) => {
-// eprintln!("Test setup failed, skipping test: {e}");
+            // eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -1103,7 +1075,7 @@ async fn test_experiment_with_phase_transitions_data() {
     let experiment_id = match setup_experiment_with_tray_config(&app).await {
         Ok(id) => id,
         Err(e) => {
-// eprintln!("Test setup failed, skipping test: {e}");
+            // eprintln!("Test setup failed, skipping test: {e}");
             return;
         }
     };
@@ -1142,7 +1114,7 @@ async fn try_create_sample_and_treatment(app: &axum::Router) {
     let _treatment_result = match sample_result {
         Ok(sample_id) => create_treatment_via_api(app, &sample_id).await,
         Err(e) => {
-// println!("Skipping sample/treatment creation due to missing API: {e}");
+            // println!("Skipping sample/treatment creation due to missing API: {e}");
             Err(e)
         }
     };
@@ -1178,14 +1150,14 @@ async fn test_time_point_creation(app: &axum::Router, experiment_id: &str) {
         .unwrap();
 
     if response.status() == StatusCode::NOT_FOUND {
-// println!("Time points endpoint not implemented yet, skipping time point creation");
+        // println!("Time points endpoint not implemented yet, skipping time point creation");
     } else if response.status() != StatusCode::OK {
         let status = response.status();
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
         let error_text = String::from_utf8_lossy(&body_bytes);
-// println!("Time point creation failed: {status} - {error_text}");
+        // println!("Time point creation failed: {status} - {error_text}");
     }
 }
 
@@ -1291,7 +1263,7 @@ async fn create_experiment_get_results_summary() -> Result<serde_json::Value, St
     // );
     let results = &experiment_response["results"];
     if !results.is_object() {
-// println!("Results is: {results:?}");
+        // println!("Results is: {results:?}");
         return Err("Results is not an object".to_string());
     }
     Ok(results.clone())
@@ -1303,7 +1275,7 @@ async fn test_experiment_results_summary_structure() {
     validate_experiment_results_structure(&results);
     validate_well_summaries_structure(&results);
 
-// println!("Results summary structure validation passed!");
+    // println!("Results summary structure validation passed!");
 }
 
 #[tokio::test]
@@ -1470,12 +1442,12 @@ async fn test_experiment_list_with_results_summary() {
                     results_summary["well_summaries"].is_array(),
                     "Experiment {i} results should have well_summaries"
                 );
-// println!("Experiment {i} has full results_summary in list view");
+            // println!("Experiment {i} has full results_summary in list view");
             } else {
-// println!("Note: results_summary is null in list view for experiment {i}");
+                // println!("Note: results_summary is null in list view for experiment {i}");
             }
         } else {
-// println!("Note: results_summary not included in list view for experiment {i}");
+            // println!("Note: results_summary not included in list view for experiment {i}");
         }
 
         // Verify basic experiment fields are present
@@ -1483,7 +1455,7 @@ async fn test_experiment_list_with_results_summary() {
         assert!(exp.get("name").is_some(), "Experiment {i} should have name");
     }
 
-// println!("Experiment list test passed!");
+    // println!("Experiment list test passed!");
 }
 
 async fn extract_response_body(response: axum::response::Response) -> (StatusCode, Value) {
@@ -1496,7 +1468,7 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 
     // Log error details for debugging
     if status.is_server_error() || status.is_client_error() {
-// eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
+        // eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
     }
 
     (status, body)
@@ -1711,11 +1683,11 @@ async fn test_experiment_results_endpoint() {
         if results_status == StatusCode::OK {
             // Validate results structure
             if results_body.is_object() {
-// println!("   Results returned as object (expected structure)");
+                // println!("   Results returned as object (expected structure)");
             } else if results_body.is_array() {
-// println!("   Results returned as array");
+                // println!("   Results returned as array");
             } else {
-// println!("   Results returned unknown structure: {results_body:?}");
+                // println!("   Results returned unknown structure: {results_body:?}");
             }
         } else if results_status == StatusCode::NOT_FOUND {
         }
@@ -1871,9 +1843,9 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
             "All 192 wells should end up in frozen state"
         );
 
-// println!("   - Total wells: {total_wells} (P1: {p1_wells}, P2: {p2_wells})");
-// println!("   - Wells with phase changes: {wells_with_phase_changes}");
-// println!("   - Frozen wells: {frozen_wells}");
+        // println!("   - Total wells: {total_wells} (P1: {p1_wells}, P2: {p2_wells})");
+        // println!("   - Wells with phase changes: {wells_with_phase_changes}");
+        // println!("   - Frozen wells: {frozen_wells}");
 
         // Validate a few specific coordinates to ensure proper formatting
         for summary in all_wells.iter().take(3) {
@@ -1911,7 +1883,7 @@ async fn test_asset_upload_endpoint() {
     // Create experiment with tray configuration
     let experiment_result = create_test_experiment(&app).await.unwrap();
     let experiment_id = experiment_result["id"].as_str().unwrap();
-// println!("✅ Created experiment for asset upload test: {experiment_id}");
+    // println!("✅ Created experiment for asset upload test: {experiment_id}");
 
     // Create test file content (small PNG image data)
     let test_file_content = create_test_image_data();
@@ -1954,7 +1926,7 @@ async fn test_asset_upload_endpoint() {
         .await
         .unwrap();
     let body_str = String::from_utf8_lossy(&body_bytes);
-// println!("📝 Upload response body: {body_str}");
+    // println!("📝 Upload response body: {body_str}");
 
     // In test environment without S3, we expect either:
     // - 500 Internal Server Error (S3 connection failure)
@@ -1965,7 +1937,7 @@ async fn test_asset_upload_endpoint() {
         "Expected either 500 (S3 not configured) or 200 (success), got {status}"
     );
 
-// println!("✅ Asset upload endpoint test completed");
+    // println!("✅ Asset upload endpoint test completed");
 }
 
 #[tokio::test]
@@ -1976,7 +1948,7 @@ async fn test_asset_download_endpoint() {
     // Create experiment with tray configuration
     let experiment_result = create_test_experiment(&app).await.unwrap();
     let experiment_id = experiment_result["id"].as_str().unwrap();
-// println!("✅ Created experiment for asset download test: {experiment_id}");
+    // println!("✅ Created experiment for asset download test: {experiment_id}");
 
     // Make download request (should return 404 since no assets exist)
     let download_response = app
@@ -2000,7 +1972,7 @@ async fn test_asset_download_endpoint() {
         .await
         .unwrap();
     let body_str = String::from_utf8_lossy(&body_bytes);
-// println!("📝 Download response body: {body_str}");
+    // println!("📝 Download response body: {body_str}");
 
     // Should return 404 since no assets exist for this experiment
     assert_eq!(
@@ -2014,7 +1986,7 @@ async fn test_asset_download_endpoint() {
         "Expected 'No assets found' in response body, got: {body_str}"
     );
 
-// println!("✅ Asset download endpoint test completed");
+    // println!("✅ Asset download endpoint test completed");
 }
 
 #[tokio::test]
@@ -2025,7 +1997,7 @@ async fn test_asset_upload_duplicate_file() {
     // Create experiment
     let experiment_result = create_test_experiment(&app).await.unwrap();
     let experiment_id = experiment_result["id"].as_str().unwrap();
-// println!("✅ Created experiment for duplicate upload test: {experiment_id}");
+    // println!("✅ Created experiment for duplicate upload test: {experiment_id}");
 
     // Test with a small text file to avoid S3 complexity
     let test_content = b"test file content for duplicate check";
@@ -2061,7 +2033,7 @@ async fn test_asset_upload_duplicate_file() {
         .await
         .unwrap();
 
-// println!("📤 First upload status: {}", first_response.status());
+    // println!("📤 First upload status: {}", first_response.status());
 
     // Second upload (should detect duplicate if first succeeded)
     let second_response = app
@@ -2080,12 +2052,12 @@ async fn test_asset_upload_duplicate_file() {
         .unwrap();
 
     let status = second_response.status();
-// println!("📤 Second upload status: {status}");
+    // println!("📤 Second upload status: {status}");
     let body_bytes = axum::body::to_bytes(second_response.into_body(), usize::MAX)
         .await
         .unwrap();
     let body_str = String::from_utf8_lossy(&body_bytes);
-// println!("📝 Second upload response: {body_str}");
+    // println!("📝 Second upload response: {body_str}");
 
     // We expect either:
     // - 409 Conflict if the first upload succeeded and duplicate is detected
@@ -2096,7 +2068,7 @@ async fn test_asset_upload_duplicate_file() {
         "Expected either 409 (duplicate detected) or 500 (S3 error), got {status}"
     );
 
-// println!("✅ Duplicate upload test completed");
+    // println!("✅ Duplicate upload test completed");
 }
 
 #[tokio::test]
@@ -2132,12 +2104,12 @@ async fn test_asset_upload_invalid_experiment() {
         .unwrap();
 
     let status = response.status();
-// println!("📤 Invalid experiment upload status: {status}");
+    // println!("📤 Invalid experiment upload status: {status}");
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
     let body_str = String::from_utf8_lossy(&body_bytes);
-// println!("📝 Invalid experiment response: {body_str}");
+    // println!("📝 Invalid experiment response: {body_str}");
 
     // Should return 404 Not Found
     assert_eq!(
@@ -2151,7 +2123,7 @@ async fn test_asset_upload_invalid_experiment() {
         "Expected 'Experiment not found' in response"
     );
 
-// println!("✅ Invalid experiment upload test completed");
+    // println!("✅ Invalid experiment upload test completed");
 }
 
 #[tokio::test]
@@ -2185,12 +2157,12 @@ async fn test_asset_upload_no_file() {
         .unwrap();
 
     let status = response.status();
-// println!("📤 No file upload status: {status}");
+    // println!("📤 No file upload status: {status}");
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
     let body_str = String::from_utf8_lossy(&body_bytes);
-// println!("📝 No file response: {body_str}");
+    // println!("📝 No file response: {body_str}");
 
     // Should return 400 Bad Request
     assert_eq!(
@@ -2204,7 +2176,7 @@ async fn test_asset_upload_no_file() {
         "Expected 'No file uploaded' in response"
     );
 
-// println!("✅ No file upload test completed");
+    // println!("✅ No file upload test completed");
 }
 
 /// Helper function to create test image data (small PNG-like binary data)
@@ -3444,14 +3416,14 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
     let body_str = String::from_utf8(body.to_vec()).unwrap();
 
     if status != StatusCode::CREATED {
-// println!("❌ Failed to create tray config");
-// println!("   Status: {status}");
-// println!("   Request payload: {tray_config_data}");
-// println!("   Response body: {body_str}");
+        // println!("❌ Failed to create tray config");
+        // println!("   Status: {status}");
+        // println!("   Request payload: {tray_config_data}");
+        // println!("   Response body: {body_str}");
 
         // Try to parse the error message from JSON
         if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&body_str) {
-// println!("   Parsed error: {error_json:?}");
+            // println!("   Parsed error: {error_json:?}");
         }
 
         panic!("Failed to create tray config. Status: {status}, Body: {body_str}");
@@ -3483,7 +3455,7 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
-// println!("   📤 Multipart body size: {} bytes", body.len());
+    // println!("   📤 Multipart body size: {} bytes", body.len());
 
     let response = app
         .clone()
@@ -3517,7 +3489,7 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
 async fn test_comprehensive_excel_validation_with_specific_transitions() {
     let app = setup_test_app().await;
 
-// println!("🔬 Starting comprehensive Excel validation test...");
+    // println!("🔬 Starting comprehensive Excel validation test...");
 
     // Step 1: Create experiment with proper tray configuration
     let tray_config_response =
@@ -3553,21 +3525,21 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
     let exp_body_str = String::from_utf8(exp_body.to_vec()).unwrap();
 
     if exp_status != StatusCode::OK && exp_status != StatusCode::CREATED {
-// println!("❌ Failed to create experiment");
-// println!("   Status: {exp_status}");
-// println!("   Request payload: {experiment_payload}");
-// println!("   Response body: {exp_body_str}");
+        // println!("❌ Failed to create experiment");
+        // println!("   Status: {exp_status}");
+        // println!("   Request payload: {experiment_payload}");
+        // println!("   Response body: {exp_body_str}");
     }
 
     assert_eq!(exp_status, 201);
     let experiment: Value = serde_json::from_str(&exp_body_str).unwrap();
     let experiment_id = experiment["id"].as_str().unwrap();
 
-// println!("✅ Created experiment: {experiment_id}");
+    // println!("✅ Created experiment: {experiment_id}");
 
     // Step 2: Upload Excel file and process
     let upload_result = upload_excel_file(&app, experiment_id).await;
-// println!("📤 Excel upload result: {upload_result:?}");
+    // println!("📤 Excel upload result: {upload_result:?}");
 
     assert!(
         upload_result["body"]
@@ -3608,11 +3580,11 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
     // Step 7: Validate timing accuracy
     validate_experiment_timing(results);
 
-// println!("🎉 All comprehensive validations passed!");
+    // println!("🎉 All comprehensive validations passed!");
 }
 
 fn validate_experiment_totals(results: &Value) {
-// println!("🔢 Validating experiment totals...");
+    // println!("🔢 Validating experiment totals...");
 
     // Calculate totals from tray data
     let mut total_wells = 0;
@@ -3661,14 +3633,14 @@ fn validate_experiment_totals(results: &Value) {
         "Time points should be {EXPECTED_TOTAL_TIME_POINTS}, got {total_time_points}"
     );
 
-// println!("   ✅ Total wells: {total_wells} ✓");
-// println!("   ✅ Wells with data: {wells_with_data} ✓");
-// println!("   ✅ Wells frozen: {wells_frozen} ✓");
-// println!("   ✅ Time points: {total_time_points} ✓");
+    // println!("   ✅ Total wells: {total_wells} ✓");
+    // println!("   ✅ Wells with data: {wells_with_data} ✓");
+    // println!("   ✅ Wells frozen: {wells_frozen} ✓");
+    // println!("   ✅ Time points: {total_time_points} ✓");
 }
 
 fn validate_specific_well_transitions(experiment: &Value) {
-// println!("🎯 Validating specific well transitions...");
+    // println!("🎯 Validating specific well transitions...");
 
     // Extract all wells from all trays in the new format
     let mut all_wells = Vec::new();
@@ -3695,7 +3667,7 @@ fn validate_specific_well_transitions(experiment: &Value) {
         }
     }
 
-// println!("   📋 Created lookup for {} wells", well_lookup.len());
+    // println!("   📋 Created lookup for {} wells", well_lookup.len());
 
     // Validate each expected transition
     for expected in EXPECTED_TRANSITIONS {
@@ -3762,10 +3734,10 @@ fn validate_specific_well_transitions(experiment: &Value) {
                         temp_diff
                     );
                 } else {
-// println!("⚠️  Well {key} has probe_1 but value is not a valid number");
+                    // println!("⚠️  Well {key} has probe_1 but value is not a valid number");
                 }
             } else {
-// println!("⚠️  Well {key} has temperature data but no probe_1 field");
+                // println!("⚠️  Well {key} has temperature data but no probe_1 field");
             }
         } else {
             // println!(
@@ -3777,15 +3749,15 @@ fn validate_specific_well_transitions(experiment: &Value) {
 }
 
 fn validate_temperature_readings(_experiment: &Value) {
-// println!("🌡️  Validating temperature readings...");
+    // println!("🌡️  Validating temperature readings...");
 
     // Temperature validation would require time series data
     // For now, validate that temperature probe structure exists
-// println!("   ✅ Temperature probe structure validated");
+    // println!("   ✅ Temperature probe structure validated");
 }
 
 fn validate_experiment_timing(results: &Value) {
-// println!("⏰ Validating experiment timing...");
+    // println!("⏰ Validating experiment timing...");
 
     let first_timestamp = results["summary"]["first_timestamp"]
         .as_str()
@@ -3804,17 +3776,17 @@ fn validate_experiment_timing(results: &Value) {
         "Experiment should start around 15:13, got {first_timestamp}"
     );
 
-// println!("   ✅ Experiment start: {first_timestamp} ✓");
-// println!("   ✅ Experiment end: {last_timestamp} ✓");
+    // println!("   ✅ Experiment start: {first_timestamp} ✓");
+    // println!("   ✅ Experiment end: {last_timestamp} ✓");
 
     // Calculate duration (should be about 1 hour 6 minutes based on CSV)
     // This is a rough validation - exact timing depends on processing
-// println!("   ✅ Timing validation complete");
+    // println!("   ✅ Timing validation complete");
 }
 
 #[tokio::test]
 async fn test_well_coordinate_mapping_accuracy() {
-// println!("🗺️  Testing well coordinate mapping accuracy...");
+    // println!("🗺️  Testing well coordinate mapping accuracy...");
 
     let app = setup_test_app().await;
 
@@ -3922,10 +3894,10 @@ async fn test_well_coordinate_mapping_accuracy() {
     assert_eq!(p1_wells, 96, "Should have 96 P1 wells, got {p1_wells}");
     assert_eq!(p2_wells, 96, "Should have 96 P2 wells, got {p2_wells}");
 
-// println!("   ✅ P1 wells: {p1_wells} ✓");
-// println!("   ✅ P2 wells: {p2_wells} ✓");
-// println!("   ✅ Unique coordinates: {} ✓", coordinate_set.len());
-// println!("   🗺️  Well coordinate mapping validated successfully");
+    // println!("   ✅ P1 wells: {p1_wells} ✓");
+    // println!("   ✅ P2 wells: {p2_wells} ✓");
+    // println!("   ✅ Unique coordinates: {} ✓", coordinate_set.len());
+    // println!("   🗺️  Well coordinate mapping validated successfully");
 }
 
 /// Test image-temperature correlation in results summary
@@ -3935,12 +3907,12 @@ async fn test_image_temperature_correlation() {
 
     // Create experiment
     let experiment_id = create_experiment_via_api(&app).await.unwrap();
-// println!("🧪 Created experiment: {experiment_id}");
+    // println!("🧪 Created experiment: {experiment_id}");
 
     // Create a simple tray configuration manually (skip complex create function for now)
     let tray_config_id = create_simple_tray_config(&app).await.unwrap();
     assign_tray_config_to_experiment_via_api(&app, &experiment_id, &tray_config_id).await;
-// println!("📋 Created and assigned tray config: {tray_config_id}");
+    // println!("📋 Created and assigned tray config: {tray_config_id}");
 
     // Verify experiment can be retrieved (temperature readings are created through Excel processing)
     let experiment_response = app
@@ -3972,7 +3944,7 @@ async fn test_asset_by_filename_endpoint() {
 
     // Create experiment
     let experiment_id = create_experiment_via_api(&app).await.unwrap();
-// println!("🧪 Created experiment: {experiment_id}");
+    // println!("🧪 Created experiment: {experiment_id}");
 
     // Create mock assets with different filename formats
     create_mock_asset(
@@ -4005,7 +3977,7 @@ async fn test_asset_by_filename_endpoint() {
         )
         .expect("Failed to add mock S3 data");
 
-// println!("🎯 Added dummy file data to mock S3 store");
+    // println!("🎯 Added dummy file data to mock S3 store");
 
     // Test 1: Access asset with exact filename match
     let response = app
@@ -4027,7 +3999,7 @@ async fn test_asset_by_filename_endpoint() {
         StatusCode::OK,
         "Should find asset with exact filename match"
     );
-// println!("✅ Test 1: Exact filename match works");
+    // println!("✅ Test 1: Exact filename match works");
 
     // Test 2: Access asset without .jpg extension (should add .jpg automatically)
     let response = app
@@ -4049,7 +4021,7 @@ async fn test_asset_by_filename_endpoint() {
         StatusCode::OK,
         "Should find asset by adding .jpg extension"
     );
-// println!("✅ Test 2: Automatic .jpg extension works");
+    // println!("✅ Test 2: Automatic .jpg extension works");
 
     // Test 3: Access asset that already exists without .jpg extension
     let response = app
@@ -4071,7 +4043,7 @@ async fn test_asset_by_filename_endpoint() {
         StatusCode::OK,
         "Should find asset stored without .jpg extension"
     );
-// println!("✅ Test 3: Asset without .jpg extension works");
+    // println!("✅ Test 3: Asset without .jpg extension works");
 
     // Test 4: Non-existent asset should return 404
     let response = app
@@ -4093,9 +4065,9 @@ async fn test_asset_by_filename_endpoint() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent asset"
     );
-// println!("✅ Test 4: Non-existent asset returns 404");
+    // println!("✅ Test 4: Non-existent asset returns 404");
 
-// println!("🎯 Asset by filename endpoint tests completed successfully");
+    // println!("🎯 Asset by filename endpoint tests completed successfully");
 }
 
 /// Helper to create mock asset for testing
@@ -4141,7 +4113,7 @@ async fn create_mock_asset(
 async fn test_excel_processing_with_images() {
     let app = setup_test_app().await;
 
-// println!("🔬 Testing Excel processing with image filename correlation");
+    // println!("🔬 Testing Excel processing with image filename correlation");
 
     // This test would require the actual Excel file from test resources
     // For now, we'll test the individual components that make up the workflow
@@ -4154,7 +4126,7 @@ async fn test_excel_processing_with_images() {
     let tray_config_id = tray_config["id"].as_str().unwrap();
     assign_tray_config_to_experiment_via_api(&app, &experiment_id, tray_config_id).await;
 
-// println!("📋 Created experiment and tray configuration");
+    // println!("📋 Created experiment and tray configuration");
 
     // 2. Test image asset creation and access (temperature readings are created via Excel processing)
     let image_filenames = vec![
@@ -4163,7 +4135,7 @@ async fn test_excel_processing_with_images() {
         "INP_49642_2025-03-20_15-14-19",
     ];
 
-// println!("📝 Note: Temperature readings are created through Excel processing workflow");
+    // println!("📝 Note: Temperature readings are created through Excel processing workflow");
 
     // 4. Create corresponding image assets (with .jpg extension)
     for image_filename in &image_filenames {
@@ -4171,7 +4143,7 @@ async fn test_excel_processing_with_images() {
         create_mock_asset(&app, &experiment_id, &asset_filename, "image").await;
     }
 
-// println!("📁 Created corresponding image assets");
+    // println!("📁 Created corresponding image assets");
 
     // Add dummy file data to mock S3 store for testing (just like in test_asset_by_filename_endpoint)
     let dummy_image_data = b"fake-image-data-excel-test".to_vec();
@@ -4238,7 +4210,7 @@ async fn test_excel_processing_with_images() {
         .iter()
         .filter(|well| !well["first_phase_change_time"].is_null())
         .count();
-// println!("📈 Wells with phase change data: {wells_with_freeze_data}");
+    // println!("📈 Wells with phase change data: {wells_with_freeze_data}");
 
     // 7. Test that assets can be accessed via the by-filename endpoint
     for image_filename in &image_filenames {
@@ -4263,14 +4235,14 @@ async fn test_excel_processing_with_images() {
         );
     }
 
-// println!("✅ Excel processing assets and data integration test passed");
-// println!("   📝 Note: Temperature readings created through Excel processing workflow");
+    // println!("✅ Excel processing assets and data integration test passed");
+    // println!("   📝 Note: Temperature readings created through Excel processing workflow");
     // println!(
     //     "   📁 Image assets: {} created and accessible",
     //     image_filenames.len()
     // );
-// println!("   📊 Wells with phase change data: {wells_with_freeze_data}");
-// println!("   🌐 Assets accessible via filename endpoint");
+    // println!("   📊 Wells with phase change data: {wells_with_freeze_data}");
+    // println!("   🌐 Assets accessible via filename endpoint");
 }
 
 /// Helper function to create a test tray configuration with trays and probes
@@ -4369,7 +4341,7 @@ async fn create_test_tray_configuration_with_probes(app: &Router) -> Result<Stri
         ));
     }
 
-// println!("🧪 Created trays P1 and P2 with probes via tray configuration");
+    // println!("🧪 Created trays P1 and P2 with probes via tray configuration");
     Ok(tray_config_id.to_string())
 }
 
@@ -4414,7 +4386,7 @@ async fn create_test_experiment_via_api(
     let experiment: Value = serde_json::from_slice(&experiment_body).unwrap();
     let experiment_id = experiment["id"].as_str().unwrap();
 
-// println!("🧬 Created experiment: {experiment_id}");
+    // println!("🧬 Created experiment: {experiment_id}");
     Ok(experiment_id.to_string())
 }
 
@@ -4423,7 +4395,7 @@ async fn process_excel_file_via_api(app: &Router, experiment_id: &str) -> Result
     // Load test Excel file
     let excel_path = "src/experiments/test_resources/merged.xlsx";
     let excel_data = fs::read(excel_path).map_err(|e| format!("Failed to read Excel file: {e}"))?;
-// println!("📄 Loaded Excel file: {} bytes", excel_data.len());
+    // println!("📄 Loaded Excel file: {} bytes", excel_data.len());
 
     // Create multipart form data (binary safe)
     let boundary = "test-boundary-12345";
@@ -4467,7 +4439,7 @@ async fn process_excel_file_via_api(app: &Router, experiment_id: &str) -> Result
     let processing_result: Value = serde_json::from_slice(&processing_body)
         .map_err(|e| format!("Failed to parse processing result: {e}"))?;
 
-// println!("✅ Excel processing API response received");
+    // println!("✅ Excel processing API response received");
     Ok(processing_result)
 }
 
@@ -4489,9 +4461,9 @@ fn validate_excel_processing_results(processing_result: &Value) -> Result<(), St
         .as_u64()
         .unwrap_or(0);
 
-// println!("📊 Processing success: {success}");
+    // println!("📊 Processing success: {success}");
     if !errors.is_empty() {
-// println!("⚠️  Processing errors: {errors:?}");
+        // println!("⚠️  Processing errors: {errors:?}");
     }
 
     let has_reasonable_data = temp_readings_created > 5000 && phase_transitions_created > 0;
@@ -4506,10 +4478,10 @@ fn validate_excel_processing_results(processing_result: &Value) -> Result<(), St
         ));
     }
 
-// println!("📊 Processing Results from API:");
-// println!("   - Temperature readings: {temp_readings_created}");
-// println!("   - Individual probe readings: {probe_readings_created}");
-// println!("   - Phase transitions: {phase_transitions_created}");
+    // println!("📊 Processing Results from API:");
+    // println!("   - Temperature readings: {temp_readings_created}");
+    // println!("   - Individual probe readings: {probe_readings_created}");
+    // println!("   - Phase transitions: {phase_transitions_created}");
 
     // Verify expected data volumes
     if temp_readings_created <= 6000 {
@@ -4565,7 +4537,7 @@ async fn verify_experiment_results_api(app: &Router, experiment_id: &str) -> Res
                     "Results should show >6000 time points, got {total_time_points}"
                 ));
             }
-// println!("📈 Experiment results accessible via API: {total_time_points} time points");
+            // println!("📈 Experiment results accessible via API: {total_time_points} time points");
         }
     }
 
@@ -4576,7 +4548,7 @@ async fn verify_experiment_results_api(app: &Router, experiment_id: &str) -> Res
 /// This tests the full HTTP request/response cycle through /api/experiments/{id}/process-excel
 #[tokio::test]
 async fn test_excel_processing_api_integration() {
-// println!("🧪 Starting Excel processing API integration test");
+    // println!("🧪 Starting Excel processing API integration test");
 
     let app = setup_test_app().await;
 
@@ -4604,12 +4576,12 @@ async fn test_excel_processing_api_integration() {
         .await
         .expect("Failed to verify experiment results API");
 
-// println!("🎯 Excel processing API integration test completed successfully!");
-// println!("   ✅ Full HTTP request/response cycle tested");
-// println!("   ✅ Multipart file upload working");
-// println!("   ✅ Excel processing service integration working");
-// println!("   ✅ Database operations successful via API");
-// println!("   ✅ Results retrievable via API");
+    // println!("🎯 Excel processing API integration test completed successfully!");
+    // println!("   ✅ Full HTTP request/response cycle tested");
+    // println!("   ✅ Multipart file upload working");
+    // println!("   ✅ Excel processing service integration working");
+    // println!("   ✅ Database operations successful via API");
+    // println!("   ✅ Results retrievable via API");
 }
 
 /// Helper function to create a simple tray configuration
@@ -4773,7 +4745,7 @@ async fn test_experiment_results_api_integration() {
 #[tokio::test]
 async fn test_seeder_experiment_structure() {
     let app = setup_test_app().await;
-    
+
     // Test the exact structure our seeder is trying to create
     let seeder_experiment = json!({
         "name": "Arctic Aerosol INP Characterization Exp139",
@@ -4785,7 +4757,7 @@ async fn test_seeder_experiment_structure() {
         "remarks": "Comprehensive characterization of Arctic atmospheric aerosol samples using SPICE droplet freezing technique",
         "performed_at": "2025-08-15T10:30:00.000Z"
     });
-    
+
     let create_response = app
         .clone()
         .oneshot(
@@ -4800,10 +4772,10 @@ async fn test_seeder_experiment_structure() {
         .unwrap();
 
     let (create_status, create_body) = extract_response_body(create_response).await;
-    
+
     println!("SEEDER EXPERIMENT TEST - Status: {create_status}");
     println!("SEEDER EXPERIMENT TEST - Body: {create_body:?}");
-    
+
     assert_eq!(
         create_status,
         StatusCode::CREATED,
@@ -4814,7 +4786,7 @@ async fn test_seeder_experiment_structure() {
 #[tokio::test]
 async fn test_seeder_sample_with_coordinates() {
     let app = setup_test_app().await;
-    
+
     // Test the enhanced sample structure with GPS coordinates
     let seeder_sample = json!({
         "name": "Utqiagvik Research PM10 Aerosol Filter 2025-08-15",
@@ -4823,7 +4795,7 @@ async fn test_seeder_sample_with_coordinates() {
         "longitude": "-156.7660",
         "remarks": "Environmental sample collected from Utqiagvik Research Station on 2025-08-15. Sample type: filter. GPS: 71.3230°, -156.7660°"
     });
-    
+
     let create_response = app
         .clone()
         .oneshot(
@@ -4838,23 +4810,31 @@ async fn test_seeder_sample_with_coordinates() {
         .unwrap();
 
     let (create_status, create_body) = extract_response_body(create_response).await;
-    
+
     println!("SEEDER SAMPLE GPS TEST - Status: {create_status}");
     println!("SEEDER SAMPLE GPS TEST - Body: {create_body:?}");
-    
+
     assert_eq!(
         create_status,
         StatusCode::CREATED,
         "Seeder sample with GPS should create successfully. Status: {create_status}, Body: {create_body:?}"
     );
-    
+
     // Verify GPS coordinates are stored - note: Decimal type may truncate trailing zeros
     let latitude = create_body["latitude"].as_str().unwrap();
     let longitude = create_body["longitude"].as_str().unwrap();
-    
+
     // Check that coordinates have at least 3 decimal places and are within expected range
-    assert!(latitude.starts_with("71.32"), "Latitude should be around 71.32, got: {}", latitude);
-    assert!(longitude.starts_with("-156.76"), "Longitude should be around -156.76, got: {}", longitude);
+    assert!(
+        latitude.starts_with("71.32"),
+        "Latitude should be around 71.32, got: {}",
+        latitude
+    );
+    assert!(
+        longitude.starts_with("-156.76"),
+        "Longitude should be around -156.76, got: {}",
+        longitude
+    );
 }
 
 /// Test temperature readings at specific timestamps, especially during phase changes
@@ -4862,7 +4842,7 @@ async fn test_seeder_sample_with_coordinates() {
 #[tokio::test]
 async fn test_temperature_readings_during_phase_changes() {
     println!("🌡️ Testing temperature readings during phase changes");
-    
+
     let app = setup_test_app().await;
 
     // 1. Create tray configuration with full probe setup (8 probes)
@@ -4897,16 +4877,18 @@ async fn test_temperature_readings_during_phase_changes() {
     let results_body = to_bytes(results_response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let experiment_data: Value = serde_json::from_slice(&results_body)
-        .expect("Failed to parse experiment results");
+    let experiment_data: Value =
+        serde_json::from_slice(&results_body).expect("Failed to parse experiment results");
 
     // 5. Validate overall structure
-    let results = experiment_data.get("results")
+    let results = experiment_data
+        .get("results")
         .expect("Experiment should have results")
         .as_object()
         .expect("Results should be an object");
 
-    let trays = results.get("trays")
+    let trays = results
+        .get("trays")
         .expect("Results should have trays")
         .as_array()
         .expect("Trays should be an array");
@@ -4919,7 +4901,8 @@ async fn test_temperature_readings_during_phase_changes() {
     let mut total_probe_readings_checked = 0;
 
     for tray in trays {
-        let wells = tray.get("wells")
+        let wells = tray
+            .get("wells")
             .expect("Tray should have wells")
             .as_array()
             .expect("Wells should be an array");
@@ -4934,17 +4917,28 @@ async fn test_temperature_readings_during_phase_changes() {
                     wells_with_temperatures += 1;
 
                     // Validate temperature structure
-                    assert!(temperatures.get("id").is_some(), "Temperature reading should have id");
-                    assert!(temperatures.get("timestamp").is_some(), "Temperature reading should have timestamp");
-                    assert!(temperatures.get("average").is_some(), "Temperature reading should have average");
+                    assert!(
+                        temperatures.get("id").is_some(),
+                        "Temperature reading should have id"
+                    );
+                    assert!(
+                        temperatures.get("timestamp").is_some(),
+                        "Temperature reading should have timestamp"
+                    );
+                    assert!(
+                        temperatures.get("average").is_some(),
+                        "Temperature reading should have average"
+                    );
 
                     // Validate probe readings array
-                    let probe_readings = temperatures.get("probe_readings")
+                    let probe_readings = temperatures
+                        .get("probe_readings")
                         .expect("Temperature reading should have probe_readings")
                         .as_array()
                         .expect("probe_readings should be an array");
 
-                    println!("   Well {}:{} has {} probe readings at phase change", 
+                    println!(
+                        "   Well {}:{} has {} probe readings at phase change",
                         well["row_letter"].as_str().unwrap_or("?"),
                         well["column_number"].as_i64().unwrap_or(0),
                         probe_readings.len()
@@ -4955,48 +4949,88 @@ async fn test_temperature_readings_during_phase_changes() {
                         total_probe_readings_checked += 1;
 
                         // Check probe reading structure
-                        assert!(probe_reading.get("id").is_some(), "Probe reading should have id");
-                        assert!(probe_reading.get("probe_id").is_some(), "Probe reading should have probe_id");
-                        assert!(probe_reading.get("temperature").is_some(), "Probe reading should have temperature");
-                        
+                        assert!(
+                            probe_reading.get("id").is_some(),
+                            "Probe reading should have id"
+                        );
+                        assert!(
+                            probe_reading.get("probe_id").is_some(),
+                            "Probe reading should have probe_id"
+                        );
+                        assert!(
+                            probe_reading.get("temperature").is_some(),
+                            "Probe reading should have temperature"
+                        );
+
                         // Check probe metadata (new feature)
-                        assert!(probe_reading.get("probe_name").is_some(), "Probe reading should have probe_name");
-                        assert!(probe_reading.get("probe_data_column_index").is_some(), "Probe reading should have probe_data_column_index");
-                        assert!(probe_reading.get("probe_position_x").is_some(), "Probe reading should have probe_position_x");
-                        assert!(probe_reading.get("probe_position_y").is_some(), "Probe reading should have probe_position_y");
+                        assert!(
+                            probe_reading.get("probe_name").is_some(),
+                            "Probe reading should have probe_name"
+                        );
+                        assert!(
+                            probe_reading.get("probe_data_column_index").is_some(),
+                            "Probe reading should have probe_data_column_index"
+                        );
+                        assert!(
+                            probe_reading.get("probe_position_x").is_some(),
+                            "Probe reading should have probe_position_x"
+                        );
+                        assert!(
+                            probe_reading.get("probe_position_y").is_some(),
+                            "Probe reading should have probe_position_y"
+                        );
 
                         // Validate temperature value (should be formatted to 3 decimal places)
-                        let temperature_str = probe_reading.get("temperature")
+                        let temperature_str = probe_reading
+                            .get("temperature")
                             .and_then(|t| t.as_str())
                             .expect("Temperature should be a string");
-                        
+
                         // Parse temperature and check it's reasonable
-                        let temperature: f64 = temperature_str.parse()
+                        let temperature: f64 = temperature_str
+                            .parse()
                             .expect("Temperature should be parseable as float");
-                        
+
                         // During phase changes, temperatures should be below 0°C and above -30°C (reasonable range)
-                        assert!(temperature >= -30.0 && temperature <= 5.0, 
-                            "Temperature {} should be in reasonable range (-30°C to 5°C) during phase change", temperature);
+                        assert!(
+                            temperature >= -30.0 && temperature <= 5.0,
+                            "Temperature {} should be in reasonable range (-30°C to 5°C) during phase change",
+                            temperature
+                        );
 
                         // Validate probe metadata values
-                        let probe_name = probe_reading.get("probe_name")
+                        let probe_name = probe_reading
+                            .get("probe_name")
                             .and_then(|n| n.as_str())
                             .expect("Probe name should be a string");
-                        assert!(probe_name.starts_with("Probe"), "Probe name should start with 'Probe', got: {}", probe_name);
+                        assert!(
+                            probe_name.starts_with("Probe"),
+                            "Probe name should start with 'Probe', got: {}",
+                            probe_name
+                        );
 
-                        let data_column_index = probe_reading.get("probe_data_column_index")
+                        let data_column_index = probe_reading
+                            .get("probe_data_column_index")
                             .and_then(|i| i.as_i64())
                             .expect("Data column index should be an integer");
-                        assert!(data_column_index >= 1 && data_column_index <= 8, 
-                            "Data column index should be 1-8, got: {}", data_column_index);
+                        assert!(
+                            data_column_index >= 1 && data_column_index <= 8,
+                            "Data column index should be 1-8, got: {}",
+                            data_column_index
+                        );
                     }
 
                     // Validate average temperature
-                    if let Some(average_str) = temperatures.get("average").and_then(|a| a.as_str()) {
-                        let average: f64 = average_str.parse()
+                    if let Some(average_str) = temperatures.get("average").and_then(|a| a.as_str())
+                    {
+                        let average: f64 = average_str
+                            .parse()
                             .expect("Average temperature should be parseable as float");
-                        assert!(average >= -30.0 && average <= 5.0, 
-                            "Average temperature {} should be in reasonable range during phase change", average);
+                        assert!(
+                            average >= -30.0 && average <= 5.0,
+                            "Average temperature {} should be in reasonable range during phase change",
+                            average
+                        );
                     }
 
                     // Stop after checking a few wells to avoid test timeout
@@ -5012,19 +5046,41 @@ async fn test_temperature_readings_during_phase_changes() {
     }
 
     // 7. Validate test results
-    assert!(wells_with_phase_changes > 0, "Should have found wells with phase changes");
-    assert!(wells_with_temperatures > 0, "Should have found wells with temperature data at phase change");
-    assert!(total_probe_readings_checked > 0, "Should have checked probe readings");
+    assert!(
+        wells_with_phase_changes > 0,
+        "Should have found wells with phase changes"
+    );
+    assert!(
+        wells_with_temperatures > 0,
+        "Should have found wells with temperature data at phase change"
+    );
+    assert!(
+        total_probe_readings_checked > 0,
+        "Should have checked probe readings"
+    );
 
     println!("✅ Temperature validation completed:");
-    println!("   - Wells with phase changes: {}", wells_with_phase_changes);
-    println!("   - Wells with temperature data: {}", wells_with_temperatures);
-    println!("   - Probe readings validated: {}", total_probe_readings_checked);
-    
+    println!(
+        "   - Wells with phase changes: {}",
+        wells_with_phase_changes
+    );
+    println!(
+        "   - Wells with temperature data: {}",
+        wells_with_temperatures
+    );
+    println!(
+        "   - Probe readings validated: {}",
+        total_probe_readings_checked
+    );
+
     // 8. Additional validation: Check that we have reasonable number of probe readings
     // Since we're looking at phase change times, and each well should have readings from multiple probes
     let expected_min_probe_readings = wells_with_temperatures * 3; // At least 3 probes per well with data
-    assert!(total_probe_readings_checked >= expected_min_probe_readings, 
-        "Expected at least {} probe readings ({}+ wells × 3+ probes), got {}", 
-        expected_min_probe_readings, wells_with_temperatures, total_probe_readings_checked);
+    assert!(
+        total_probe_readings_checked >= expected_min_probe_readings,
+        "Expected at least {} probe readings ({}+ wells × 3+ probes), got {}",
+        expected_min_probe_readings,
+        wells_with_temperatures,
+        total_probe_readings_checked
+    );
 }

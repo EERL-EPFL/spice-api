@@ -1,3 +1,4 @@
+use super::models::{Location, router as crudrouter};
 use crate::common::auth::Role;
 use crate::common::state::AppState;
 use axum::extract::{Path, State};
@@ -5,20 +6,24 @@ use axum::response::Json;
 use axum::routing::get;
 use axum_keycloak_auth::{PassthroughMode, layer::KeycloakAuthLayer};
 use crudcrate::CRUDResource;
-use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, Statement, ConnectionTrait};
-use serde_json::{json, Value};
-use super::models::{Location, router as crudrouter};
+use sea_orm::{ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, Statement};
+use serde_json::{Value, json};
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
-
 
 pub fn router(state: &AppState) -> OpenApiRouter {
     let mut mutating_router = crudrouter(&state.db.clone());
 
     // Add custom routes for fetching related data with OpenAPI documentation
     mutating_router = mutating_router
-        .route("/{id}/samples", get(get_location_samples).with_state(state.clone()))
-        .route("/{id}/experiments", get(get_location_experiments).with_state(state.clone()));
+        .route(
+            "/{id}/samples",
+            get(get_location_samples).with_state(state.clone()),
+        )
+        .route(
+            "/{id}/experiments",
+            get(get_location_experiments).with_state(state.clone()),
+        );
 
     if let Some(instance) = state.keycloak_auth_instance.clone() {
         mutating_router = mutating_router.layer(
@@ -69,23 +74,30 @@ pub async fn get_location_samples(
         .find_with_related(crate::treatments::models::Entity)
         .all(db)
         .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+        .map_err(|e| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {e}"),
+            )
+        })?;
 
     let mut samples_data = Vec::new();
-    
+
     for (sample, treatments) in samples_with_treatments {
         // Convert treatments to the format expected by UI
         let treatments_data: Vec<Value> = treatments
             .into_iter()
-            .map(|t| json!({
-                "id": t.id,
-                "name": t.name,
-                "notes": t.notes,
-                "enzyme_volume_litres": t.enzyme_volume_litres
-            }))
+            .map(|t| {
+                json!({
+                    "id": t.id,
+                    "name": t.name,
+                    "notes": t.notes,
+                    "enzyme_volume_litres": t.enzyme_volume_litres
+                })
+            })
             .collect();
 
-        let sample_data = json!({
+        samples_data.push(json!({
             "id": sample.id,
             "name": sample.name,
             "type": sample.r#type,
@@ -108,9 +120,7 @@ pub async fn get_location_samples(
             "created_at": sample.created_at,
             "last_updated": sample.last_updated,
             "treatments": treatments_data
-        });
-
-        samples_data.push(sample_data);
+        }));
     }
 
     Ok(Json(json!(samples_data)))
@@ -142,8 +152,8 @@ pub async fn get_location_experiments(
     // Query experiments related to this location via the relationship chain:
     // location -> samples -> treatments -> regions -> experiments
     let experiments_query = r"
-        SELECT DISTINCT e.id, e.name, e.username, e.performed_at, 
-                       e.temperature_ramp, e.temperature_start, e.temperature_end, 
+        SELECT DISTINCT e.id, e.name, e.username, e.performed_at,
+                       e.temperature_ramp, e.temperature_start, e.temperature_end,
                        e.is_calibration, e.remarks, e.tray_configuration_id,
                        e.created_at, e.last_updated
         FROM experiments e
@@ -163,25 +173,32 @@ pub async fn get_location_experiments(
             ))
             .all(db)
             .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            .map_err(|e| {
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Database error: {}", e),
+                )
+            })?;
 
     // Convert to JSON format expected by UI
     let experiments_data: Vec<Value> = experiments
         .into_iter()
-        .map(|e| json!({
-            "id": e.id,
-            "name": e.name,
-            "username": e.username,
-            "performed_at": e.performed_at,
-            "temperature_ramp": e.temperature_ramp,
-            "temperature_start": e.temperature_start,
-            "temperature_end": e.temperature_end,
-            "is_calibration": e.is_calibration,
-            "remarks": e.remarks,
-            "tray_configuration_id": e.tray_configuration_id,
-            "created_at": e.created_at,
-            "last_updated": e.last_updated
-        }))
+        .map(|e| {
+            json!({
+                "id": e.id,
+                "name": e.name,
+                "username": e.username,
+                "performed_at": e.performed_at,
+                "temperature_ramp": e.temperature_ramp,
+                "temperature_start": e.temperature_start,
+                "temperature_end": e.temperature_end,
+                "is_calibration": e.is_calibration,
+                "remarks": e.remarks,
+                "tray_configuration_id": e.tray_configuration_id,
+                "created_at": e.created_at,
+                "last_updated": e.last_updated
+            })
+        })
         .collect();
 
     Ok(Json(json!(experiments_data)))
