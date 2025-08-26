@@ -12,7 +12,7 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow};
 use calamine::{Data, Reader, Xlsx, open_workbook_from_rs};
-use chrono::{NaiveDateTime, TimeZone, Utc};
+use chrono::{NaiveDateTime, Timelike, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
@@ -386,7 +386,9 @@ impl DirectExcelProcessor {
     )> {
         let timestamp = Self::extract_timestamp(row, headers, row_number)?; // Extract timestamp
         let parsed_timestamp = Self::parse_timestamp_to_datetime(&timestamp)?;
-        let timestamp_utc = Utc.from_utc_datetime(&parsed_timestamp);
+        // Truncate to seconds precision to avoid floating point precision issues
+        let timestamp_seconds = parsed_timestamp.with_nanosecond(0).unwrap_or(parsed_timestamp);
+        let timestamp_utc = timestamp_seconds.and_utc();
 
         // Extract image filename
         let image_filename = headers
@@ -563,9 +565,9 @@ impl DirectExcelProcessor {
             (Data::String(date_str), Data::String(time_str)) => {
                 let combined = format!("{date_str} {time_str}");
                 match NaiveDateTime::parse_from_str(&combined, "%Y-%m-%d %H:%M:%S") {
-                    Ok(dt) => Ok(dt.format("%Y-%m-%d %H:%M:%S%.3f").to_string()),
+                    Ok(dt) => Ok(dt.format("%Y-%m-%d %H:%M:%S").to_string()),
                     Err(_) => match NaiveDateTime::parse_from_str(&combined, "%m/%d/%Y %H:%M:%S") {
-                        Ok(dt) => Ok(dt.format("%Y-%m-%d %H:%M:%S%.3f").to_string()),
+                        Ok(dt) => Ok(dt.format("%Y-%m-%d %H:%M:%S").to_string()),
                         Err(_) => Err(anyhow!("Could not parse datetime: {}", combined)),
                     },
                 }
@@ -579,33 +581,29 @@ impl DirectExcelProcessor {
                 let date = base + chrono::Duration::days(days_since_1900 - 2); // Excel 1900 bug
                 let time_fraction = days - days.floor();
                 let total_seconds = time_fraction * 86400.0;
+                // Round to nearest second to avoid floating point precision issues
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                let seconds = total_seconds.floor().max(0.0) as u32;
-                let nanoseconds = {
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    {
-                        ((total_seconds - total_seconds.floor()) * 1_000_000_000.0).max(0.0) as u32
-                    }
-                };
+                let seconds = total_seconds.round().max(0.0) as u32;
                 let time =
-                    chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, nanoseconds)
+                    chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds, 0)
                         .unwrap_or_default();
                 let datetime = chrono::NaiveDateTime::new(date, time);
-                Ok(datetime.format("%Y-%m-%d %H:%M:%S%.3f").to_string())
+                Ok(datetime.format("%Y-%m-%d %H:%M:%S").to_string())
             }
             _ => Err(anyhow!("Unsupported datetime format")),
         }
     }
 
     fn parse_timestamp_to_datetime(timestamp: &str) -> Result<NaiveDateTime> {
-        // Try multiple formats
-        if let Ok(dt) = NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%.3f") {
-            return Ok(dt);
-        }
+        // Try multiple formats - prioritize seconds-only parsing for better precision
         if let Ok(dt) = NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S") {
             return Ok(dt);
         }
         if let Ok(dt) = NaiveDateTime::parse_from_str(timestamp, "%m/%d/%Y %H:%M:%S") {
+            return Ok(dt);
+        }
+        // Fallback: parse with milliseconds but we'll truncate later anyway
+        if let Ok(dt) = NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M:%S%.3f") {
             return Ok(dt);
         }
         Err(anyhow!("Could not parse timestamp: {}", timestamp))
