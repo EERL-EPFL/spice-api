@@ -42,9 +42,7 @@ async fn main() {
         .expect("Failed to run migrations");
 
     // Left commented here in case of need to downgrade
-    // Migrator::down(&db, Some(1))  // Downgrade one migration step
-    //     .await
-    //     .expect("Failed to run downgrade migration");
+    // Migrator::down(&db, Some(1)).await.expect("Failed to run downgrade migration");
 
     println!("DB migrations complete");
 
@@ -54,9 +52,7 @@ async fn main() {
         config.deployment.to_uppercase()
     );
 
-    // crudcrate::analyse_all_registered_models(&db, true)
-    //     .await
-    //     .unwrap();
+    // crudcrate::analyse_all_registered_models(&db, true).await.unwrap();
 
     let addr: std::net::SocketAddr = "0.0.0.0:3000".parse().unwrap();
     println!("Listening on {addr}");

@@ -14,7 +14,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 
     // Log error details for debugging
     if status.is_server_error() || status.is_client_error() {
-// eprintln!("HTTP Error - Status: {status}, Body: {body:?}");
     }
 
     (status, body)

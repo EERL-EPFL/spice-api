@@ -14,7 +14,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
 
     // Log error details for debugging
     if status.is_server_error() || status.is_client_error() {
-        // println!("HTTP Error - Status: {status}, Body: {body:?}");
     }
 
     (status, body)
@@ -1514,9 +1513,6 @@ async fn test_debug_500_error_user_payload() {
     let (create_status, create_body) = extract_response_body(create_response).await;
     
     // Debug the response
-    // println!("DEBUG USER PAYLOAD TEST:");
-    // println!("Status: {create_status}");
-    // println!("Body: {create_body:?}");
     
     assert_eq!(
         create_status,

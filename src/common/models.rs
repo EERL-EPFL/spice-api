@@ -14,7 +14,6 @@ pub enum ProcessingStatus {
 
 #[derive(ToSchema, Deserialize, Serialize, Default)]
 pub struct UIConfiguration {
-    // pub keycloak: Keycloak, // DIsable for now (this is the structure of the BFF)
     #[serde(rename = "clientId")]
     pub client_id: String,
     pub realm: String,

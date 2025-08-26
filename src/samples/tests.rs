@@ -1524,10 +1524,6 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         "Heat treatment should be deleted (not in update)"
     );
 
-// println!("✅ Treatment CRUD operations verified:");
-// println!("   - UPDATE: none treatment updated (same ID, new notes) ✅");
-// println!("   - CREATE: h2o2 treatment created (new ID) ✅");
-// println!("   - DELETE: heat treatment deleted (not in update list) ✅");
 
     // Step 4: Test edge case - empty treatments list should delete all treatments
     let empty_treatments_data = json!({
@@ -1582,8 +1578,6 @@ async fn test_sample_update_treatment_crud_comprehensive() {
         "All treatments should be deleted with empty treatments list"
     );
 
-// println!("✅ Empty treatments list edge case verified:");
-// println!("   - All treatments deleted when treatments: [] ✅");
 }
 
 #[tokio::test]
@@ -1680,7 +1674,4 @@ async fn test_sample_update_treatment_validation() {
         "Should fail when updating non-existent treatment ID"
     );
 
-// println!("✅ Treatment validation tests passed:");
-// println!("   - Invalid treatment names rejected ✅");
-// println!("   - Non-existent treatment IDs handled ✅");
 }
