@@ -52,7 +52,9 @@ async fn main() {
         config.deployment.to_uppercase()
     );
 
-    // crudcrate::analyse_all_registered_models(&db, true).await.unwrap();
+    crudcrate::analyse_all_registered_models(&db, true)
+        .await
+        .unwrap();
 
     let addr: std::net::SocketAddr = "0.0.0.0:3000".parse().unwrap();
     println!("Listening on {addr}");

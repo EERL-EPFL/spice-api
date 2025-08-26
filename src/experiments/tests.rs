@@ -3612,6 +3612,417 @@ async fn test_excel_processing_api_integration() {
 
 }
 
+/// Test to verify sample well filtering issue - samples should not include wells from other treatments
+/// This test confirms the bug where each treatment gets assigned all 192 wells instead of just its region wells
+#[tokio::test]
+async fn test_sample_well_filtering_after_excel_processing() {
+    let app = setup_test_app().await;
+
+    // 1. Setup: Create tray configuration with trays and probes
+    let tray_config_id = create_test_tray_configuration_with_probes(&app)
+        .await
+        .expect("Failed to create tray configuration");
+
+    // 2. Setup: Create experiment
+    let experiment_id = create_test_experiment_via_api(&app, &tray_config_id)
+        .await
+        .expect("Failed to create experiment");
+
+    // 3. Create sample and treatments to be used in regions
+    let sample_id = create_test_sample_and_treatments(&app).await.expect("Failed to create sample and treatments");
+
+    // 4. Add regions to the experiment by updating it
+    update_experiment_with_regions(&app, &experiment_id, &sample_id)
+        .await
+        .expect("Failed to add regions to experiment");
+
+    // 5. Process: Upload and process Excel file
+    let _processing_result = process_excel_file_via_api(&app, &experiment_id)
+        .await
+        .expect("Failed to process Excel file");
+
+    // 6. Get experiment details to find regions and samples
+    let experiment_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(experiment_response.status(), StatusCode::OK);
+    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let experiment_data: Value = serde_json::from_slice(&experiment_body).unwrap();
+
+    // 5. Find the sample used in the experiment (should be the first sample from first region)
+    let regions = experiment_data["regions"].as_array().unwrap();
+    assert!(!regions.is_empty(), "Experiment should have regions");
+    
+    let first_region = &regions[0];
+    let sample_id = first_region["treatment"]["sample"]["id"]
+        .as_str()
+        .expect("Should have sample ID in first region");
+
+    println!("Testing sample: {}", sample_id);
+
+    // 6. Test: Get sample data via API
+    let sample_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(sample_response.status(), StatusCode::OK);
+    let sample_body = to_bytes(sample_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let sample_data: Value = serde_json::from_slice(&sample_body).unwrap();
+
+    // 7. Validate: Check treatment well counts
+    let treatments = sample_data["treatments"].as_array().unwrap();
+    assert!(!treatments.is_empty(), "Sample should have treatments");
+
+    for (i, treatment) in treatments.iter().enumerate() {
+        let treatment_name = treatment["name"].as_str().unwrap();
+        let experimental_results = treatment["experimental_results"].as_array().unwrap();
+        let dilution_summaries = treatment["dilution_summaries"].as_array().unwrap();
+
+        println!("Treatment {}: {} has {} experimental results", i, treatment_name, experimental_results.len());
+
+        // Expected well counts based on experiment regions:
+        match treatment_name {
+            "none" => {
+                // None treatment should have wells from 3 regions:
+                // - "Untreated Samples - P1": 32 wells (dilution 1)
+                // - "Dilution Series 1:10 - P2": 48 wells (dilution 10)  
+                // - "Dilution Series 1:100 - P2": 48 wells (dilution 100)
+                // Total expected: 128 wells, NOT 192
+
+                // Check dilution summaries for correct well counts
+                let mut total_wells_from_summaries = 0;
+                for summary in dilution_summaries {
+                    let wells_str = summary["wells_summary"].as_str().unwrap();
+                    let wells_count: i32 = wells_str.split('/').next().unwrap().parse().unwrap();
+                    total_wells_from_summaries += wells_count;
+                    
+                    let dilution_factor = summary["dilution_factor"].as_i64().unwrap();
+                    match dilution_factor {
+                        1 => {
+                            // 1x dilution should have 32 wells (only "Untreated Samples - P1")
+                            assert_eq!(wells_count, 32, 
+                                "None treatment at 1x dilution should have 32 wells, got {}", wells_count);
+                        },
+                        10 => {
+                            // 10x dilution should have 48 wells ("Dilution Series 1:10 - P2")
+                            assert_eq!(wells_count, 48, 
+                                "None treatment at 10x dilution should have 48 wells, got {}", wells_count);
+                        },
+                        100 => {
+                            // 100x dilution should have 48 wells ("Dilution Series 1:100 - P2")
+                            assert_eq!(wells_count, 48, 
+                                "None treatment at 100x dilution should have 48 wells, got {}", wells_count);
+                        },
+                        _ => panic!("Unexpected dilution factor: {}", dilution_factor)
+                    }
+                }
+
+                // Total wells for None treatment should be 128, not 192
+                assert_eq!(total_wells_from_summaries, 128,
+                    "None treatment should have 128 total wells (32+48+48), got {}", total_wells_from_summaries);
+                assert_eq!(experimental_results.len(), 128,
+                    "None treatment should have 128 experimental results, got {}", experimental_results.len());
+            },
+            "heat" => {
+                // Heat treatment should only have wells from "Heat Treated - P1" region: 32 wells
+                assert_eq!(experimental_results.len(), 32,
+                    "Heat treatment should have 32 experimental results, got {}", experimental_results.len());
+                
+                // Should only have 1 dilution summary (dilution factor 1)
+                assert_eq!(dilution_summaries.len(), 1,
+                    "Heat treatment should have 1 dilution summary, got {}", dilution_summaries.len());
+                
+                let summary = &dilution_summaries[0];
+                let wells_str = summary["wells_summary"].as_str().unwrap();
+                let wells_count: i32 = wells_str.split('/').next().unwrap().parse().unwrap();
+                assert_eq!(wells_count, 32,
+                    "Heat treatment should have 32 wells, got {}", wells_count);
+            },
+            "h2o2" => {
+                // H2O2 treatment should only have wells from "H2O2 Treated - P1" region: 32 wells
+                assert_eq!(experimental_results.len(), 32,
+                    "H2O2 treatment should have 32 experimental results, got {}", experimental_results.len());
+                
+                // Should only have 1 dilution summary (dilution factor 1)
+                assert_eq!(dilution_summaries.len(), 1,
+                    "H2O2 treatment should have 1 dilution summary, got {}", dilution_summaries.len());
+                
+                let summary = &dilution_summaries[0];
+                let wells_str = summary["wells_summary"].as_str().unwrap();
+                let wells_count: i32 = wells_str.split('/').next().unwrap().parse().unwrap();
+                assert_eq!(wells_count, 32,
+                    "H2O2 treatment should have 32 wells, got {}", wells_count);
+            },
+            _ => panic!("Unexpected treatment name: {}", treatment_name)
+        }
+    }
+
+    println!("✅ Sample well filtering test completed successfully");
+}
+
+/// Helper function to create sample and treatments (mimics seeder structure)
+async fn create_test_sample_and_treatments(app: &Router) -> Result<String, String> {
+    // 1. First create a project
+    let project_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/projects")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "Test Arctic Research Project",
+                        "description": "Test project for sample well filtering",
+                        "colour": "#3B82F6"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let project_body = to_bytes(project_response.into_body(), usize::MAX).await.unwrap();
+    let project: Value = serde_json::from_slice(&project_body).unwrap();
+    let project_id = project["id"].as_str().unwrap();
+
+    // 2. Create a location
+    let location_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/locations")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "Utqiagvik Research Station",
+                        "comment": "Arctic atmospheric research facility",
+                        "project_id": project_id
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let location_body = to_bytes(location_response.into_body(), usize::MAX).await.unwrap();
+    let location: Value = serde_json::from_slice(&location_body).unwrap();
+    let location_id = location["id"].as_str().unwrap();
+
+    // 3. Create a sample
+    let sample_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "name": "Utqiagvik Resea PM10 Aerosol Filter 2025-08-25 S001",
+                        "type": "filter",
+                        "start_time": "2025-08-25T06:00:00Z",
+                        "stop_time": "2025-08-25T08:00:00Z",
+                        "flow_litres_per_minute": "10.3358743102",
+                        "total_volume": "1740.1531513381",
+                        "filter_substrate": "PTFE",
+                        "suspension_volume_litres": "0.011491431795436186",
+                        "well_volume_litres": "0.00005",
+                        "remarks": "Environmental sample S001 collected from Utqiagvik Research Station region on 2025-08-25. Sample type: filter. GPS: 71.320002°, -156.743158°",
+                        "location_id": location_id
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let sample_body = to_bytes(sample_response.into_body(), usize::MAX).await.unwrap();
+    let sample: Value = serde_json::from_slice(&sample_body).unwrap();
+    let sample_id = sample["id"].as_str().unwrap();
+
+    // 4. Create treatments for this sample (none, heat, h2o2)
+    let treatments = vec![
+        json!({
+            "name": "none",
+            "notes": "Untreated control sample - baseline ice nucleation activity",
+            "sample_id": sample_id
+        }),
+        json!({
+            "name": "heat", 
+            "notes": "Heat treatment at 95°C for 20 minutes - removes heat-labile biological INPs",
+            "sample_id": sample_id
+        }),
+        json!({
+            "name": "h2o2",
+            "notes": "Hydrogen peroxide treatment - removes organic components including biological INPs",
+            "enzyme_volume_litres": "0.0002358673",
+            "sample_id": sample_id
+        })
+    ];
+
+    for treatment in treatments {
+        let _treatment_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/treatments")
+                    .header("content-type", "application/json")
+                    .body(Body::from(treatment.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+    }
+
+    Ok(sample_id.to_string())
+}
+
+/// Helper function to update experiment with regions (uses exact seeder structure)
+async fn update_experiment_with_regions(
+    app: &Router,
+    experiment_id: &str,
+    sample_id: &str,
+) -> Result<(), String> {
+    // Get the current experiment
+    let experiment_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX).await.unwrap();
+    let mut experiment_data: Value = serde_json::from_slice(&experiment_body).unwrap();
+
+    // Get treatments for the sample to link to regions
+    let sample_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let sample_body = to_bytes(sample_response.into_body(), usize::MAX).await.unwrap();
+    let sample_data: Value = serde_json::from_slice(&sample_body).unwrap();
+    let treatments = sample_data["treatments"].as_array().unwrap();
+
+    // Find treatment IDs
+    let mut treatment_map = std::collections::HashMap::new();
+    for treatment in treatments {
+        let name = treatment["name"].as_str().unwrap();
+        let id = treatment["id"].as_str().unwrap();
+        treatment_map.insert(name, id);
+    }
+
+    // Add regions to the experiment (exact same structure as seeder)
+    experiment_data["regions"] = json!([
+        {
+            "treatment_id": treatment_map.get("none").unwrap(),
+            "name": "Untreated Samples - P1",
+            "display_colour_hex": "#3B82F6",
+            "tray_id": 1,
+            "col_min": 0, "col_max": 3, "row_min": 0, "row_max": 7,
+            "dilution_factor": 1,
+            "is_background_key": false
+        },
+        {
+            "treatment_id": treatment_map.get("heat").unwrap(),
+            "name": "Heat Treated - P1",
+            "display_colour_hex": "#EF4444",
+            "tray_id": 1,
+            "col_min": 4, "col_max": 7, "row_min": 0, "row_max": 7,
+            "dilution_factor": 1,
+            "is_background_key": false
+        },
+        {
+            "treatment_id": treatment_map.get("h2o2").unwrap(),
+            "name": "H2O2 Treated - P1",
+            "display_colour_hex": "#10B981",
+            "tray_id": 1,
+            "col_min": 8, "col_max": 11, "row_min": 0, "row_max": 7,
+            "dilution_factor": 1,
+            "is_background_key": false
+        },
+        {
+            "treatment_id": treatment_map.get("none").unwrap(),
+            "name": "Dilution Series 1:10 - P2",
+            "display_colour_hex": "#8B5CF6",
+            "tray_id": 2,
+            "col_min": 0, "col_max": 5, "row_min": 0, "row_max": 7,
+            "dilution_factor": 10,
+            "is_background_key": false
+        },
+        {
+            "treatment_id": treatment_map.get("none").unwrap(),
+            "name": "Dilution Series 1:100 - P2",
+            "display_colour_hex": "#F59E0B",
+            "tray_id": 2,
+            "col_min": 6, "col_max": 11, "row_min": 0, "row_max": 7,
+            "dilution_factor": 100,
+            "is_background_key": false
+        }
+    ]);
+
+    // Update the experiment with regions
+    let update_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(experiment_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    if update_response.status() != StatusCode::OK {
+        let error_body = to_bytes(update_response.into_body(), usize::MAX).await.unwrap();
+        let error_text = String::from_utf8_lossy(&error_body);
+        return Err(format!("Failed to update experiment with regions: {}", error_text));
+    }
+
+    Ok(())
+}
+
 /// Helper function to create a simple tray configuration
 async fn create_simple_tray_configuration(app: &Router, name: &str) -> Result<String, String> {
     let tray_config_response = app
