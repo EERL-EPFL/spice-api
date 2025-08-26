@@ -794,6 +794,146 @@ impl MigrationTrait for Migration {
 
         manager.create_table(temperature_readings_table).await?;
 
+        // Create probes table directly linked to trays
+        let mut probes_table = Table::create()
+            .table(Probes::Table)
+            .if_not_exists()
+            .col(ColumnDef::new(Probes::TrayId).uuid().not_null())
+            .col(ColumnDef::new(Probes::Name).text().not_null())
+            .col(ColumnDef::new(Probes::DataColumnIndex).integer().not_null())
+            .col(ColumnDef::new(Probes::PositionX).decimal().not_null())
+            .col(ColumnDef::new(Probes::PositionY).decimal().not_null())
+            .col(
+                ColumnDef::new(Probes::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .col(
+                ColumnDef::new(Probes::LastUpdated)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_probes_tray_id")
+                    .from(Probes::Table, Probes::TrayId)
+                    .to(Trays::Table, Trays::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::NoAction),
+            )
+            // Ensure unique data column per tray
+            .index(
+                Index::create()
+                    .name("probes_tray_data_column_unique")
+                    .col(Probes::TrayId)
+                    .col(Probes::DataColumnIndex)
+                    .unique(),
+            )
+            .to_owned();
+
+        // Add ID column with appropriate type and default based on database backend
+        match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                probes_table.col(
+                    ColumnDef::new(Probes::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key()
+                        .default(Expr::cust("uuid_generate_v4()")),
+                );
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                probes_table.col(ColumnDef::new(Probes::Id).uuid().not_null().primary_key());
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        }
+
+        manager.create_table(probes_table).await?;
+
+        // Create probe_temperature_readings table to link individual probes to temperature readings
+        let mut probe_temperature_readings_table = Table::create()
+            .table(ProbeTemperatureReadings::Table)
+            .if_not_exists()
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::ProbeId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::TemperatureReadingId)
+                    .uuid()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::Temperature)
+                    .decimal()
+                    .not_null(),
+            )
+            .col(
+                ColumnDef::new(ProbeTemperatureReadings::CreatedAt)
+                    .timestamp_with_time_zone()
+                    .not_null()
+                    .default(Expr::current_timestamp()),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_probe_temp_readings_probe")
+                    .from(ProbeTemperatureReadings::Table, ProbeTemperatureReadings::ProbeId)
+                    .to(Probes::Table, Probes::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::NoAction),
+            )
+            .foreign_key(
+                ForeignKey::create()
+                    .name("fk_probe_temp_readings_temp_reading")
+                    .from(
+                        ProbeTemperatureReadings::Table,
+                        ProbeTemperatureReadings::TemperatureReadingId,
+                    )
+                    .to(TemperatureReadings::Table, TemperatureReadings::Id)
+                    .on_delete(ForeignKeyAction::Cascade)
+                    .on_update(ForeignKeyAction::NoAction),
+            )
+            // Composite primary key
+            .index(
+                Index::create()
+                    .name("probe_temp_readings_pk")
+                    .col(ProbeTemperatureReadings::ProbeId)
+                    .col(ProbeTemperatureReadings::TemperatureReadingId)
+                    .unique(),
+            )
+            .to_owned();
+
+        // Add ID column for SeaORM compatibility
+        match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                probe_temperature_readings_table.col(
+                    ColumnDef::new(ProbeTemperatureReadings::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key()
+                        .default(Expr::cust("uuid_generate_v4()")),
+                );
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                probe_temperature_readings_table.col(
+                    ColumnDef::new(ProbeTemperatureReadings::Id)
+                        .uuid()
+                        .not_null()
+                        .primary_key(),
+                );
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        }
+
+        manager.create_table(probe_temperature_readings_table).await?;
+
         // Create well_phase_transitions table
         let mut well_phase_transitions_table = Table::create()
             .table(WellPhaseTransitions::Table)
@@ -891,6 +1031,91 @@ impl MigrationTrait for Migration {
         }
 
         manager.create_table(well_phase_transitions_table).await?;
+
+        // Create materialized view for experiment results status
+        // This view checks if an experiment has any temperature readings or phase transitions
+        let create_view_sql = match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                r"
+                CREATE MATERIALIZED VIEW experiment_results_view AS
+                SELECT 
+                    e.id,
+                    e.name,
+                    e.username,
+                    e.performed_at,
+                    e.temperature_ramp,
+                    e.temperature_start,
+                    e.temperature_end,
+                    e.is_calibration,
+                    e.remarks,
+                    e.tray_configuration_id,
+                    e.created_at,
+                    e.last_updated,
+                    (
+                        EXISTS (
+                            SELECT 1 FROM temperature_readings tr WHERE tr.experiment_id = e.id
+                        ) OR EXISTS (
+                            SELECT 1 FROM well_phase_transitions wpt WHERE wpt.experiment_id = e.id
+                        )
+                    ) as has_results
+                FROM experiments e;
+
+                -- Create unique index on id for better performance and to support refreshes
+                CREATE UNIQUE INDEX idx_experiment_results_view_id ON experiment_results_view (id);
+                
+                -- Create indexes for common query patterns
+                CREATE INDEX idx_experiment_results_view_has_results ON experiment_results_view (has_results);
+                CREATE INDEX idx_experiment_results_view_performed_at ON experiment_results_view (performed_at);
+                CREATE INDEX idx_experiment_results_view_username ON experiment_results_view (username);
+                "
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                // SQLite doesn't support materialized views, so create a regular view
+                r"
+                CREATE VIEW experiment_results_view AS
+                SELECT 
+                    e.id,
+                    e.name,
+                    e.username,
+                    e.performed_at,
+                    e.temperature_ramp,
+                    e.temperature_start,
+                    e.temperature_end,
+                    e.is_calibration,
+                    e.remarks,
+                    e.tray_configuration_id,
+                    e.created_at,
+                    e.last_updated,
+                    (
+                        EXISTS (
+                            SELECT 1 FROM temperature_readings tr WHERE tr.experiment_id = e.id
+                        ) OR EXISTS (
+                            SELECT 1 FROM well_phase_transitions wpt WHERE wpt.experiment_id = e.id
+                        )
+                    ) as has_results
+                FROM experiments e;
+                "
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        };
+
+        manager.get_connection().execute_unprepared(create_view_sql).await?;
+
+        // For PostgreSQL, create a function to refresh the materialized view
+        if manager.get_database_backend() == sea_orm::DatabaseBackend::Postgres {
+            let refresh_function_sql = r"
+                CREATE OR REPLACE FUNCTION refresh_experiment_results_view() 
+                RETURNS void AS $$
+                BEGIN
+                    REFRESH MATERIALIZED VIEW CONCURRENTLY experiment_results_view;
+                END;
+                $$ LANGUAGE plpgsql;
+            ";
+            
+            manager.get_connection().execute_unprepared(refresh_function_sql).await?;
+        }
 
         // Note: All unique constraints now added during table creation for SQLite compatibility
 
@@ -1199,6 +1424,24 @@ impl MigrationTrait for Migration {
                 .ok();
         }
 
+        // Drop the materialized view and associated objects
+        let drop_view_sql = match manager.get_database_backend() {
+            sea_orm::DatabaseBackend::Postgres => {
+                r"
+                DROP FUNCTION IF EXISTS refresh_experiment_results_view();
+                DROP MATERIALIZED VIEW IF EXISTS experiment_results_view;
+                "
+            }
+            sea_orm::DatabaseBackend::Sqlite => {
+                "DROP VIEW IF EXISTS experiment_results_view;"
+            }
+            _ => {
+                return Err(DbErr::Custom("Unsupported database backend".to_string()));
+            }
+        };
+
+        manager.get_connection().execute_unprepared(drop_view_sql).await?;
+
         // Drop tables in reverse dependency order
         manager
             .drop_table(
@@ -1221,6 +1464,18 @@ impl MigrationTrait for Migration {
             .await?;
         manager
             .drop_table(Table::drop().table(Regions::Table).if_exists().to_owned())
+            .await?;
+        // Drop probe tables (probe_temperature_readings first due to foreign keys)
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ProbeTemperatureReadings::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Probes::Table).if_exists().to_owned())
             .await?;
         manager
             .drop_table(Table::drop().table(Wells::Table).if_exists().to_owned())
@@ -1559,6 +1814,29 @@ enum WellPhaseTransitions {
     Timestamp,
     PreviousState,
     NewState,
+    CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum Probes {
+    Table,
+    Id,
+    TrayId,
+    Name,
+    DataColumnIndex,
+    PositionX,
+    PositionY,
+    CreatedAt,
+    LastUpdated,
+}
+
+#[derive(DeriveIden)]
+enum ProbeTemperatureReadings {
+    Table,
+    Id,
+    ProbeId,
+    TemperatureReadingId,
+    Temperature,
     CreatedAt,
 }
 

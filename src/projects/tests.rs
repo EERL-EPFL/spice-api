@@ -765,14 +765,7 @@ async fn test_project_update(app: &axum::Router, project_id: &str, new_colour: &
             );
             true
         }
-        StatusCode::METHOD_NOT_ALLOWED => {
-            // println!("⚠️  Project update not implemented (405) - This is expected");
-            false
-        }
-        _ => {
-            // println!("📋 Project update returned: {update_status}");
-            false
-        }
+        _ => false,
     }
 }
 
@@ -791,24 +784,7 @@ async fn test_project_deletion(app: &axum::Router, project_id: &str) -> bool {
         .unwrap();
 
     let delete_status = delete_response.status();
-    match delete_status {
-        status if status.is_success() => {
-            // println!("✅ Project delete successful");
-            true
-        }
-        StatusCode::METHOD_NOT_ALLOWED => {
-            // println!("⚠️  Project delete not implemented (405) - This is expected");
-            false
-        }
-        StatusCode::NOT_FOUND => {
-            // println!("📋 Project delete returned 404 (project not found) - This is expected for non-existent resources");
-            false
-        }
-        _ => {
-            // println!("📋 Project delete returned: {delete_status}");
-            false
-        }
-    }
+    matches!(delete_status, status if status.is_success())
 }
 
 /// Helper function to create multiple test projects
@@ -886,7 +862,7 @@ async fn test_multiple_project_batch_operations() {
         panic!("No projects created for batch operations test");
     } else {
         // Test retrieval of all created projects
-        for (project_id, _) in projects.iter() {
+        for (project_id, _) in &projects {
             test_project_retrieval(&app, project_id).await;
         }
 

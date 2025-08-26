@@ -73,21 +73,6 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    // Test that all required modules are properly declared and accessible
-
-    #[test]
-    fn test_module_declarations() {
-        // This is a compilation test to ensure all modules are properly declared
-        // and can be accessed. The actual module loading is tested by compilation.
-
-        // Test that we can access the module paths (compilation test)
-        let _config_type: Option<crate::config::Config> = None;
-        let _routes_exist = crate::routes::build_router;
-
-        // Test that module structure is correct
-        assert!(true); // If we get here, modules compiled successfully
-    }
-
     #[test]
     fn test_socket_address_parsing() {
         // Test that the socket address used in main can be parsed

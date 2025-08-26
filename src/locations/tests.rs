@@ -389,15 +389,37 @@ async fn test_location_retrieval(app: &axum::Router, location_id: &str) {
 
 // Helper function to test location update
 async fn test_location_update(app: &axum::Router, location_id: &str) -> bool {
+    // First get the current location to preserve other fields
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/locations/{location_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    if get_status != StatusCode::OK {
+        // If the location doesn't exist, we can't update it, so return false
+        return false;
+    }
+
+    // Prepare update data with current values plus the change
     let update_data = json!({
-        "comment": "Updated comment for location"
+        "name": get_body["name"],
+        "comment": "Updated comment for location",
+        "project_id": get_body["project_id"]
     });
 
     let update_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .method("PATCH")
+                .method("PUT")
                 .uri(format!("/api/locations/{location_id}"))
                 .header("content-type", "application/json")
                 .body(Body::from(update_data.to_string()))
@@ -417,7 +439,7 @@ async fn test_location_update(app: &axum::Router, location_id: &str) -> bool {
             true
         }
         _ => {
-            panic!("Location update failed");
+            panic!("Location update failed: Status {update_status}, Body: {update_body:?}");
         }
     }
 }
@@ -890,13 +912,13 @@ async fn test_multiple_location_operations() {
     }
 
     // Test retrieval of all created locations
-    for location_id in location_ids.iter() {
+    for location_id in &location_ids {
         // println!("Testing retrieval of location {}", _i + 1);
         test_location_retrieval(&app, location_id).await;
     }
 
     // Test updates on all locations
-    for location_id in location_ids.iter() {
+    for location_id in &location_ids {
         // println!("Testing update of location {}", _i + 1);
         let _update_success = test_location_update(&app, location_id).await;
     }
