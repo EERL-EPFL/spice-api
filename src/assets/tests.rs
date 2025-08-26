@@ -12,10 +12,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
     let body: Value = serde_json::from_slice(&bytes)
         .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
 
-    // Log error details for debugging
-    if status.is_server_error() || status.is_client_error() {
-    }
-
     (status, body)
 }
 

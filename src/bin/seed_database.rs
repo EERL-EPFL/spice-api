@@ -1051,26 +1051,26 @@ impl DatabaseSeeder {
             }
 
             // Link regions to actual treatments if available
-            if let Some(regions) = template.get_mut("regions") {
-                if let Some(regions_array) = regions.as_array_mut() {
-                    for region in regions_array {
-                        // Find a suitable treatment based on region name
-                        let region_name = region["name"].as_str().unwrap_or("");
-                        let treatment_name = if region_name.to_lowercase().contains("heat") {
-                            "heat"
-                        } else if region_name.to_lowercase().contains("h2o2") {
-                            "h2o2"
-                        } else {
-                            "none"
-                        };
+            if let Some(regions) = template.get_mut("regions")
+                && let Some(regions_array) = regions.as_array_mut()
+            {
+                for region in regions_array {
+                    // Find a suitable treatment based on region name
+                    let region_name = region["name"].as_str().unwrap_or("");
+                    let treatment_name = if region_name.to_lowercase().contains("heat") {
+                        "heat"
+                    } else if region_name.to_lowercase().contains("h2o2") {
+                        "h2o2"
+                    } else {
+                        "none"
+                    };
 
-                        // Find a treatment with this name from our created treatments
-                        if let Some(treatment) = self.created_objects.treatments.iter().find(|t| {
-                            t.get("treatment_name").and_then(|n| n.as_str()) == Some(treatment_name)
-                                || t.get("name").and_then(|n| n.as_str()) == Some(treatment_name)
-                        }) {
-                            region["treatment_id"] = json!(treatment["id"].as_str().unwrap());
-                        }
+                    // Find a treatment with this name from our created treatments
+                    if let Some(treatment) = self.created_objects.treatments.iter().find(|t| {
+                        t.get("treatment_name").and_then(|n| n.as_str()) == Some(treatment_name)
+                            || t.get("name").and_then(|n| n.as_str()) == Some(treatment_name)
+                    }) {
+                        region["treatment_id"] = json!(treatment["id"].as_str().unwrap());
                     }
                 }
             }

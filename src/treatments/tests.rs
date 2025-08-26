@@ -12,10 +12,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
     let body: Value = serde_json::from_slice(&bytes)
         .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
 
-    // Log error details for debugging
-    if status.is_server_error() || status.is_client_error() {
-    }
-
     (status, body)
 }
 
@@ -42,8 +38,12 @@ async fn create_test_sample(app: &axum::Router) -> String {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    assert_eq!(status, StatusCode::CREATED, "Failed to create test sample: {body:?}");
-    
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Failed to create test sample: {body:?}"
+    );
+
     body["id"].as_str().unwrap().to_string()
 }
 
@@ -76,15 +76,26 @@ async fn test_treatment_crud_operations() {
         .unwrap();
 
     let (status, body) = extract_response_body(response).await;
-    assert_eq!(status, StatusCode::CREATED, "Failed to create treatment: {body:?}");
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Failed to create treatment: {body:?}"
+    );
 
     // Validate response structure
     assert!(body["id"].is_string(), "Response should include ID");
     assert_eq!(body["name"], "heat");
     assert_eq!(body["notes"], "Heat treatment for 5 minutes");
     assert_eq!(body["sample_id"], sample_id);
-    let enzyme_volume = body["enzyme_volume_litres"].as_str().unwrap().parse::<f64>().unwrap();
-    assert!((enzyme_volume - 0.001).abs() < f64::EPSILON, "Expected 0.001, got {enzyme_volume}");
+    let enzyme_volume = body["enzyme_volume_litres"]
+        .as_str()
+        .unwrap()
+        .parse::<f64>()
+        .unwrap();
+    assert!(
+        (enzyme_volume - 0.001).abs() < f64::EPSILON,
+        "Expected 0.001, got {enzyme_volume}"
+    );
     assert!(body["created_at"].is_string());
     assert!(body["last_updated"].is_string());
 
@@ -104,13 +115,17 @@ async fn test_treatment_crud_operations() {
         .unwrap();
 
     let (get_status, get_body) = extract_response_body(get_response).await;
-    assert_eq!(get_status, StatusCode::OK, "Failed to get treatment: {get_body:?}");
+    assert_eq!(
+        get_status,
+        StatusCode::OK,
+        "Failed to get treatment: {get_body:?}"
+    );
     assert_eq!(get_body["id"], treatment_id);
     assert_eq!(get_body["name"], "heat");
 
     // NOTE: Update and Delete operations are not fully implemented yet in the Treatment CRUDResource
     // The routes exist but return Method Not Allowed. This should be fixed in the CRUDResource implementation.
-    
+
     // Test updating the treatment (currently returns 405 Method Not Allowed)
     let update_data = json!({
         "notes": "Updated heat treatment for 10 minutes",
@@ -131,7 +146,11 @@ async fn test_treatment_crud_operations() {
         .unwrap();
 
     let (update_status, _update_body) = extract_response_body(update_response).await;
-    assert_eq!(update_status, StatusCode::METHOD_NOT_ALLOWED, "Update not implemented yet");
+    assert_eq!(
+        update_status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "Update not implemented yet"
+    );
 
     // Test deleting the treatment (currently returns 405 Method Not Allowed)
     let delete_response = app
@@ -148,7 +167,10 @@ async fn test_treatment_crud_operations() {
 
     let delete_status = delete_response.status();
     // Delete operations actually work!
-    assert!(delete_status.is_success(), "Delete operations work correctly");
+    assert!(
+        delete_status.is_success(),
+        "Delete operations work correctly"
+    );
 }
 
 #[tokio::test]
@@ -204,7 +226,7 @@ async fn test_treatment_list_operations() {
     let (list_status, list_body) = extract_response_body(list_response).await;
     assert_eq!(list_status, StatusCode::OK, "Failed to get treatments");
     assert!(list_body.is_array(), "Treatments list should be an array");
-    
+
     let treatments = list_body.as_array().unwrap();
     assert!(treatments.len() >= 3, "Should have at least 3 treatments");
 
@@ -213,10 +235,12 @@ async fn test_treatment_list_operations() {
         .iter()
         .map(|t| t["id"].as_str().unwrap())
         .collect();
-    
+
     for created_id in &created_ids {
-        assert!(treatment_ids.contains(&created_id.as_str()), 
-               "Created treatment {created_id} should be in list");
+        assert!(
+            treatment_ids.contains(&created_id.as_str()),
+            "Created treatment {created_id} should be in list"
+        );
     }
 }
 
@@ -245,7 +269,10 @@ async fn test_treatment_validation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert!(status.is_client_error(), "Should reject invalid treatment name");
+    assert!(
+        status.is_client_error(),
+        "Should reject invalid treatment name"
+    );
 
     // Test creating treatment with missing required field
     let incomplete_data = json!({
@@ -267,7 +294,10 @@ async fn test_treatment_validation() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert!(status.is_client_error(), "Should reject incomplete treatment data");
+    assert!(
+        status.is_client_error(),
+        "Should reject incomplete treatment data"
+    );
 }
 
 #[tokio::test]
@@ -284,7 +314,7 @@ async fn test_treatment_enum_values() {
             "notes": format!("Testing {} treatment", treatment_name),
             "sample_id": sample_id
         });
-        
+
         // Add enzyme_volume_litres only for h2o2 treatment
         if treatment_name == "h2o2" {
             treatment_data["enzyme_volume_litres"] = json!(0.001);
@@ -304,8 +334,11 @@ async fn test_treatment_enum_values() {
             .unwrap();
 
         let (status, body) = extract_response_body(response).await;
-        assert_eq!(status, StatusCode::CREATED, 
-                  "Failed to create treatment with name '{treatment_name}': {body:?}");
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "Failed to create treatment with name '{treatment_name}': {body:?}"
+        );
         assert_eq!(body["name"], treatment_name);
     }
 }
@@ -329,7 +362,11 @@ async fn test_treatment_not_found() {
         .unwrap();
 
     let (status, _body) = extract_response_body(response).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "Should return 404 for non-existent treatment");
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "Should return 404 for non-existent treatment"
+    );
 
     // Test updating non-existent treatment
     let update_data = json!({
@@ -351,9 +388,13 @@ async fn test_treatment_not_found() {
 
     let (update_status, _) = extract_response_body(update_response).await;
     // Currently returns Method Not Allowed because update is not implemented
-    assert_eq!(update_status, StatusCode::METHOD_NOT_ALLOWED, "Update operations not implemented yet");
+    assert_eq!(
+        update_status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "Update operations not implemented yet"
+    );
 
-    // Test deleting non-existent treatment  
+    // Test deleting non-existent treatment
     let delete_response = app
         .clone()
         .oneshot(
@@ -368,7 +409,11 @@ async fn test_treatment_not_found() {
 
     let delete_status = delete_response.status();
     // Delete for non-existent treatment should return 404
-    assert_eq!(delete_status, StatusCode::NOT_FOUND, "Should return 404 for deleting non-existent treatment");
+    assert_eq!(
+        delete_status,
+        StatusCode::NOT_FOUND,
+        "Should return 404 for deleting non-existent treatment"
+    );
 }
 
 #[tokio::test]
@@ -379,8 +424,8 @@ async fn test_treatment_filtering_and_sorting() {
     // Create treatments with different names for filtering
     let treatments_data = [
         ("heat", "Heat treatment A"),
-        ("h2o2", "H2O2 treatment B"), 
-        ("none", "No treatment C")
+        ("h2o2", "H2O2 treatment B"),
+        ("none", "No treatment C"),
     ];
 
     for (name, notes) in treatments_data {
@@ -423,21 +468,29 @@ async fn test_treatment_filtering_and_sorting() {
 
     let (filter_status, filter_body) = extract_response_body(filter_response).await;
     assert_eq!(filter_status, StatusCode::OK, "Filtering should work");
-    
+
     let filtered_treatments = filter_body.as_array().unwrap();
-    
+
     // Verify filtering actually filters - should only return "heat" treatments
     for treatment in filtered_treatments {
         assert_eq!(
             treatment["name"], "heat",
-            "Filtering should only return heat treatments, but got: {:?}", treatment["name"]
+            "Filtering should only return heat treatments, but got: {:?}",
+            treatment["name"]
         );
     }
-    assert!(!filtered_treatments.is_empty(), "Should return at least some treatments");
-    let heat_treatments: Vec<_> = filtered_treatments.iter()
+    assert!(
+        !filtered_treatments.is_empty(),
+        "Should return at least some treatments"
+    );
+    let heat_treatments: Vec<_> = filtered_treatments
+        .iter()
         .filter(|t| t["name"] == "heat")
         .collect();
-    assert!(!heat_treatments.is_empty(), "Should find at least one heat treatment in results");
+    assert!(
+        !heat_treatments.is_empty(),
+        "Should find at least one heat treatment in results"
+    );
 
     // Test sorting by name
     let sort_response = app

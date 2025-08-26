@@ -1,12 +1,9 @@
-use super::temperatures::models::TemperatureReading;
 use crate::experiments::services::build_tray_centric_results;
 use chrono::{DateTime, Utc};
-use crudcrate::traits::MergeIntoActiveModel;
-use crudcrate::{CRUDResource, EntityToModels};
+use crudcrate::{CRUDResource, EntityToModels, traits::MergeIntoActiveModel};
 use rust_decimal::Decimal;
-use sea_orm::QuerySelect;
 use sea_orm::{
-    ActiveValue::Set, Condition, EntityTrait, Order, QueryOrder, TransactionTrait,
+    ActiveValue::Set, Condition, EntityTrait, Order, QueryOrder, QuerySelect, TransactionTrait,
     entity::prelude::*,
 };
 use uuid::Uuid;
@@ -112,47 +109,6 @@ impl Related<crate::experiments::phase_transitions::models::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-
-#[derive(ToSchema, Eq, PartialEq, Debug, Serialize, Deserialize, Clone)]
-pub struct WellSummary {
-    pub row_letter: String,
-    pub column_number: i32,
-    pub coordinate: String, // e.g., "A1", "B2"
-    pub first_phase_change_time: Option<DateTime<Utc>>,
-    pub first_phase_change_seconds: Option<i64>, // seconds from experiment start
-    pub first_phase_change_temperature_probes: Option<TemperatureReading>,
-    pub final_state: Option<String>, // "frozen", "liquid", "no_data"
-    pub image_filename_at_freeze: Option<String>, // Image filename at time of first phase change (without .jpg extension)
-    pub image_asset_id: Option<Uuid>, // Asset ID for the image at freeze time (for secure viewing via /assets/{id}/view)
-    pub tray_id: Option<String>,      // UUID of the tray
-    pub tray_name: Option<String>,
-    pub dilution_factor: Option<i32>,
-    pub sample: Option<crate::samples::models::Sample>,
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct SampleResultsSummary {
-    pub sample: crate::samples::models::Sample,
-    pub treatments: Vec<TreatmentResultsSummary>,
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct TreatmentResultsSummary {
-    pub treatment: crate::treatments::models::Treatment,
-    pub wells: Vec<WellSummary>,
-    pub wells_frozen: usize,
-    pub wells_liquid: usize,
-}
-
-#[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct ExperimentResultsSummary {
-    pub total_wells: usize,
-    pub total_time_points: usize,
-    pub first_timestamp: Option<DateTime<Utc>>,
-    pub last_timestamp: Option<DateTime<Utc>>,
-    pub sample_results: Vec<SampleResultsSummary>,
-    pub well_summaries: Vec<WellSummary>,
-}
 
 #[derive(ToSchema, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ProbeTemperatureReadingWithMetadata {

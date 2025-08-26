@@ -396,7 +396,6 @@ async fn test_experiment_results_summary_structure() {
     let results = create_experiment_get_results_summary().await.unwrap();
     validate_experiment_results_structure(&results);
     validate_well_summaries_structure(&results);
-
 }
 
 #[tokio::test]
@@ -541,31 +540,29 @@ async fn test_experiment_list_with_results_summary() {
         assert!(exp.is_object(), "Experiment {i} should be an object");
 
         // Check if results_summary is included in list view
-        if exp.get("results_summary").is_some() && !exp["results_summary"].is_null() {
-            if exp["results_summary"].is_object() {
-                let results_summary = &exp["results_summary"];
-                assert!(
-                    results_summary["total_wells"].is_number(),
-                    "Experiment {i} results should have total_wells"
-                );
-                assert!(
-                    results_summary["wells_with_data"].is_number(),
-                    "Experiment {i} results should have wells_with_data"
-                );
-                assert!(
-                    results_summary["well_summaries"].is_array(),
-                    "Experiment {i} results should have well_summaries"
-                );
-            } else {
-            }
-        } else {
+        if exp.get("results_summary").is_some()
+            && !exp["results_summary"].is_null()
+            && exp["results_summary"].is_object()
+        {
+            let results_summary = &exp["results_summary"];
+            assert!(
+                results_summary["total_wells"].is_number(),
+                "Experiment {i} results should have total_wells"
+            );
+            assert!(
+                results_summary["wells_with_data"].is_number(),
+                "Experiment {i} results should have wells_with_data"
+            );
+            assert!(
+                results_summary["well_summaries"].is_array(),
+                "Experiment {i} results should have well_summaries"
+            );
         }
 
         // Verify basic experiment fields are present
         assert!(exp.get("id").is_some(), "Experiment {i} should have id");
         assert!(exp.get("name").is_some(), "Experiment {i} should have name");
     }
-
 }
 
 async fn extract_response_body(response: axum::response::Response) -> (StatusCode, Value) {
@@ -575,10 +572,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
         .expect("Failed to read response body");
     let body: Value = serde_json::from_slice(&bytes)
         .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
-
-    // Log error details for debugging
-    if status.is_server_error() || status.is_client_error() {
-    }
 
     (status, body)
 }
@@ -791,8 +784,7 @@ async fn test_experiment_results_endpoint() {
         if results_status == StatusCode::OK {
             // Validate results structure
             if results_body.is_object() {
-            } else if results_body.is_array() {
-            } else {
+                validate_experiment_results_structure(&results_body);
             }
         } else if results_status == StatusCode::NOT_FOUND {
         }
@@ -918,10 +910,10 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
                     }
 
                     // Count frozen wells
-                    if let Some(final_state) = summary["final_state"].as_str() {
-                        if final_state == "frozen" {
-                            frozen_wells += 1;
-                        }
+                    if let Some(final_state) = summary["final_state"].as_str()
+                        && final_state == "frozen"
+                    {
+                        frozen_wells += 1;
                     }
                 }
             }
@@ -946,7 +938,6 @@ fn validate_well_summaries_structure(results: &serde_json::Value) {
             frozen_wells, 192,
             "All 192 wells should end up in frozen state"
         );
-
 
         // Validate a few specific coordinates to ensure proper formatting
         for summary in all_wells.iter().take(3) {
@@ -1034,7 +1025,6 @@ async fn test_asset_upload_endpoint() {
             || status == axum::http::StatusCode::OK,
         "Expected either 500 (S3 not configured) or 200 (success), got {status}"
     );
-
 }
 
 #[tokio::test]
@@ -1104,7 +1094,6 @@ async fn test_asset_download_endpoint() {
         body_str.contains("No assets found"),
         "Expected 'No assets found' in response body, got: {body_str}"
     );
-
 }
 
 #[tokio::test]
@@ -1150,7 +1139,6 @@ async fn test_asset_upload_duplicate_file() {
         .await
         .unwrap();
 
-
     // Second upload (should detect duplicate if first succeeded)
     let second_response = app
         .oneshot(
@@ -1181,7 +1169,6 @@ async fn test_asset_upload_duplicate_file() {
             || status == axum::http::StatusCode::INTERNAL_SERVER_ERROR,
         "Expected either 409 (duplicate detected) or 500 (S3 error), got {status}"
     );
-
 }
 
 #[tokio::test]
@@ -1233,7 +1220,6 @@ async fn test_asset_upload_invalid_experiment() {
         body_str.contains("Experiment not found"),
         "Expected 'Experiment not found' in response"
     );
-
 }
 
 #[tokio::test]
@@ -1283,7 +1269,6 @@ async fn test_asset_upload_no_file() {
         body_str.contains("No file uploaded"),
         "Expected 'No file uploaded' in response"
     );
-
 }
 
 /// Helper function to create test image data (small PNG-like binary data)
@@ -2553,7 +2538,6 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
 
-
     let response = app
         .clone()
         .oneshot(
@@ -2585,7 +2569,6 @@ async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
 #[tokio::test]
 async fn test_comprehensive_excel_validation_with_specific_transitions() {
     let app = setup_test_app().await;
-
 
     // Step 1: Create experiment with proper tray configuration
     let tray_config_response =
@@ -2620,13 +2603,14 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
         .unwrap();
     let exp_body_str = String::from_utf8(exp_body.to_vec()).unwrap();
 
-    if exp_status != StatusCode::OK && exp_status != StatusCode::CREATED {
-    }
+    assert!(
+        !(exp_status != StatusCode::OK && exp_status != StatusCode::CREATED),
+        "Failed to create experiment. Status: {exp_status}, Body: {exp_body_str}"
+    );
 
     assert_eq!(exp_status, 201);
     let experiment: Value = serde_json::from_str(&exp_body_str).unwrap();
     let experiment_id = experiment["id"].as_str().unwrap();
-
 
     // Step 2: Upload Excel file and process
     let upload_result = upload_excel_file(&app, experiment_id).await;
@@ -2669,11 +2653,9 @@ async fn test_comprehensive_excel_validation_with_specific_transitions() {
 
     // Step 7: Validate timing accuracy
     validate_experiment_timing(results);
-
 }
 
 fn validate_experiment_totals(results: &Value) {
-
     // Calculate totals from tray data
     let mut total_wells = 0;
     let mut wells_with_data = 0;
@@ -2720,11 +2702,9 @@ fn validate_experiment_totals(results: &Value) {
         { EXPECTED_TOTAL_TIME_POINTS },
         "Time points should be {EXPECTED_TOTAL_TIME_POINTS}, got {total_time_points}"
     );
-
 }
 
 fn validate_specific_well_transitions(experiment: &Value) {
-
     // Extract all wells from all trays in the new format
     let mut all_wells = Vec::new();
     if let Some(trays) = experiment["results"]["trays"].as_array() {
@@ -2749,7 +2729,6 @@ fn validate_specific_well_transitions(experiment: &Value) {
             }
         }
     }
-
 
     // Validate each expected transition
     for expected in EXPECTED_TRANSITIONS {
@@ -2802,27 +2781,21 @@ fn validate_specific_well_transitions(experiment: &Value) {
         // Temperature validation - only if probe data is available
         if !temp_probes.is_null() && temp_probes.is_object() {
             // Temperature values are stored as strings (Decimal), need to parse them
-            if let Some(probe1_temp_str) = temp_probes["probe_1"].as_str() {
-                if let Ok(probe1_temp) = probe1_temp_str.parse::<f64>() {
-                    // Allow tolerance for difference between averaged (CSV analysis) and single probe (API) temperatures
-                    // Since CSV analysis used 8-probe averages but API uses individual probe readings
-                    let temp_diff = (probe1_temp - expected.temp_probe_1).abs();
-                    assert!(
-                        temp_diff < 1.0,
-                        "Well {} probe 1 temperature should be ~{}°C, got {}°C (diff: {}°C)",
-                        key,
-                        expected.temp_probe_1,
-                        probe1_temp,
-                        temp_diff
-                    );
-                } else {
-                }
-            } else {
+            if let Some(probe1_temp_str) = temp_probes["probe_1"].as_str()
+                && let Ok(probe1_temp) = probe1_temp_str.parse::<f64>()
+            {
+                // Allow tolerance for difference between averaged (CSV analysis) and single probe (API) temperatures
+                // Since CSV analysis used 8-probe averages but API uses individual probe readings
+                let temp_diff = (probe1_temp - expected.temp_probe_1).abs();
+                assert!(
+                    temp_diff < 1.0,
+                    "Well {} probe 1 temperature should be ~{}°C, got {}°C (diff: {}°C)",
+                    key,
+                    expected.temp_probe_1,
+                    probe1_temp,
+                    temp_diff
+                );
             }
-        } else {
-            //     "⚠️  Well {} missing temperature probe data - skipping temperature validation",
-            //     key
-            // );
         }
     }
 }
@@ -2834,7 +2807,6 @@ fn validate_temperature_readings(_experiment: &Value) {
 }
 
 fn validate_experiment_timing(results: &Value) {
-
     let first_timestamp = results["summary"]["first_timestamp"]
         .as_str()
         .expect("Should have first_timestamp");
@@ -2852,14 +2824,12 @@ fn validate_experiment_timing(results: &Value) {
         "Experiment should start around 15:13, got {first_timestamp}"
     );
 
-
     // Calculate duration (should be about 1 hour 6 minutes based on CSV)
     // This is a rough validation - exact timing depends on processing
 }
 
 #[tokio::test]
 async fn test_well_coordinate_mapping_accuracy() {
-
     let app = setup_test_app().await;
 
     // Create experiment and upload
@@ -2965,7 +2935,6 @@ async fn test_well_coordinate_mapping_accuracy() {
 
     assert_eq!(p1_wells, 96, "Should have 96 P1 wells, got {p1_wells}");
     assert_eq!(p2_wells, 96, "Should have 96 P2 wells, got {p2_wells}");
-
 }
 
 /// Test image-temperature correlation in results summary
@@ -3041,7 +3010,6 @@ async fn test_asset_by_filename_endpoint() {
             dummy_image_data.clone(),
         )
         .expect("Failed to add mock S3 data");
-
 
     // Test 1: Access asset with exact filename match
     let response = app
@@ -3126,7 +3094,6 @@ async fn test_asset_by_filename_endpoint() {
         StatusCode::NOT_FOUND,
         "Should return 404 for non-existent asset"
     );
-
 }
 
 /// Helper to create mock asset for testing
@@ -3172,7 +3139,6 @@ async fn create_mock_asset(
 async fn test_excel_processing_with_images() {
     let app = setup_test_app().await;
 
-
     // This test would require the actual Excel file from test resources
     // For now, we'll test the individual components that make up the workflow
 
@@ -3184,7 +3150,6 @@ async fn test_excel_processing_with_images() {
     let tray_config_id = tray_config["id"].as_str().unwrap();
     assign_tray_config_to_experiment_via_api(&app, &experiment_id, tray_config_id).await;
 
-
     // 2. Test image asset creation and access (temperature readings are created via Excel processing)
     let image_filenames = vec![
         "INP_49640_2025-03-20_15-14-17", // Excel format (no .jpg)
@@ -3192,13 +3157,11 @@ async fn test_excel_processing_with_images() {
         "INP_49642_2025-03-20_15-14-19",
     ];
 
-
     // 4. Create corresponding image assets (with .jpg extension)
     for image_filename in &image_filenames {
         let asset_filename = format!("{image_filename}.jpg"); // Assets have .jpg extension
         create_mock_asset(&app, &experiment_id, &asset_filename, "image").await;
     }
-
 
     // Add dummy file data to mock S3 store for testing (just like in test_asset_by_filename_endpoint)
     let dummy_image_data = b"fake-image-data-excel-test".to_vec();
@@ -3505,20 +3468,13 @@ fn validate_excel_processing_results(processing_result: &Value) -> Result<(), St
         .as_u64()
         .unwrap_or(0);
 
-    if !errors.is_empty() {
-    }
-
     let has_reasonable_data = temp_readings_created > 5000 && phase_transitions_created > 0;
-    //     "📊 Has reasonable data: {} (temp_readings: {}, phase_transitions: {})",
-    //     has_reasonable_data, temp_readings_created, phase_transitions_created
-    // );
 
     if !has_reasonable_data {
         return Err(format!(
             "Processing failed without reasonable data. Success: {success}, Errors: {errors:?}"
         ));
     }
-
 
     // Verify expected data volumes
     if temp_readings_created <= 6000 {
@@ -3565,14 +3521,14 @@ async fn verify_experiment_results_api(app: &Router, experiment_id: &str) -> Res
         .map_err(|e| format!("Failed to parse experiment data: {e}"))?;
 
     // Check that results include the processed data
-    if let Some(results) = experiment_data.get("results") {
-        if let Some(summary) = results.get("summary") {
-            let total_time_points = summary["total_time_points"].as_u64().unwrap_or(0);
-            if total_time_points <= 6000 {
-                return Err(format!(
-                    "Results should show >6000 time points, got {total_time_points}"
-                ));
-            }
+    if let Some(results) = experiment_data.get("results")
+        && let Some(summary) = results.get("summary")
+    {
+        let total_time_points = summary["total_time_points"].as_u64().unwrap_or(0);
+        if total_time_points <= 6000 {
+            return Err(format!(
+                "Results should show >6000 time points, got {total_time_points}"
+            ));
         }
     }
 
@@ -3583,7 +3539,6 @@ async fn verify_experiment_results_api(app: &Router, experiment_id: &str) -> Res
 /// This tests the full HTTP request/response cycle through /api/experiments/{id}/process-excel
 #[tokio::test]
 async fn test_excel_processing_api_integration() {
-
     let app = setup_test_app().await;
 
     // 1. Setup: Create tray configuration with trays and probes
@@ -3609,7 +3564,6 @@ async fn test_excel_processing_api_integration() {
     verify_experiment_results_api(&app, &experiment_id)
         .await
         .expect("Failed to verify experiment results API");
-
 }
 
 /// Test to verify sample well filtering issue - samples should not include wells from other treatments
@@ -3629,7 +3583,9 @@ async fn test_sample_well_filtering_after_excel_processing() {
         .expect("Failed to create experiment");
 
     // 3. Create sample and treatments to be used in regions
-    let sample_id = create_test_sample_and_treatments(&app).await.expect("Failed to create sample and treatments");
+    let sample_id = create_test_sample_and_treatments(&app)
+        .await
+        .expect("Failed to create sample and treatments");
 
     // 4. Add regions to the experiment by updating it
     update_experiment_with_regions(&app, &experiment_id, &sample_id)
@@ -3642,6 +3598,25 @@ async fn test_sample_well_filtering_after_excel_processing() {
         .expect("Failed to process Excel file");
 
     // 6. Get experiment details to find regions and samples
+    let experiment_data = get_experiment_data(&app, &experiment_id).await;
+
+    // 7. Find the sample used in the experiment (should be the first sample from first region)
+    let regions = experiment_data["regions"].as_array().unwrap();
+    assert!(!regions.is_empty(), "Experiment should have regions");
+
+    let first_region = &regions[0];
+    let sample_id = first_region["treatment"]["sample"]["id"]
+        .as_str()
+        .expect("Should have sample ID in first region");
+
+    // 8. Test: Get sample data via API
+    let sample_data = get_sample_data(&app, sample_id).await;
+
+    // 9. Validate: Check treatment well counts
+    validate_treatment_well_counts(&sample_data);
+}
+
+async fn get_experiment_data(app: &Router, experiment_id: &str) -> Value {
     let experiment_response = app
         .clone()
         .oneshot(
@@ -3658,20 +3633,10 @@ async fn test_sample_well_filtering_after_excel_processing() {
     let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let experiment_data: Value = serde_json::from_slice(&experiment_body).unwrap();
+    serde_json::from_slice(&experiment_body).unwrap()
+}
 
-    // 5. Find the sample used in the experiment (should be the first sample from first region)
-    let regions = experiment_data["regions"].as_array().unwrap();
-    assert!(!regions.is_empty(), "Experiment should have regions");
-    
-    let first_region = &regions[0];
-    let sample_id = first_region["treatment"]["sample"]["id"]
-        .as_str()
-        .expect("Should have sample ID in first region");
-
-    println!("Testing sample: {}", sample_id);
-
-    // 6. Test: Get sample data via API
+async fn get_sample_data(app: &Router, sample_id: &str) -> Value {
     let sample_response = app
         .clone()
         .oneshot(
@@ -3688,96 +3653,113 @@ async fn test_sample_well_filtering_after_excel_processing() {
     let sample_body = to_bytes(sample_response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let sample_data: Value = serde_json::from_slice(&sample_body).unwrap();
+    serde_json::from_slice(&sample_body).unwrap()
+}
 
-    // 7. Validate: Check treatment well counts
+fn validate_treatment_well_counts(sample_data: &Value) {
     let treatments = sample_data["treatments"].as_array().unwrap();
     assert!(!treatments.is_empty(), "Sample should have treatments");
 
-    for (i, treatment) in treatments.iter().enumerate() {
+    for treatment in treatments {
         let treatment_name = treatment["name"].as_str().unwrap();
         let experimental_results = treatment["experimental_results"].as_array().unwrap();
         let dilution_summaries = treatment["dilution_summaries"].as_array().unwrap();
 
-
-        // Expected well counts based on experiment regions:
         match treatment_name {
             "none" => {
-                // None treatment should have wells from 3 regions:
-                // - "Untreated Samples - P1": 32 wells (dilution 1)
-                // - "Dilution Series 1:10 - P2": 48 wells (dilution 10)  
-                // - "Dilution Series 1:100 - P2": 48 wells (dilution 100)
-                // Total expected: 128 wells, NOT 192
-
-                // Check dilution summaries for correct well counts
                 let mut total_wells_from_summaries = 0;
                 for summary in dilution_summaries {
-                    let wells_count = summary["statistics"]["total_wells"].as_i64().unwrap() as i32;
+                    let wells_count: i32 = summary["statistics"]["total_wells"]
+                        .as_i64()
+                        .unwrap()
+                        .try_into()
+                        .unwrap();
+
                     total_wells_from_summaries += wells_count;
-                    
+
                     let dilution_factor = summary["dilution_factor"].as_i64().unwrap();
                     match dilution_factor {
-                        1 => {
-                            // 1x dilution should have 32 wells (only "Untreated Samples - P1")
-                            assert_eq!(wells_count, 32, 
-                                "None treatment at 1x dilution should have 32 wells, got {}", wells_count);
-                        },
-                        10 => {
-                            // 10x dilution should have 48 wells ("Dilution Series 1:10 - P2")
-                            assert_eq!(wells_count, 48, 
-                                "None treatment at 10x dilution should have 48 wells, got {}", wells_count);
-                        },
-                        100 => {
-                            // 100x dilution should have 48 wells ("Dilution Series 1:100 - P2")
-                            assert_eq!(wells_count, 48, 
-                                "None treatment at 100x dilution should have 48 wells, got {}", wells_count);
-                        },
-                        _ => panic!("Unexpected dilution factor: {}", dilution_factor)
+                        1 => assert_eq!(
+                            wells_count, 32,
+                            "None treatment at 1x dilution should have 32 wells, got {wells_count}"
+                        ),
+                        10 => assert_eq!(
+                            wells_count, 48,
+                            "None treatment at 10x dilution should have 48 wells, got {wells_count}"
+                        ),
+                        100 => assert_eq!(
+                            wells_count, 48,
+                            "None treatment at 100x dilution should have 48 wells, got {wells_count}"
+                        ),
+                        _ => panic!("Unexpected dilution factor: {}", dilution_factor),
                     }
                 }
-
-                // Total wells for None treatment should be 128, not 192
-                assert_eq!(total_wells_from_summaries, 128,
-                    "None treatment should have 128 total wells (32+48+48), got {}", total_wells_from_summaries);
-                assert_eq!(experimental_results.len(), 128,
-                    "None treatment should have 128 experimental results, got {}", experimental_results.len());
-            },
+                assert_eq!(
+                    total_wells_from_summaries, 128,
+                    "None treatment should have 128 total wells (32+48+48), got {total_wells_from_summaries}"
+                );
+                assert_eq!(
+                    experimental_results.len(),
+                    128,
+                    "None treatment should have 128 experimental results, got {}",
+                    experimental_results.len()
+                );
+            }
             "heat" => {
-                // Heat treatment should only have wells from "Heat Treated - P1" region: 32 wells
-                assert_eq!(experimental_results.len(), 32,
-                    "Heat treatment should have 32 experimental results, got {}", experimental_results.len());
-                
-                // Should only have 1 dilution summary (dilution factor 1)
-                assert_eq!(dilution_summaries.len(), 1,
-                    "Heat treatment should have 1 dilution summary, got {}", dilution_summaries.len());
-                
+                assert_eq!(
+                    experimental_results.len(),
+                    32,
+                    "Heat treatment should have 32 experimental results, got {}",
+                    experimental_results.len()
+                );
+                assert_eq!(
+                    dilution_summaries.len(),
+                    1,
+                    "Heat treatment should have 1 dilution summary, got {}",
+                    dilution_summaries.len()
+                );
                 let summary = &dilution_summaries[0];
-                let wells_count = summary["statistics"]["total_wells"].as_i64().unwrap() as i32;
-                assert_eq!(wells_count, 32,
-                    "Heat treatment should have 32 wells, got {}", wells_count);
-            },
+                let wells_count: i32 = summary["statistics"]["total_wells"]
+                    .as_i64()
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+                assert_eq!(
+                    wells_count, 32,
+                    "Heat treatment should have 32 wells, got {wells_count}"
+                );
+            }
             "h2o2" => {
-                // H2O2 treatment should only have wells from "H2O2 Treated - P1" region: 32 wells
-                assert_eq!(experimental_results.len(), 32,
-                    "H2O2 treatment should have 32 experimental results, got {}", experimental_results.len());
-                
-                // Should only have 1 dilution summary (dilution factor 1)
-                assert_eq!(dilution_summaries.len(), 1,
-                    "H2O2 treatment should have 1 dilution summary, got {}", dilution_summaries.len());
-                
+                assert_eq!(
+                    experimental_results.len(),
+                    32,
+                    "H2O2 treatment should have 32 experimental results, got {}",
+                    experimental_results.len()
+                );
+                assert_eq!(
+                    dilution_summaries.len(),
+                    1,
+                    "H2O2 treatment should have 1 dilution summary, got {}",
+                    dilution_summaries.len()
+                );
                 let summary = &dilution_summaries[0];
-                let wells_count = summary["statistics"]["total_wells"].as_i64().unwrap() as i32;
-                assert_eq!(wells_count, 32,
-                    "H2O2 treatment should have 32 wells, got {}", wells_count);
-            },
-            _ => panic!("Unexpected treatment name: {}", treatment_name)
+                let wells_count: i32 = summary["statistics"]["total_wells"]
+                    .as_i64()
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+                assert_eq!(
+                    wells_count, 32,
+                    "H2O2 treatment should have 32 wells, got {wells_count}"
+                );
+            }
+            _ => panic!("Unexpected treatment name: {}", treatment_name),
         }
     }
-
-    println!("✅ Sample well filtering test completed successfully");
 }
 
 /// Helper function to create sample and treatments (mimics seeder structure)
+#[allow(clippy::too_many_lines)]
 async fn create_test_sample_and_treatments(app: &Router) -> Result<String, String> {
     // 1. First create a project
     let project_response = app
@@ -3800,7 +3782,9 @@ async fn create_test_sample_and_treatments(app: &Router) -> Result<String, Strin
         .await
         .unwrap();
 
-    let project_body = to_bytes(project_response.into_body(), usize::MAX).await.unwrap();
+    let project_body = to_bytes(project_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let project: Value = serde_json::from_slice(&project_body).unwrap();
     let project_id = project["id"].as_str().unwrap();
 
@@ -3825,7 +3809,9 @@ async fn create_test_sample_and_treatments(app: &Router) -> Result<String, Strin
         .await
         .unwrap();
 
-    let location_body = to_bytes(location_response.into_body(), usize::MAX).await.unwrap();
+    let location_body = to_bytes(location_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let location: Value = serde_json::from_slice(&location_body).unwrap();
     let location_id = location["id"].as_str().unwrap();
 
@@ -3858,7 +3844,9 @@ async fn create_test_sample_and_treatments(app: &Router) -> Result<String, Strin
         .await
         .unwrap();
 
-    let sample_body = to_bytes(sample_response.into_body(), usize::MAX).await.unwrap();
+    let sample_body = to_bytes(sample_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let sample: Value = serde_json::from_slice(&sample_body).unwrap();
     let sample_id = sample["id"].as_str().unwrap();
 
@@ -3870,7 +3858,7 @@ async fn create_test_sample_and_treatments(app: &Router) -> Result<String, Strin
             "sample_id": sample_id
         }),
         json!({
-            "name": "heat", 
+            "name": "heat",
             "notes": "Heat treatment at 95°C for 20 minutes - removes heat-labile biological INPs",
             "sample_id": sample_id
         }),
@@ -3879,7 +3867,7 @@ async fn create_test_sample_and_treatments(app: &Router) -> Result<String, Strin
             "notes": "Hydrogen peroxide treatment - removes organic components including biological INPs",
             "enzyme_volume_litres": "0.0002358673",
             "sample_id": sample_id
-        })
+        }),
     ];
 
     for treatment in treatments {
@@ -3901,6 +3889,7 @@ async fn create_test_sample_and_treatments(app: &Router) -> Result<String, Strin
 }
 
 /// Helper function to update experiment with regions (uses exact seeder structure)
+#[allow(clippy::too_many_lines)]
 async fn update_experiment_with_regions(
     app: &Router,
     experiment_id: &str,
@@ -3919,7 +3908,9 @@ async fn update_experiment_with_regions(
         .await
         .unwrap();
 
-    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX).await.unwrap();
+    let experiment_body = to_bytes(experiment_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let mut experiment_data: Value = serde_json::from_slice(&experiment_body).unwrap();
 
     // Get treatments for the sample to link to regions
@@ -3935,7 +3926,9 @@ async fn update_experiment_with_regions(
         .await
         .unwrap();
 
-    let sample_body = to_bytes(sample_response.into_body(), usize::MAX).await.unwrap();
+    let sample_body = to_bytes(sample_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let sample_data: Value = serde_json::from_slice(&sample_body).unwrap();
     let treatments = sample_data["treatments"].as_array().unwrap();
 
@@ -4011,9 +4004,13 @@ async fn update_experiment_with_regions(
         .unwrap();
 
     if update_response.status() != StatusCode::OK {
-        let error_body = to_bytes(update_response.into_body(), usize::MAX).await.unwrap();
+        let error_body = to_bytes(update_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let error_text = String::from_utf8_lossy(&error_body);
-        return Err(format!("Failed to update experiment with regions: {}", error_text));
+        return Err(format!(
+            "Failed to update experiment with regions: {error_text}"
+        ));
     }
 
     Ok(())
@@ -4131,18 +4128,18 @@ async fn test_experiment_results_api_integration() {
 
     // Check results structure (should be null or empty for experiment without data)
     let results = empty_experiment_data.get("results");
-    if let Some(results_val) = results {
-        if !results_val.is_null() {
-            // If results exist, they should have the expected structure
-            assert!(
-                results_val.get("summary").is_some(),
-                "Results should have summary"
-            );
-            assert!(
-                results_val.get("trays").is_some(),
-                "Results should have trays array"
-            );
-        }
+    if let Some(results_val) = results
+        && !results_val.is_null()
+    {
+        // If results exist, they should have the expected structure
+        assert!(
+            results_val.get("summary").is_some(),
+            "Results should have summary"
+        );
+        assert!(
+            results_val.get("trays").is_some(),
+            "Results should have trays array"
+        );
     }
 
     // 4. Test API error handling

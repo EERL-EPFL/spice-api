@@ -25,7 +25,6 @@ path = "src/bin/seed_database.rs"
 anyhow = "1.0.99"
 async-stream = "0.3.6"
 async-trait = "0.1.89"
-async_zip = { version = "0.0.18", features = ["tokio", "tokio-fs"] }
 aws-config = "1.8.5"
 aws-sdk-s3 = "1.103.0"
 axum = { version = "0.8.4", features = ["multipart"] }
@@ -37,10 +36,8 @@ chrono = { version = "0.4.41", features = ["serde"] }
 crc32fast = "1.5.0"
 crudcrate = "0.4.5"
 # crudcrate = { path = "../crudcrate" }
-csv = "1.3.1"
 dotenvy = "0.15.7"
 futures = "0.3.31"
-gpx = "0.10.0"
 http-body-util = "0.1.3"
 hyper = "1.7.0"
 lazy_static = "1.5.0"
@@ -63,7 +60,6 @@ sea-orm-migration = "1.1.14"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 serde_with = "3.14.0"
-serde_yml = "0.0.12"
 tempfile = "3.21.0"
 time = "0.3.41"
 tokio = { version = "1.47.1", features = ["full"] }
@@ -79,20 +75,17 @@ utoipa = { version = "5.4.0", features = [
 utoipa-axum = "0.2.0"
 utoipa-scalar = { version = "0.3.0", features = ["axum"] }
 uuid = { version = "1.18.0", features = ["serde", "v4", "fast-rng"] }
-zip = "4.3.0"
+zip = "4.5.0"
 
 # CLI tool dependencies
-clap = { version = "4.5.0", features = ["derive"] }
-console = "0.15.8"
-indicatif = "0.17.8"
+clap = { version = "4.5.46", features = ["derive"] }
+console = "0.16.0"
+indicatif = "0.18.0"
 reqwest = { version = "0.12.23", features = ["json", "multipart", "rustls-tls"] }
 
 [dev-dependencies]
-async-std = { version = "1.13.2", features = ["attributes"] }
-axum-test = "17.3.0"
 futures-util = "0.3.31"
 reqwest = { version = "0.12.23", features = ["json", "multipart", "rustls-tls"] }
-rstest = "0.26.1"
 sea-orm = { version = "1.1.14", features = [
     "sqlx-postgres",
     "sqlx-sqlite",
@@ -103,7 +96,6 @@ sea-orm = { version = "1.1.14", features = [
     "with-json",
     "with-rust_decimal",
 ], default-features = false }
-tokio-test = "0.4.4"
 tower = { version = "0.5.2", features = ["util"] }
 uuid = { version = "1.18.0", features = ["v4"] }
 

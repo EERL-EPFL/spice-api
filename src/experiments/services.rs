@@ -10,9 +10,7 @@ use crate::{
     tray_configurations::probes::models as probes, tray_configurations::regions::models as regions,
     tray_configurations::trays::models as trays, tray_configurations::wells::models as wells,
 };
-use crate::{
-    samples::models as samples, treatments::models as treatments,
-};
+use crate::{samples::models as samples, treatments::models as treatments};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use sea_orm::{ConnectionTrait, EntityTrait, QueryOrder, entity::prelude::*};
@@ -64,12 +62,16 @@ async fn load_individual_temperature_data(
 > {
     // Only load temperature readings that we actually need (for phase transitions)
     let temp_reading_ids_vec: Vec<Uuid> = phase_transition_temp_ids.iter().copied().collect();
-    
+
     // Get total count of temperature readings for summary stats
-    let total_time_points = temperature_readings::Entity::find()
-        .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
-        .count(db)
-        .await? as usize;
+    let total_time_points = {
+        let count = temperature_readings::Entity::find()
+            .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
+            .count(db)
+            .await?;
+        usize::try_from(count)
+            .map_err(|_| DbErr::Custom("Temperature readings count exceeds maximum".to_string()))?
+    };
 
     // Get first and last timestamps for summary (lightweight query)
     let first_temp_reading = temperature_readings::Entity::find()
@@ -99,7 +101,12 @@ async fn load_individual_temperature_data(
     };
 
     if temp_readings_data.is_empty() {
-        return Ok((std::collections::HashMap::new(), first_timestamp, last_timestamp, total_time_points));
+        return Ok((
+            std::collections::HashMap::new(),
+            first_timestamp,
+            last_timestamp,
+            total_time_points,
+        ));
     }
 
     // Get the experiment to find its tray configuration
@@ -399,7 +406,7 @@ async fn load_treatment_and_sample_data(
 
     for (treatment_model, sample_models) in treatments_with_samples {
         let treatment_info: crate::treatments::models::Treatment = treatment_model.into();
-        
+
         // Get the first (and only) sample for this treatment
         let sample_info = sample_models.into_iter().next().map(|sample| {
             let sample_api: crate::samples::models::Sample = sample.into();
@@ -419,7 +426,7 @@ pub async fn build_tray_centric_results(
     // First load phase transitions to get the temperature reading IDs we actually need
     let (phase_transitions_data, wells_with_transitions) =
         process_phase_transitions(experiment_id, db).await?;
-    
+
     // Extract temperature reading IDs from phase transitions (only ~192 instead of 6,786)
     let phase_transition_temp_ids: std::collections::HashSet<Uuid> = phase_transitions_data
         .iter()

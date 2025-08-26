@@ -404,8 +404,8 @@ impl DirectExcelProcessor {
         let mut has_temperatures = false;
 
         for (probe_idx, temp_col) in headers.temp_cols.iter().enumerate() {
-            if let Some(col_idx) = temp_col {
-                if let Some(temp) = row.get(*col_idx).and_then(|cell| match cell {
+            if let Some(col_idx) = temp_col
+                && let Some(temp) = row.get(*col_idx).and_then(|cell| match cell {
                     Data::Float(f) => Some(*f),
                     #[allow(clippy::cast_precision_loss)]
                     Data::Int(i) => Some(*i as f64), // Intentional precision loss for temperature conversion
@@ -415,7 +415,6 @@ impl DirectExcelProcessor {
                         Some(Decimal::from_f64_retain(temp).unwrap_or_default());
                     has_temperatures = true;
                 }
-            }
         }
 
         // Create temperature reading if we have temperature data
@@ -506,11 +505,9 @@ impl DirectExcelProcessor {
                         // This is a well state column - get tray and coordinate
                         if let (Some(tray_cell), Some(coord_cell)) =
                             (tray_row.get(col_idx), coordinate_row.get(col_idx))
-                        {
-                            if let (Data::String(tray_name), Data::String(well_coordinate)) =
+                            && let (Data::String(tray_name), Data::String(well_coordinate)) =
                                 (tray_cell, coord_cell)
-                            {
-                                if Self::is_valid_tray_name(tray_name)
+                                && Self::is_valid_tray_name(tray_name)
                                     && Self::is_valid_well_coordinate(well_coordinate)
                                 {
                                     // Parse well coordinate to alphanumeric format
@@ -526,8 +523,6 @@ impl DirectExcelProcessor {
                                         });
                                     }
                                 }
-                            }
-                        }
                     }
                     _ => {} // Ignore unknown columns
                 }
@@ -980,8 +975,8 @@ impl DirectExcelProcessor {
         for excel_col_index in 2..=9 {
             // excel_col_index is in range 2-9, so (excel_col_index - 1) is always positive
             let probe_data_column_index = (excel_col_index - 1) as u32; // Excel col 2→probe 1, col 3→probe 2, etc.
-            if let Some(&probe_id) = self.probe_mappings.get(&probe_data_column_index) {
-                if let Some(temp_value) =
+            if let Some(&probe_id) = self.probe_mappings.get(&probe_data_column_index)
+                && let Some(temp_value) =
                     // excel_col_index is in range 2-9, always positive
                     row.get(excel_col_index as usize)
                         .and_then(|cell| match cell {
@@ -1002,7 +997,6 @@ impl DirectExcelProcessor {
                     };
                     probe_readings.push(probe_reading);
                 }
-            }
         }
 
         probe_readings

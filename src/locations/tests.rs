@@ -374,13 +374,6 @@ async fn test_location_retrieval(app: &axum::Router, location_id: &str) {
                 .unwrap()
                 .contains("Test Location CRUD")
         );
-
-        // Validate related data structure
-        if get_body["experiments"].is_array() {
-        }
-        if get_body["samples"].is_array() {
-        }
-    } else {
     }
 }
 
@@ -549,7 +542,7 @@ async fn test_location_filtering_and_sorting() {
     }
 
     if created_ids.is_empty() {
-        // No test locations created - skip filtering tests
+        println!("No test locations created - skipping filtering tests");
     } else {
         // Test filtering by comment
         let filter_response = app
@@ -578,11 +571,7 @@ async fn test_location_filtering_and_sorting() {
                 }
             }
 
-            if non_matching_count == 0 && !filtered_locations.is_empty() {
-            } else if filtered_locations.is_empty() {
-            } else {
-            }
-        } else {
+            if non_matching_count == 0 && !filtered_locations.is_empty() {}
         }
 
         // Test sorting by name
@@ -598,10 +587,25 @@ async fn test_location_filtering_and_sorting() {
             .await
             .unwrap();
 
-        let (sort_status, _) = extract_response_body(sort_response).await;
+        let (sort_status, sort_body) = extract_response_body(sort_response).await;
+        assert!(sort_status.is_success());
+        assert!(sort_body.is_array());
 
-        if sort_status == StatusCode::OK {
-        } else {
+        let locations = sort_body.as_array().unwrap();
+
+        // Verify sorting parameter doesn't break the API
+        if locations.len() >= 2 {
+            assert!(!locations.is_empty(), "Should return locations when sorting is requested");
+        }
+        for location in locations {
+            assert!(
+                location["id"].is_string(),
+                "Each location should have valid ID"
+            );
+            assert!(
+                location["name"].is_string(),
+                "Each location should have valid name"
+            );
         }
     }
 }
@@ -687,82 +691,21 @@ async fn test_location_project_assignment() {
                 uuid::Uuid::parse_str(get_body["project_id"].as_str().unwrap()).unwrap(),
                 project_id
             );
-        }
-    } else {
-    }
-}
-
-#[tokio::test]
-async fn test_location_related_data_structure() {
-    let app = setup_test_app().await;
-
-    // Create a simple location to test related data structure
-    let location_data = json!({
-        "name": format!("Related Data Test {}", uuid::Uuid::new_v4()),
-        "comment": "Testing related data loading"
-    });
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/locations")
-                .header("content-type", "application/json")
-                .body(Body::from(location_data.to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let (status, body) = extract_response_body(response).await;
-
-    if status == StatusCode::CREATED {
-        let location_id = body["id"].as_str().unwrap();
-
-        // Get the location and check the related data structure
-        let get_response = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri(format!("/api/locations/{location_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let (get_status, get_body) = extract_response_body(get_response).await;
-
-        if get_status == StatusCode::OK {
-            // Check that experiments array is present
-            if get_body["experiments"].is_array() {
-                let _experiments = get_body["experiments"].as_array().unwrap();
-            } else {
-            }
-
-            // Check that samples array is present
-            if get_body["samples"].is_array() {
-                let samples = get_body["samples"].as_array().unwrap();
-
-                // Check sample structure if samples exist
-                for sample in samples {
-                    if sample["treatments"].is_array() {
-                    }
-                }
-            } else {
-            }
         } else {
+            panic!("Failed to get location with status: {:?}", get_status);
         }
     } else {
+        panic!(
+            "Failed to create location with project assignment: {:?}",
+            status
+        );
     }
 }
+
 
 #[tokio::test]
 async fn test_location_complex_queries() {
     let app = setup_test_app().await;
-
 
     // Test pagination
     let pagination_response = app
@@ -781,7 +724,12 @@ async fn test_location_complex_queries() {
 
     if pagination_status == StatusCode::OK {
         let _locations = pagination_body.as_array().unwrap();
+        // Pagination should work - this verifies the array response
     } else {
+        panic!(
+            "Pagination query failed with status: {:?}",
+            pagination_status
+        );
     }
 
     // Test multiple filters
@@ -800,7 +748,12 @@ async fn test_location_complex_queries() {
     let (multi_filter_status, _) = extract_response_body(multi_filter_response).await;
 
     if multi_filter_status == StatusCode::OK {
+        // Multi-filter query should work - this verifies filtering capabilities
     } else {
+        panic!(
+            "Multi-filter query failed with status: {:?}",
+            multi_filter_status
+        );
     }
 
     // This test always passes - it's for documenting query capabilities
@@ -822,7 +775,6 @@ async fn test_location_complete_lifecycle() {
 
     match location_result {
         Ok((location_id, _body)) => {
-
             // Use the unused retrieval helper function
             test_location_retrieval(&app, &location_id).await;
 
@@ -831,7 +783,6 @@ async fn test_location_complete_lifecycle() {
 
             // Use the unused deletion helper function
             let _delete_success = test_location_deletion(&app, &location_id).await;
-
         }
         Err(_error) => {
             // Test still passes - documents that the API may not be fully implemented
@@ -906,7 +857,6 @@ async fn test_location_helper_functions_consistency() {
     // Create a location using the helper
     match create_test_location(&app, &project_id_str).await {
         Ok((location_id, create_body)) => {
-
             // Verify the created location has all expected fields
             assert!(create_body["id"].is_string());
             assert!(create_body["name"].is_string());
@@ -920,9 +870,7 @@ async fn test_location_helper_functions_consistency() {
             // Verify the location can be updated and retrieved again
             let _update_success = test_location_update(&app, &location_id).await;
             test_location_retrieval(&app, &location_id).await;
-
         }
-        Err(_error) => {
-        }
+        Err(_error) => {}
     }
 }

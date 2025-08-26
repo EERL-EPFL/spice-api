@@ -12,10 +12,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
     let body: Value = serde_json::from_slice(&bytes)
         .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
 
-    // Log error details for debugging
-    if status.is_server_error() || status.is_client_error() {
-    }
-
     (status, body)
 }
 
@@ -758,7 +754,9 @@ async fn test_tray_dimensions_validation() {
     }
 }
 
-async fn create_tray_configuration_complex_structure(app: &axum::Router) -> axum::response::Response {
+async fn create_tray_configuration_complex_structure(
+    app: &axum::Router,
+) -> axum::response::Response {
     // Test creating a complex tray configuration with multiple assignments and rotations
     // Each assignment should have exactly one tray (not an array)
     let complex_config_data = json!({
@@ -822,7 +820,11 @@ async fn test_tray_configuration_complex_structure() {
     let (status, body) = extract_response_body(response).await;
 
     // The test should succeed with 201 CREATED, not fail with 422
-    assert_eq!(status, StatusCode::CREATED, "Tray configuration creation should succeed, but got: {status} with body: {body:?}");
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Tray configuration creation should succeed, but got: {status} with body: {body:?}"
+    );
 
     if status == StatusCode::CREATED {
         let config_id = body["id"].as_str().unwrap();
@@ -839,9 +841,18 @@ async fn test_tray_configuration_complex_structure() {
 
             // Each assignment should have tray details directly embedded (flattened structure)
             for assignment in assignments {
-                assert!(assignment["name"].is_string(), "Each assignment should have tray details directly embedded");
-                assert!(assignment["qty_cols"].is_number(), "qty_cols should be directly in assignment");
-                assert!(assignment["qty_rows"].is_number(), "qty_rows should be directly in assignment");
+                assert!(
+                    assignment["name"].is_string(),
+                    "Each assignment should have tray details directly embedded"
+                );
+                assert!(
+                    assignment["qty_cols"].is_number(),
+                    "qty_cols should be directly in assignment"
+                );
+                assert!(
+                    assignment["qty_rows"].is_number(),
+                    "qty_rows should be directly in assignment"
+                );
             }
 
             // Check order sequence sorting
@@ -1472,7 +1483,7 @@ async fn test_validation_errors() {
 #[tokio::test]
 async fn test_debug_500_error_user_payload() {
     let app = setup_test_app().await;
-    
+
     // Test the exact payload that the user is sending
     let user_payload = json!({
         "experiment_default": true,
@@ -1496,7 +1507,7 @@ async fn test_debug_500_error_user_payload() {
         ],
         "name": "INP"
     });
-    
+
     let create_response = app
         .clone()
         .oneshot(
@@ -1511,9 +1522,9 @@ async fn test_debug_500_error_user_payload() {
         .unwrap();
 
     let (create_status, create_body) = extract_response_body(create_response).await;
-    
+
     // Debug the response
-    
+
     assert_eq!(
         create_status,
         StatusCode::CREATED,
@@ -1524,7 +1535,7 @@ async fn test_debug_500_error_user_payload() {
 #[tokio::test]
 async fn test_seeder_p1_p2_structure() {
     let app = setup_test_app().await;
-    
+
     // Test the exact structure our seeder is trying to create
     let seeder_payload = json!({
         "name": "Standard SPICE 192-Well Configuration",
@@ -1536,13 +1547,13 @@ async fn test_seeder_p1_p2_structure() {
                 "rotation_degrees": 90
             },
             {
-                "name": "P2", 
+                "name": "P2",
                 "order_sequence": 2,
                 "rotation_degrees": 270
             }
         ]
     });
-    
+
     let create_response = app
         .clone()
         .oneshot(
@@ -1557,10 +1568,10 @@ async fn test_seeder_p1_p2_structure() {
         .unwrap();
 
     let (create_status, create_body) = extract_response_body(create_response).await;
-    
+
     println!("SEEDER TEST - Status: {create_status}");
     println!("SEEDER TEST - Body: {create_body:?}");
-    
+
     assert_eq!(
         create_status,
         StatusCode::CREATED,
@@ -1571,7 +1582,7 @@ async fn test_seeder_p1_p2_structure() {
 #[tokio::test]
 async fn test_tray_configurations_have_id_fields() {
     let app = setup_test_app().await;
-    
+
     // Create a test tray configuration via POST
     let tray_data = json!({
         "name": format!("React-Admin Test Config {}", uuid::Uuid::new_v4()),
@@ -1641,7 +1652,7 @@ async fn test_tray_configurations_have_id_fields() {
         list_body.is_array(),
         "Response should be an array, got: {list_body:?}"
     );
-    
+
     let configurations = list_body.as_array().unwrap();
     assert!(
         !configurations.is_empty(),
@@ -1654,13 +1665,13 @@ async fn test_tray_configurations_have_id_fields() {
             config["id"].is_string(),
             "Each tray configuration must have an 'id' field for React-Admin compatibility, got: {config:?}"
         );
-        
+
         // Verify other required fields for React-Admin
         assert!(
             config["experiment_default"].is_boolean(),
             "Each tray configuration should have experiment_default field"
         );
-        
+
         // Verify trays array structure (if present)
         if config["trays"].is_array() {
             let trays = config["trays"].as_array().unwrap();
@@ -1673,8 +1684,7 @@ async fn test_tray_configurations_have_id_fields() {
                 );
             }
         }
-        
+
         // Tray configuration has required id field
     }
 }
-

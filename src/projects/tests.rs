@@ -14,10 +14,6 @@ async fn extract_response_body(response: axum::response::Response) -> (StatusCod
     let body: Value = serde_json::from_slice(&bytes)
         .unwrap_or_else(|_| json!({"error": "Invalid JSON response"}));
 
-    // Log error details for debugging
-    if status.is_server_error() || status.is_client_error() {
-    }
-
     (status, body)
 }
 
@@ -354,8 +350,7 @@ async fn test_project_filtering_and_sorting() {
             }
 
             // Check filtering behavior - may work correctly or have known issues
-            if non_matching_count > 0 {
-            }
+            if non_matching_count > 0 {}
         }
 
         // Test filtering by note
@@ -376,7 +371,10 @@ async fn test_project_filtering_and_sorting() {
         if note_filter_status == StatusCode::OK {
             // Project note filtering endpoint accessible
         } else {
-            // Project note filtering failed
+            panic!(
+                "Project note filtering failed with status: {:?}",
+                note_filter_status
+            );
         }
 
         // Test sorting by name
@@ -397,7 +395,7 @@ async fn test_project_filtering_and_sorting() {
         if sort_status == StatusCode::OK {
             // Project sorting endpoint accessible
         } else {
-            // Project sorting failed
+            panic!("Project sorting failed with status: {:?}", sort_status);
         }
     }
 }
@@ -480,7 +478,6 @@ async fn test_project_with_locations() {
         let (location_status, _location_body) = extract_response_body(location_response).await;
 
         if location_status == StatusCode::CREATED {
-
             // Now get the project and check if locations are loaded
             let get_project_response = app
                 .clone()
@@ -501,13 +498,20 @@ async fn test_project_with_locations() {
                 if get_project_body["locations"].is_array() {
                     let locations = get_project_body["locations"].as_array().unwrap();
 
-                    if !locations.is_empty() {
-                    }
+                    assert!(
+                        !locations.is_empty(),
+                        "Project exists but has no locations yet"
+                    );
                 } else {
+                    panic!("Expected locations array in project response");
                 }
+            } else {
+                panic!(
+                    "Failed to get project after location creation: {:?}",
+                    get_project_status
+                );
             }
         } else {
-
             // Still test project retrieval
             let get_response = app
                 .clone()
@@ -523,9 +527,16 @@ async fn test_project_with_locations() {
 
             let (get_status, get_body) = extract_response_body(get_response).await;
             if get_status == StatusCode::OK && get_body["locations"].is_array() {
+                // Project retrieval successful with locations array
+            } else {
+                panic!(
+                    "Failed to retrieve project or locations array missing: {:?}",
+                    get_status
+                );
             }
         }
     } else {
+        panic!("Failed to create project for locations test: {:?}", status);
     }
 }
 
@@ -564,26 +575,56 @@ async fn test_project_colour_variations() {
         let (status, _body) = extract_response_body(response).await;
 
         if status == StatusCode::CREATED {
+            // Successfully created project with this color format
         } else {
-            //     "📋 Project rejects {} colour format: '{}' (Status: {})",
-            //     description, colour, status
-            // );
+            panic!(
+                "Project with color '{}' rejected with status: {:?}",
+                colour, status
+            );
         }
     }
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_project_pagination_and_limits() {
     let app = setup_test_app().await;
 
+    // Create several test projects to ensure we have data to paginate
+    let mut created_projects = Vec::new();
+    for i in 1..=5 {
+        let project_data = json!({
+            "name": format!("Test Project {}", i),
+            "note": format!("Pagination test project {}", i),
+            "colour": "#FF6600"
+        });
 
-    // Test pagination
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/projects")
+                    .header("content-type", "application/json")
+                    .body(Body::from(project_data.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let (status, body) = extract_response_body(response).await;
+        if status == StatusCode::CREATED {
+            created_projects.push(body["id"].as_str().unwrap().to_string());
+        }
+    }
+
+    // Test pagination with limit=2 (try page/size first)
     let pagination_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/projects?limit=3&offset=0")
+                .uri("/api/projects?range=[0,1]")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -596,10 +637,48 @@ async fn test_project_pagination_and_limits() {
         let projects = pagination_body.as_array().unwrap();
 
         assert!(
-            projects.len() <= 3,
-            "Pagination limit should be respected. Expected <= 3 items, got {} items",
+            projects.len() <= 2,
+            "Pagination limit should be respected. Expected <= 2 items, got {} items",
             projects.len()
         );
+
+        // Verify each project has the expected structure
+        for project in projects {
+            assert!(project["id"].is_string());
+            assert!(project["name"].is_string());
+            assert!(project["colour"].is_string());
+        }
+    } else {
+        panic!(
+            "Pagination request failed with status: {:?}",
+            pagination_status
+        );
+    }
+
+    // Test pagination with offset
+    let offset_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/projects?range=[2,3]")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (offset_status, offset_body) = extract_response_body(offset_response).await;
+
+    if offset_status == StatusCode::OK {
+        let offset_projects = offset_body.as_array().unwrap();
+        assert!(
+            offset_projects.len() <= 2,
+            "Offset pagination limit should be respected. Expected <= 2 items, got {} items",
+            offset_projects.len()
+        );
+    } else {
+        panic!("Offset pagination failed with status: {:?}", offset_status);
     }
 
     // Test sorting with pagination
@@ -608,21 +687,60 @@ async fn test_project_pagination_and_limits() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/projects?sort[name]=desc&limit=2")
+                .uri("/api/projects?sort[name]=desc&range=[0,2]")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
 
-    let (sorted_pagination_status, _) = extract_response_body(sorted_pagination_response).await;
+    let (sorted_pagination_status, sorted_body) =
+        extract_response_body(sorted_pagination_response).await;
 
     if sorted_pagination_status == StatusCode::OK {
+        let sorted_projects = sorted_body.as_array().unwrap();
+        assert!(
+            sorted_projects.len() <= 3,
+            "Sorted pagination limit should be respected. Expected <= 3 items, got {} items",
+            sorted_projects.len()
+        );
+
+        // Verify sorting + pagination combination works
+        if sorted_projects.len() >= 2 {
+            assert!(sorted_projects.len() <= 3, "Pagination limit should be respected even with sorting");
+        }
     } else {
+        panic!(
+            "Sorted pagination failed with status: {:?}",
+            sorted_pagination_status
+        );
     }
 
-    // This test always passes - it's for documenting pagination behavior
-    // Documents project pagination behavior
+    // Test edge case: empty range
+    let empty_range_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/projects?range=[10,12]") // Range beyond available items
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (empty_range_status, empty_range_body) = extract_response_body(empty_range_response).await;
+
+    if empty_range_status == StatusCode::OK {
+        let empty_projects = empty_range_body.as_array().unwrap();
+        // Range beyond available items should return empty
+        assert!(empty_projects.is_empty(), "Range beyond data should return no items, got {} items", empty_projects.len());
+    } else {
+        panic!(
+            "Empty range test failed with status: {:?}",
+            empty_range_status
+        );
+    }
 }
 
 // ===== REUSABLE HELPER FUNCTIONS FOR PROJECTS =====
@@ -700,10 +818,6 @@ async fn test_project_retrieval(app: &axum::Router, project_id: &str) -> Option<
         assert!(get_body["colour"].is_string());
         assert!(get_body["created_at"].is_string());
         assert!(get_body["last_updated"].is_string());
-
-        // Check for related data
-        if get_body["locations"].is_array() {
-        }
 
         Some(get_body)
     } else {
@@ -811,7 +925,6 @@ async fn test_project_complete_lifecycle() {
 
     match project_result {
         Ok((project_id, _body)) => {
-
             // Use helper function to test retrieval
             if let Some(_project_data) = test_project_retrieval(&app, &project_id).await {
                 // Use helper function to test update
@@ -870,7 +983,6 @@ async fn test_project_helper_functions_consistency() {
 
         match create_test_project_with_params(&app, &full_name, colour, note).await {
             Ok((project_id, create_body)) => {
-
                 // Verify the created project has expected fields
                 assert_eq!(create_body["name"], full_name);
                 assert_eq!(create_body["colour"], colour);
@@ -915,5 +1027,4 @@ async fn test_project_error_handling_with_helpers() {
 
     // Test deletion of non-existent project using helper
     let _delete_success = test_project_deletion(&app, &fake_project_id).await;
-
 }

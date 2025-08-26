@@ -48,11 +48,10 @@ pub async fn get_location_convex_hull_buffered(
             return Some(json!({"type": "FeatureCollection", "features": []}));
         };
 
-        if let Ok(convex_hull) = row.try_get::<String>("", "convex_hull") {
-            if let Ok(parsed_geojson) = serde_json::from_str(&convex_hull) {
+        if let Ok(convex_hull) = row.try_get::<String>("", "convex_hull")
+            && let Ok(parsed_geojson) = serde_json::from_str(&convex_hull) {
                 return Some(parsed_geojson);
             }
-        }
     }
 
     // Return empty FeatureCollection if query fails or no valid geometry

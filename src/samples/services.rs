@@ -73,7 +73,10 @@ pub(super) async fn fetch_experimental_results_for_sample(
             };
 
             // Group probe readings by temperature_reading_id
-            let mut probe_readings_by_temp_id: std::collections::HashMap<Uuid, Vec<&crate::experiments::probe_temperature_readings::models::Model>> = std::collections::HashMap::new();
+            let mut probe_readings_by_temp_id: std::collections::HashMap<
+                Uuid,
+                Vec<&crate::experiments::probe_temperature_readings::models::Model>,
+            > = std::collections::HashMap::new();
             for probe_reading in &probe_readings_data {
                 probe_readings_by_temp_id
                     .entry(probe_reading.temperature_reading_id)
@@ -158,11 +161,9 @@ pub(super) async fn fetch_experimental_results_for_sample(
                     let temperature_avg = probe_readings_by_temp_id
                         .get(&transition.temperature_reading_id)
                         .and_then(|probe_readings| {
-                            let temperature_values: Vec<Decimal> = probe_readings
-                                .iter()
-                                .map(|pr| pr.temperature)
-                                .collect();
-                            
+                            let temperature_values: Vec<Decimal> =
+                                probe_readings.iter().map(|pr| pr.temperature).collect();
+
                             if temperature_values.is_empty() {
                                 None
                             } else {
@@ -208,18 +209,19 @@ pub(super) async fn fetch_experimental_results_for_sample(
 }
 
 /// Convert treatment model to `TreatmentWithResults` by fetching experimental data
-pub(super) async fn treatment_to_treatment_with_results(
+pub(super) fn treatment_to_treatment_with_results(
     treatment: crate::treatments::models::Model,
     sample_id: Uuid,
     all_experimental_results: &[NucleationEvent],
     _db: &DatabaseConnection,
-) -> Result<Treatment, DbErr> {
+) -> Treatment {
     let experimental_results = filter_results_by_treatment(all_experimental_results, treatment.id);
 
     let statistics = NucleationStatistics::from_events(&experimental_results);
-    let dilution_summaries = NucleationStatistics::dilution_summaries_from_events(&experimental_results);
+    let dilution_summaries =
+        NucleationStatistics::dilution_summaries_from_events(&experimental_results);
 
-    Ok(Treatment {
+    Treatment {
         id: treatment.id,
         sample_id: Some(sample_id),
         created_at: treatment.created_at,
@@ -230,7 +232,7 @@ pub(super) async fn treatment_to_treatment_with_results(
         experimental_results,
         statistics,
         dilution_summaries,
-    })
+    }
 }
 
 /// Filter nucleation events to only include those from regions that used the specified treatment
