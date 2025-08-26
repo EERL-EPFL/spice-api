@@ -3699,7 +3699,6 @@ async fn test_sample_well_filtering_after_excel_processing() {
         let experimental_results = treatment["experimental_results"].as_array().unwrap();
         let dilution_summaries = treatment["dilution_summaries"].as_array().unwrap();
 
-        println!("Treatment {}: {} has {} experimental results", i, treatment_name, experimental_results.len());
 
         // Expected well counts based on experiment regions:
         match treatment_name {
@@ -3713,8 +3712,7 @@ async fn test_sample_well_filtering_after_excel_processing() {
                 // Check dilution summaries for correct well counts
                 let mut total_wells_from_summaries = 0;
                 for summary in dilution_summaries {
-                    let wells_str = summary["wells_summary"].as_str().unwrap();
-                    let wells_count: i32 = wells_str.split('/').next().unwrap().parse().unwrap();
+                    let wells_count = summary["statistics"]["total_wells"].as_i64().unwrap() as i32;
                     total_wells_from_summaries += wells_count;
                     
                     let dilution_factor = summary["dilution_factor"].as_i64().unwrap();
@@ -3754,8 +3752,7 @@ async fn test_sample_well_filtering_after_excel_processing() {
                     "Heat treatment should have 1 dilution summary, got {}", dilution_summaries.len());
                 
                 let summary = &dilution_summaries[0];
-                let wells_str = summary["wells_summary"].as_str().unwrap();
-                let wells_count: i32 = wells_str.split('/').next().unwrap().parse().unwrap();
+                let wells_count = summary["statistics"]["total_wells"].as_i64().unwrap() as i32;
                 assert_eq!(wells_count, 32,
                     "Heat treatment should have 32 wells, got {}", wells_count);
             },
@@ -3769,8 +3766,7 @@ async fn test_sample_well_filtering_after_excel_processing() {
                     "H2O2 treatment should have 1 dilution summary, got {}", dilution_summaries.len());
                 
                 let summary = &dilution_summaries[0];
-                let wells_str = summary["wells_summary"].as_str().unwrap();
-                let wells_count: i32 = wells_str.split('/').next().unwrap().parse().unwrap();
+                let wells_count = summary["statistics"]["total_wells"].as_i64().unwrap() as i32;
                 assert_eq!(wells_count, 32,
                     "H2O2 treatment should have 32 wells, got {}", wells_count);
             },

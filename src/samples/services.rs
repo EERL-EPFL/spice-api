@@ -248,29 +248,17 @@ pub(super) async fn treatment_to_treatment_with_results(
     })
 }
 
-/// Filter nucleation events to only include those from experiments that used the specified treatment
+/// Filter nucleation events to only include those from regions that used the specified treatment
 async fn filter_results_by_treatment(
-    db: &DatabaseConnection,
+    _db: &DatabaseConnection,
     all_results: Vec<NucleationEvent>,
     treatment_id: Uuid,
 ) -> Result<Vec<NucleationEvent>, DbErr> {
-    use crate::tray_configurations::regions::models as regions;
-
-    // Get all regions that use this treatment
-    let treatment_regions = regions::Entity::find()
-        .filter(regions::Column::TreatmentId.eq(treatment_id))
-        .all(db)
-        .await?;
-
-    let treatment_experiment_ids: std::collections::HashSet<Uuid> = treatment_regions
-        .iter()
-        .map(|r| r.experiment_id) // experiment_id is required, not optional
-        .collect();
-
-    // Filter results to only include experiments that used this treatment
+    // Filter results to only include those with matching treatment_id
+    // Each NucleationEvent already has the correct treatment_id from its region
     let filtered_results = all_results
         .into_iter()
-        .filter(|result| treatment_experiment_ids.contains(&result.experiment_id))
+        .filter(|result| result.treatment_id == Some(treatment_id))
         .collect();
 
     Ok(filtered_results)
