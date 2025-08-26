@@ -136,11 +136,17 @@ async fn get_one_sample(db: &DatabaseConnection, id: Uuid) -> Result<Sample, DbE
         .all(db)
         .await?;
 
+    let all_experimental_results = super::services::fetch_experimental_results_for_sample(db, id).await?;
+
     let mut treatments_with_results = Vec::new();
 
     for treatment_model in treatment_models {
-        let treatment =
-            super::services::treatment_to_treatment_with_results(treatment_model, id, db).await?;
+        let treatment = super::services::treatment_to_treatment_with_results(
+            treatment_model, 
+            id, 
+            &all_experimental_results, 
+            db
+        ).await?;
         treatments_with_results.push(treatment);
     }
 

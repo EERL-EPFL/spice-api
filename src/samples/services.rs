@@ -218,21 +218,13 @@ pub(super) async fn fetch_experimental_results_for_sample(
 pub(super) async fn treatment_to_treatment_with_results(
     treatment: crate::treatments::models::Model,
     sample_id: Uuid,
-    db: &DatabaseConnection,
+    all_experimental_results: &[NucleationEvent],
+    _db: &DatabaseConnection,
 ) -> Result<Treatment, DbErr> {
-    // Fetch all experimental results for the sample, then filter by this treatment
-    let all_results = fetch_experimental_results_for_sample(db, sample_id).await?;
+    let experimental_results = filter_results_by_treatment(all_experimental_results, treatment.id);
 
-    // Filter results to only include this specific treatment
-    // We need to check which experiments used this treatment through regions
-    let experimental_results = filter_results_by_treatment(db, all_results, treatment.id).await?;
-
-    // Calculate statistics from the filtered results
     let statistics = NucleationStatistics::from_events(&experimental_results);
-
-    // Calculate dilution summaries
-    let dilution_summaries =
-        NucleationStatistics::dilution_summaries_from_events(&experimental_results);
+    let dilution_summaries = NucleationStatistics::dilution_summaries_from_events(&experimental_results);
 
     Ok(Treatment {
         id: treatment.id,
@@ -249,17 +241,13 @@ pub(super) async fn treatment_to_treatment_with_results(
 }
 
 /// Filter nucleation events to only include those from regions that used the specified treatment
-async fn filter_results_by_treatment(
-    _db: &DatabaseConnection,
-    all_results: Vec<NucleationEvent>,
+fn filter_results_by_treatment(
+    all_results: &[NucleationEvent],
     treatment_id: Uuid,
-) -> Result<Vec<NucleationEvent>, DbErr> {
-    // Filter results to only include those with matching treatment_id
-    // Each NucleationEvent already has the correct treatment_id from its region
-    let filtered_results = all_results
-        .into_iter()
+) -> Vec<NucleationEvent> {
+    all_results
+        .iter()
         .filter(|result| result.treatment_id == Some(treatment_id))
-        .collect();
-
-    Ok(filtered_results)
+        .cloned()
+        .collect()
 }
