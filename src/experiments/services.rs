@@ -11,7 +11,7 @@ use crate::{
     tray_configurations::trays::models as trays, tray_configurations::wells::models as wells,
 };
 use crate::{
-    locations::models as locations, samples::models as samples, treatments::models as treatments,
+    samples::models as samples, treatments::models as treatments,
 };
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
@@ -47,10 +47,11 @@ fn row_letter_to_index(row_letter: &str) -> i32 {
         .map_or(0, |c| c as i32 - 'A' as i32)
 }
 
-// Helper function to load temperature readings with individual probe data
+// Helper function to load temperature readings with individual probe data (optimized to only load needed readings)
 #[allow(clippy::too_many_lines)] // Complex data loading logic requires extensive processing
 async fn load_individual_temperature_data(
     experiment_id: Uuid,
+    phase_transition_temp_ids: &std::collections::HashSet<Uuid>,
     db: &impl ConnectionTrait,
 ) -> Result<
     (
@@ -61,15 +62,44 @@ async fn load_individual_temperature_data(
     ),
     DbErr,
 > {
-    // Get all temperature readings for this experiment
-    let temp_readings_data = temperature_readings::Entity::find()
+    // Only load temperature readings that we actually need (for phase transitions)
+    let temp_reading_ids_vec: Vec<Uuid> = phase_transition_temp_ids.iter().copied().collect();
+    
+    // Get total count of temperature readings for summary stats
+    let total_time_points = temperature_readings::Entity::find()
+        .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
+        .count(db)
+        .await? as usize;
+
+    // Get first and last timestamps for summary (lightweight query)
+    let first_temp_reading = temperature_readings::Entity::find()
         .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
         .order_by_asc(temperature_readings::Column::Timestamp)
-        .all(db)
+        .one(db)
         .await?;
 
+    let last_temp_reading = temperature_readings::Entity::find()
+        .filter(temperature_readings::Column::ExperimentId.eq(experiment_id))
+        .order_by_desc(temperature_readings::Column::Timestamp)
+        .one(db)
+        .await?;
+
+    let first_timestamp = first_temp_reading.map(|tr| tr.timestamp.with_timezone(&Utc));
+    let last_timestamp = last_temp_reading.map(|tr| tr.timestamp.with_timezone(&Utc));
+
+    // Only load the specific temperature readings we need (192 instead of 6,786)
+    let temp_readings_data = if temp_reading_ids_vec.is_empty() {
+        vec![]
+    } else {
+        temperature_readings::Entity::find()
+            .filter(temperature_readings::Column::Id.is_in(temp_reading_ids_vec))
+            .order_by_asc(temperature_readings::Column::Timestamp)
+            .all(db)
+            .await?
+    };
+
     if temp_readings_data.is_empty() {
-        return Ok((std::collections::HashMap::new(), None, None, 0));
+        return Ok((std::collections::HashMap::new(), first_timestamp, last_timestamp, total_time_points));
     }
 
     // Get the experiment to find its tray configuration
@@ -189,13 +219,7 @@ async fn load_individual_temperature_data(
         temp_data_map.insert(temp_reading.id, temp_data_with_probes);
     }
 
-    let first_timestamp = temp_readings_data
-        .first()
-        .map(|tp| tp.timestamp.with_timezone(&Utc));
-    let last_timestamp = temp_readings_data
-        .last()
-        .map(|tp| tp.timestamp.with_timezone(&Utc));
-    let total_time_points = temp_readings_data.len();
+    // Summary timestamps and count already calculated above
 
     Ok((
         temp_data_map,
@@ -341,7 +365,7 @@ async fn load_experiment_wells_and_trays(
     Ok((experiment_wells, tray_map))
 }
 
-// Helper function to load treatment and sample data
+// Helper function to load treatment and sample data with optimized joins
 async fn load_treatment_and_sample_data(
     experiment_regions: &[regions::Model],
     db: &impl ConnectionTrait,
@@ -360,67 +384,29 @@ async fn load_treatment_and_sample_data(
         .filter_map(|r| r.treatment_id)
         .collect();
 
-    let mut treatment_map = std::collections::HashMap::new();
-
     if treatment_ids.is_empty() {
-        return Ok(treatment_map);
+        return Ok(std::collections::HashMap::new());
     }
 
-    let treatments_data = treatments::Entity::find()
+    // Load treatments with their related samples in a single query using eager loading
+    let treatments_with_samples = treatments::Entity::find()
         .filter(treatments::Column::Id.is_in(treatment_ids))
+        .find_with_related(samples::Entity)
         .all(db)
         .await?;
 
-    let sample_ids: Vec<Uuid> = treatments_data.iter().filter_map(|t| t.sample_id).collect();
+    let mut treatment_map = std::collections::HashMap::new();
 
-    let samples_data = if sample_ids.is_empty() {
-        vec![]
-    } else {
-        samples::Entity::find()
-            .filter(samples::Column::Id.is_in(sample_ids))
-            .all(db)
-            .await?
-    };
-
-    let location_ids: Vec<Uuid> = samples_data.iter().filter_map(|s| s.location_id).collect();
-
-    let locations_data = if location_ids.is_empty() {
-        vec![]
-    } else {
-        locations::Entity::find()
-            .filter(locations::Column::Id.is_in(location_ids))
-            .all(db)
-            .await?
-    };
-
-    // Build lookup maps
-    let location_map: std::collections::HashMap<Uuid, &locations::Model> =
-        locations_data.iter().map(|l| (l.id, l)).collect();
-
-    let sample_map: std::collections::HashMap<Uuid, (&samples::Model, Option<&locations::Model>)> =
-        samples_data
-            .iter()
-            .map(|s| {
-                let location = s
-                    .location_id
-                    .and_then(|loc_id| location_map.get(&loc_id))
-                    .copied();
-                (s.id, (s, location))
-            })
-            .collect();
-
-    // Build treatment info map
-    for treatment in &treatments_data {
-        let sample_info = treatment.sample_id.and_then(|sample_id| {
-            sample_map.get(&sample_id).map(|(sample, _location)| {
-                let sample_api: crate::samples::models::Sample = (*sample).clone().into();
-                sample_api
-            })
+    for (treatment_model, sample_models) in treatments_with_samples {
+        let treatment_info: crate::treatments::models::Treatment = treatment_model.into();
+        
+        // Get the first (and only) sample for this treatment
+        let sample_info = sample_models.into_iter().next().map(|sample| {
+            let sample_api: crate::samples::models::Sample = sample.into();
+            sample_api
         });
 
-        let treatment_info: crate::treatments::models::Treatment = treatment.clone().into();
-
-        treatment_map.insert(treatment.id, (treatment_info, sample_info));
+        treatment_map.insert(treatment_info.id, (treatment_info, sample_info));
     }
 
     Ok(treatment_map)
@@ -430,9 +416,19 @@ pub async fn build_tray_centric_results(
     experiment_id: Uuid,
     db: &impl ConnectionTrait,
 ) -> Result<Option<ExperimentResultsResponse>, DbErr> {
-    // Load all required data using updated helper functions
+    // First load phase transitions to get the temperature reading IDs we actually need
+    let (phase_transitions_data, wells_with_transitions) =
+        process_phase_transitions(experiment_id, db).await?;
+    
+    // Extract temperature reading IDs from phase transitions (only ~192 instead of 6,786)
+    let phase_transition_temp_ids: std::collections::HashSet<Uuid> = phase_transitions_data
+        .iter()
+        .map(|(transition, _)| transition.temperature_reading_id)
+        .collect();
+
+    // Load temperature data only for the readings we actually need
     let (temp_readings_map, first_timestamp, last_timestamp, total_time_points) =
-        load_individual_temperature_data(experiment_id, db).await?;
+        load_individual_temperature_data(experiment_id, &phase_transition_temp_ids, db).await?;
 
     let filename_to_asset_id = load_experiment_assets(experiment_id, db).await?;
 
@@ -441,8 +437,7 @@ pub async fn build_tray_centric_results(
         .all(db)
         .await?;
 
-    let (phase_transitions_data, wells_with_transitions) =
-        process_phase_transitions(experiment_id, db).await?;
+    // Phase transitions already loaded above for optimization
 
     let (experiment_wells, tray_map) = load_experiment_wells_and_trays(
         experiment_id,
