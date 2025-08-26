@@ -13,7 +13,7 @@ use crate::{
     treatments::views::Treatment,
 };
 use rust_decimal::Decimal;
-use sea_orm::{DatabaseConnection, EntityTrait, entity::prelude::*};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder, entity::prelude::*};
 use uuid::Uuid;
 
 /// Fetch all experimental results for a specific sample across all experiments
@@ -44,24 +44,25 @@ pub(super) async fn fetch_experimental_results_for_sample(
 
     for (region, experiments_list) in regions_data {
         for experiment in experiments_list {
-            // Get phase transitions for this experiment
             let phase_transitions_data = well_phase_transitions::Entity::find()
                 .filter(well_phase_transitions::Column::ExperimentId.eq(experiment.id))
+                .filter(well_phase_transitions::Column::PreviousState.eq(0))
+                .filter(well_phase_transitions::Column::NewState.eq(1))
                 .find_also_related(wells::Entity)
                 .all(db)
                 .await?;
 
-            // Get temperature readings for this experiment
-            let temp_readings_data = temperature_readings::Entity::find()
+            let experiment_start_time = temperature_readings::Entity::find()
                 .filter(temperature_readings::Column::ExperimentId.eq(experiment.id))
-                .all(db)
-                .await?;
+                .order_by_asc(temperature_readings::Column::Timestamp)
+                .one(db)
+                .await?
+                .map(|tr| tr.timestamp);
 
-            let _temp_readings_map: std::collections::HashMap<Uuid, &temperature_readings::Model> =
-                temp_readings_data.iter().map(|tr| (tr.id, tr)).collect();
-
-            // Load all probe temperature readings for these temperature readings
-            let temp_reading_ids: Vec<Uuid> = temp_readings_data.iter().map(|tr| tr.id).collect();
+            let temp_reading_ids: Vec<Uuid> = phase_transitions_data
+                .iter()
+                .map(|(transition, _)| transition.temperature_reading_id)
+                .collect();
             let probe_readings_data = if temp_reading_ids.is_empty() {
                 vec![]
             } else {
@@ -153,11 +154,6 @@ pub(super) async fn fetch_experimental_results_for_sample(
                         continue;
                     }
 
-                    // Only process first freezing event (0→1 transition)
-                    if transition.previous_state != 0 || transition.new_state != 1 {
-                        continue;
-                    }
-
                     // Get temperature data at nucleation time from probe readings
                     let temperature_avg = probe_readings_by_temp_id
                         .get(&transition.temperature_reading_id)
@@ -175,10 +171,7 @@ pub(super) async fn fetch_experimental_results_for_sample(
                             }
                         });
 
-                    // Calculate time from experiment start
-                    let nucleation_time_seconds = temp_readings_data
-                        .first()
-                        .map(|tr| tr.timestamp)
+                    let nucleation_time_seconds = experiment_start_time
                         .map(|start_time| (transition.timestamp - start_time).num_seconds());
 
                     // Well coordinates are already in alphanumeric format
