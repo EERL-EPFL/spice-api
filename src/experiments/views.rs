@@ -150,7 +150,9 @@ async fn process_excel_if_needed(
     println!("🔄 Auto-processing Excel file: {}", upload_data.file_name);
 
     let processing_service =
-        crate::services::data_processing_service::DataProcessingService::new(state.db.clone());
+        crate::services::processing::excel_processor::DataProcessingService::new(
+            state.db.clone(),
+        );
 
     match processing_service
         .process_excel_file(experiment_id, upload_data.file_bytes.clone())
@@ -1030,10 +1032,7 @@ mod view_helper_tests {
                 _ => "unknown".to_string(),
             };
 
-            assert_eq!(
-                extension, expected_ext,
-                "Extension mismatch for {filename}"
-            );
+            assert_eq!(extension, expected_ext, "Extension mismatch for {filename}");
             assert_eq!(
                 file_type, expected_type,
                 "File type mismatch for {filename}"
@@ -1049,9 +1048,8 @@ mod view_helper_tests {
         let experiment_id = uuid::Uuid::new_v4();
         let filename = "test_file.xlsx";
 
-        let expected_pattern = format!(
-            "{app_name}/{deployment}/experiments/{experiment_id}/{filename}"
-        );
+        let expected_pattern =
+            format!("{app_name}/{deployment}/experiments/{experiment_id}/{filename}");
 
         // Test that the pattern follows expected structure
         assert!(expected_pattern.contains(app_name));

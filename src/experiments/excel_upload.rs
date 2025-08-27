@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::common::state::AppState;
-use crate::services::data_processing_service::ExcelProcessingResult;
+use crate::services::processing::excel_processor::ExcelProcessingResult;
 
 /// Upload and process an Excel file containing merged experiment data
 #[utoipa::path(
