@@ -87,8 +87,42 @@ pub async fn get_client(config: &Config) -> Arc<S3Client> {
         .endpoint_url(&config.s3_url)
         .load()
         .await;
+    
+    // Use path-style addressing for MinIO compatibility
+    let s3_config = aws_sdk_s3::config::Builder::from(&shared_config)
+        .force_path_style(true)
+        .build();
 
-    Arc::new(S3Client::new(&shared_config))
+    Arc::new(S3Client::from_conf(s3_config))
+}
+
+/// Ensure the S3 bucket exists, creating it if necessary
+pub async fn ensure_bucket_exists(config: &Config) -> Result<(), String> {
+    // Skip for tests (uses mock)
+    if config.tests_running {
+        return Ok(());
+    }
+
+    let client = get_client(config).await;
+    let bucket = &config.s3_bucket_id;
+
+    // Check if bucket exists by trying to list objects
+    match client.list_objects_v2().bucket(bucket).send().await {
+        Ok(_) => {
+            // Bucket exists and is accessible
+            Ok(())
+        }
+        Err(_) => {
+            // Bucket doesn't exist or isn't accessible, try to create it
+            match client.create_bucket().bucket(bucket).send().await {
+                Ok(_) => {
+                    println!("Created S3 bucket: {}", bucket);
+                    Ok(())
+                }
+                Err(err) => Err(format!("Failed to create S3 bucket {}: {err}", bucket)),
+            }
+        }
+    }
 }
 
 pub async fn delete_from_s3(s3_key: &str) -> Result<(), String> {
@@ -121,7 +155,7 @@ pub async fn put_object_to_s3(s3_key: &str, data: Vec<u8>, config: &Config) -> R
         return MOCK_S3_STORE.put_object(s3_key, data);
     }
 
-    // Real S3 operation for production
+    // Real S3 operation for production (bucket created at startup)
     let client = get_client(config).await;
     let body = aws_sdk_s3::primitives::ByteStream::from(data);
 

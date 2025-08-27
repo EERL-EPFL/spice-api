@@ -1,5 +1,5 @@
 //! Excel processor for SPICE experiment files
-//! 
+//!
 //! This module provides Excel file processing functionality for ice nucleation experiments.
 //! It handles parsing Excel files with complex header structures and extracting temperature
 //! and phase transition data for storage in the database.
@@ -29,7 +29,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct ExcelStructure {
     pub date_col: usize,
-    pub time_col: usize, 
+    pub time_col: usize,
     pub image_col: Option<usize>,
     pub well_columns: HashMap<String, usize>, // "P1:A1" -> column_index
     pub probe_columns: Vec<usize>,
@@ -83,7 +83,10 @@ impl ExcelProcessor {
     ) -> Result<ExcelProcessingResult> {
         let started_at = Utc::now();
 
-        match self.process_excel_file_direct(file_data, experiment_id).await {
+        match self
+            .process_excel_file_direct(file_data, experiment_id)
+            .await
+        {
             Ok(result) => Ok(ExcelProcessingResult {
                 status: ProcessingStatus::Completed,
                 success: result.success,
@@ -248,8 +251,7 @@ impl ExcelProcessor {
             if let Some((tray_name, well_coord)) = well_key.split_once(':') {
                 if let Some(&tray_id) = tray_name_to_id.get(tray_name) {
                     // Parse coordinate like "A1" -> row_letter="A", column_number=1
-                    if let Ok((row_letter, column_number)) =
-                        Self::parse_well_coordinate(well_coord)
+                    if let Ok((row_letter, column_number)) = Self::parse_well_coordinate(well_coord)
                     {
                         // Find the well in the database
                         let well = wells::Entity::find()
@@ -326,13 +328,17 @@ impl ExcelProcessor {
 
             for probe in &probe_records {
                 // Map data_column_index to probe ID with proper cast handling
-                #[allow(clippy::cast_sign_loss)] // data_column_index is always positive in this context
+                #[allow(clippy::cast_sign_loss)]
+                // data_column_index is always positive in this context
                 let col_index = probe.data_column_index as usize;
                 probe_mappings.insert(col_index, probe.id);
             }
         }
 
-        tracing::debug!("Loaded {} probe mappings from database", probe_mappings.len());
+        tracing::debug!(
+            "Loaded {} probe mappings from database",
+            probe_mappings.len()
+        );
         Ok(probe_mappings)
     }
 
@@ -411,7 +417,10 @@ impl ExcelProcessor {
             self.create_wells_from_excel_headers(tray_id, &wells_for_tray)
                 .await?;
         } else {
-            tracing::debug!("Tray {tray_name} has {} existing wells", existing_wells.len());
+            tracing::debug!(
+                "Tray {tray_name} has {} existing wells",
+                existing_wells.len()
+            );
         }
         Ok(())
     }
@@ -565,14 +574,36 @@ impl ExcelProcessor {
             (Data::DateTime(excel_dt), _) => {
                 // Use calamine's Excel date as float and convert
                 let timestamp_secs = (excel_dt.as_f64() - 25569.0) * 86400.0; // Excel epoch to Unix epoch
-                Ok(chrono::DateTime::from_timestamp(timestamp_secs as i64, 0)
-                    .unwrap_or_default())
+
+                // Check bounds more precisely for f64 -> i64 conversion
+                if timestamp_secs.is_finite() {
+                    // Safe cast: checked that value is finite above
+                    #[allow(clippy::cast_possible_truncation)]
+                    let timestamp_int = timestamp_secs as i64;
+                    Ok(chrono::DateTime::from_timestamp(timestamp_int, 0)
+                        .ok_or_else(|| anyhow!("Invalid timestamp: {}", timestamp_secs))?)
+                } else {
+                    Err(anyhow!("Excel timestamp is not finite: {}", timestamp_secs))
+                }
             }
             (Data::Float(timestamp), _) => {
                 // Handle float timestamp as Unix timestamp
-                Ok(chrono::DateTime::from_timestamp(timestamp.round() as i64, 0)
-                    .unwrap_or_default()
-                    .with_timezone(&chrono::Utc))
+                let rounded_timestamp = timestamp.round();
+
+                // Check if finite before converting
+                if rounded_timestamp.is_finite() {
+                    // Safe cast: checked that value is finite above
+                    #[allow(clippy::cast_possible_truncation)]
+                    let timestamp_int = rounded_timestamp as i64;
+                    Ok(chrono::DateTime::from_timestamp(timestamp_int, 0)
+                        .ok_or_else(|| anyhow!("Invalid timestamp: {}", rounded_timestamp))?
+                        .with_timezone(&chrono::Utc))
+                } else {
+                    Err(anyhow!(
+                        "Float timestamp is not finite: {}",
+                        rounded_timestamp
+                    ))
+                }
             }
             _ => Err(anyhow!(
                 "Unsupported timestamp format: {date_cell:?}, {time_cell:?}"
@@ -697,10 +728,21 @@ fn extract_decimal(cell: &Data) -> Option<Decimal> {
 
 fn extract_integer(cell: &Data) -> Option<i32> {
     match cell {
-        #[allow(clippy::cast_possible_truncation)] // Intentional truncation for phase state
         Data::Int(i) => i32::try_from(*i).ok(),
-        #[allow(clippy::cast_possible_truncation)] // Intentional truncation for phase state
-        Data::Float(f) => Some(f.round() as i32),
+        Data::Float(f) => {
+            let rounded = f.round();
+            // Check if finite and within i32 range
+            if rounded.is_finite()
+                && rounded >= f64::from(i32::MIN)
+                && rounded <= f64::from(i32::MAX)
+            {
+                // Safe cast: checked bounds and finiteness above
+                #[allow(clippy::cast_possible_truncation)]
+                Some(rounded as i32)
+            } else {
+                None // Return None for out-of-range or non-finite values
+            }
+        }
         _ => None,
     }
 }

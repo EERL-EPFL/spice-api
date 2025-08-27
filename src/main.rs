@@ -46,6 +46,13 @@ async fn main() {
 
     println!("DB migrations complete");
 
+    // Initialize S3 bucket if needed
+    if let Err(e) = external::s3::ensure_bucket_exists(&config).await {
+        eprintln!("Warning: Failed to initialize S3 bucket: {}", e);
+    } else if !config.tests_running {
+        println!("S3 bucket '{}' ready", config.s3_bucket_id);
+    }
+
     println!(
         "Starting server {} ({} deployment) ...",
         config.app_name,
