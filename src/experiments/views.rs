@@ -436,7 +436,7 @@ pub async fn upload_file(
             processing_message: Set(None),
             ..Default::default()
         };
-        let asset_result = s3_assets::Entity::insert(asset)
+        let _asset_result = s3_assets::Entity::insert(asset)
             .exec(&state.db)
             .await
             .map_err(|e| {
@@ -446,7 +446,7 @@ pub async fn upload_file(
                 )
             })?;
 
-        let _asset_result_id = asset_result.last_insert_id;
+        // Asset insertion successful, use the pre-generated asset_id
 
         // Process Excel file if needed using helper function
         let processing_result =

@@ -45,6 +45,27 @@ impl ExcelProcessor {
         Self { db }
     }
 
+    /// Clear existing experimental data for an experiment before reprocessing
+    async fn clear_experiment_data(&self, experiment_id: Uuid) -> Result<()> {
+        use sea_orm::{EntityTrait, QueryFilter, ColumnTrait};
+
+        // Delete phase transitions for this experiment first
+        crate::experiments::phase_transitions::models::Entity::delete_many()
+            .filter(crate::experiments::phase_transitions::models::Column::ExperimentId.eq(experiment_id))
+            .exec(&self.db)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to clear phase transitions: {}", e))?;
+
+        // Delete temperature readings for this experiment (will cascade delete probe readings due to FK constraints)
+        crate::experiments::temperatures::models::Entity::delete_many()
+            .filter(crate::experiments::temperatures::models::Column::ExperimentId.eq(experiment_id))
+            .exec(&self.db)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to clear temperature readings: {}", e))?;
+
+        Ok(())
+    }
+
     /// Process Excel file for an experiment
     pub async fn process_excel_file(
         &self,
@@ -94,6 +115,9 @@ impl ExcelProcessor {
     ) -> Result<ProcessingResult> {
         let start_time = std::time::Instant::now();
         let mut errors = Vec::new();
+
+        // Clear existing experimental data before processing to avoid duplicates
+        self.clear_experiment_data(experiment_id).await?;
 
         // Load Excel data and parse structure
         let rows = load_excel(file_data)?;

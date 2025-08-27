@@ -3,7 +3,7 @@ use crate::common::state::AppState;
 
 use crate::assets::models as s3_assets;
 use axum::{
-    extract::{Multipart, Path, State},
+    extract::{Path, State},
     http::{
         HeaderMap, StatusCode,
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
@@ -61,53 +61,6 @@ async fn view_asset(
     serve_asset_internal(id, &state, false).await
 }
 
-/// View an asset by experiment ID and filename (for linking images from results)
-#[utoipa::path(
-    get,
-    path = "/by-experiment/{experiment_id}/{filename}",
-    params(
-        ("experiment_id" = Uuid, Path, description = "Experiment ID"),
-        ("filename" = String, Path, description = "Asset filename (will try both with and without .jpg extension)")
-    ),
-    responses(
-        (status = 200, description = "Asset displayed inline"),
-        (status = 404, description = "Asset not found"),
-        (status = 500, description = "Failed to retrieve asset from S3")
-    ),
-    tag = "assets"
-)]
-async fn view_asset_by_filename(
-    Path((experiment_id, filename)): Path<(Uuid, String)>,
-    State(state): State<AppState>,
-) -> Result<Response, StatusCode> {
-    // Try to find the asset by filename, handling the .jpg extension mismatch
-    let base_query =
-        AssetEntity::find().filter(crate::assets::models::Column::ExperimentId.eq(experiment_id));
-
-    // First try exact match
-    let asset = base_query
-        .clone()
-        .filter(crate::assets::models::Column::OriginalFilename.eq(&filename))
-        .one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // If not found and filename doesn't end with .jpg, try adding .jpg
-    let asset = if asset.is_none() && !filename.to_lowercase().ends_with(".jpg") {
-        let filename_with_jpg = format!("{filename}.jpg");
-        base_query
-            .filter(crate::assets::models::Column::OriginalFilename.eq(filename_with_jpg))
-            .one(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    } else {
-        asset
-    };
-
-    let asset = asset.ok_or(StatusCode::NOT_FOUND)?;
-
-    serve_asset_internal(asset.id, &state, false).await
-}
 
 /// Reprocess an Excel asset (for merged.xlsx files)
 #[utoipa::path(
@@ -395,80 +348,6 @@ async fn download_with_token(
     super::services::create_hybrid_streaming_zip_response(assets, &state.config).await
 }
 
-/// Bulk download assets as a ZIP file (deprecated - kept for backwards compatibility)
-#[utoipa::path(
-    post,
-    path = "/bulk-download",
-    request_body(content_type = "multipart/form-data", description = "Multipart form with asset IDs to download"),
-    responses(
-        (status = 200, description = "ZIP file with selected assets"),
-        (status = 400, description = "Invalid request or no assets selected"),
-        (status = 404, description = "Some assets not found"),
-        (status = 500, description = "Failed to create ZIP file")
-    ),
-    tag = "assets"
-)]
-async fn bulk_download_assets(
-    State(state): State<AppState>,
-    mut multipart: Multipart,
-) -> Result<Response, (StatusCode, String)> {
-    let mut asset_ids: Vec<String> = Vec::new();
-    let mut _token: Option<String> = None;
-
-    // Parse multipart form data
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid form data".to_string()))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-        let data = field
-            .text()
-            .await
-            .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid field data".to_string()))?;
-
-        match name.as_str() {
-            "token" => _token = Some(data),
-            "asset_ids" => asset_ids.push(data),
-            _ => {} // ignore unknown fields
-        }
-    }
-
-    if asset_ids.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "No asset IDs provided".to_string()));
-    }
-
-    // Parse asset IDs as UUIDs
-    let asset_uuids: Result<Vec<Uuid>, _> = asset_ids.iter().map(|s| Uuid::parse_str(s)).collect();
-
-    let asset_uuids =
-        asset_uuids.map_err(|_| (StatusCode::BAD_REQUEST, "Invalid asset IDs".to_string()))?;
-
-    if asset_uuids.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "No asset IDs provided".to_string()));
-    }
-
-    // Fetch all assets from database
-    let assets: Vec<super::models::Model> = AssetEntity::find()
-        .filter(super::models::Column::Id.is_in(asset_uuids.clone()))
-        .all(&state.db)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error".to_string(),
-            )
-        })?;
-
-    if assets.is_empty() {
-        return Err((StatusCode::NOT_FOUND, "No assets found".to_string()));
-    }
-
-    // Use hybrid streaming: concurrent downloads + immediate streaming
-    super::services::create_hybrid_streaming_zip_response(assets, &state.config).await
-}
-
-
 pub fn router(state: &AppState) -> OpenApiRouter
 where
     Asset: CRUDResource,
@@ -488,14 +367,6 @@ where
                 .route("/view", get(view_asset))
                 .route("/reprocess", axum::routing::post(reprocess_asset))
                 .with_state(state.clone()),
-        )
-        .route(
-            "/by-experiment/{experiment_id}/{filename}",
-            get(view_asset_by_filename).with_state(state.clone()),
-        )
-        .route(
-            "/bulk-download",
-            post(bulk_download_assets).with_state(state.clone()),
         )
         .route(
             "/bulk-download-token",

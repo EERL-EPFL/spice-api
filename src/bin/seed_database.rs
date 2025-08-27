@@ -1139,7 +1139,7 @@ impl DatabaseSeeder {
         pb.enable_steady_tick(Duration::from_millis(100));
 
         // First upload the file
-        let _upload_result = match self
+        match self
             .make_multipart_request(
                 &format!("/experiments/{experiment_id}/uploads"),
                 &excel_file_path,
@@ -1150,12 +1150,9 @@ impl DatabaseSeeder {
                 pb.set_message("Processing Excel file...");
                 
                 // Extract asset ID from upload response
-                let asset_id = match result.get("id").and_then(|v| v.as_str()) {
-                    Some(id) => id,
-                    None => {
-                        pb.finish_with_message("Error: No asset ID in upload response");
-                        return Ok(());
-                    }
+                let Some(asset_id) = result.get("id").and_then(|v| v.as_str()) else {
+                    pb.finish_with_message("Error: No asset ID in upload response");
+                    return Ok(());
                 };
                 
                 // Now reprocess the asset
