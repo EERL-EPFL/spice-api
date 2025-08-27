@@ -188,12 +188,7 @@ async fn reprocess_asset(
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-            Ok(axum::response::Json(serde_json::json!({
-                "success": true,
-                "message": success_message,
-                "temperature_readings_created": result.temperature_readings_created,
-                "processing_time_ms": result.processing_time_ms
-            })))
+            Ok(axum::response::Json(serde_json::to_value(&result).unwrap()))
         }
         Err(e) => {
             let error_message = format!("Reprocessing failed: {e}");

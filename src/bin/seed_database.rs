@@ -1135,34 +1135,60 @@ impl DatabaseSeeder {
                 .template("{spinner:.blue} {msg}")
                 .unwrap(),
         );
-        pb.set_message("Uploading and processing Excel file...");
+        pb.set_message("Uploading Excel file...");
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        match self
+        // First upload the file
+        let _upload_result = match self
             .make_multipart_request(
-                &format!("/experiments/{experiment_id}/process-excel"),
+                &format!("/experiments/{experiment_id}/uploads"),
                 &excel_file_path,
             )
             .await
         {
             Ok(result) => {
+                pb.set_message("Processing Excel file...");
+                
+                // Extract asset ID from upload response
+                let asset_id = match result.get("id").and_then(|v| v.as_str()) {
+                    Some(id) => id,
+                    None => {
+                        pb.finish_with_message("Error: No asset ID in upload response");
+                        return Ok(());
+                    }
+                };
+                
+                // Now reprocess the asset
+                let reprocess_result = match self.make_request(
+                    "POST",
+                    &format!("/assets/{asset_id}/reprocess"),
+                    None
+                ).await {
+                    Ok(result) => result,
+                    Err(_e) => {
+                        pb.finish_with_message("Reprocessing failed");
+                        return Ok(());
+                    }
+                };
+                
                 pb.finish_with_message("Excel processing completed!");
 
                 self.created_objects.processed_experiments.push(json!({
                     "experiment_id": experiment_id,
                     "experiment_name": experiment_name,
-                    "processing_result": result
+                    "upload_result": result,
+                    "reprocess_result": reprocess_result
                 }));
 
-                // Display processing results
-                if let Some(temp_readings) = result.get("temperature_readings_created") {
+                // Display processing results (from reprocess result)
+                if let Some(temp_readings) = reprocess_result.get("temperature_readings_created") {
                     println!(
                         "   {} Temperature readings: {}",
                         style("📊").cyan(),
                         style(temp_readings.as_u64().unwrap_or(0)).bold().green()
                     );
                 }
-                if let Some(phase_transitions) = result.get("phase_transitions_created") {
+                if let Some(phase_transitions) = reprocess_result.get("phase_transitions_created") {
                     println!(
                         "   {} Phase transitions: {}",
                         style("🧊").cyan(),
@@ -1181,7 +1207,7 @@ impl DatabaseSeeder {
                     "   This might be expected if tray configuration assignment is needed first"
                 );
             }
-        }
+        };
 
         Ok(())
     }

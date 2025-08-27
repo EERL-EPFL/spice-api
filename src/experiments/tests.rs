@@ -2517,53 +2517,23 @@ async fn create_test_tray_config_with_trays(app: &Router, name: &str) -> String 
 
 /// Upload Excel file via API with proper multipart support
 async fn upload_excel_file(app: &Router, experiment_id: &str) -> Value {
-    // Read the test Excel file
-    let excel_data =
-        fs::read("src/experiments/test_resources/merged.xlsx").expect("test Excel file missing");
-
-    // Create a properly formatted multipart body with correct boundaries and headers
-    let boundary = "----formdata-test-boundary-123456789";
-    let mut body = Vec::new();
-
-    // Construct multipart body according to RFC 7578
-    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-    body.extend_from_slice(
-        b"Content-Disposition: form-data; name=\"file\"; filename=\"merged.xlsx\"\r\n",
-    );
-    body.extend_from_slice(
-        b"Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n",
-    );
-    body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(&excel_data);
-    body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/experiments/{experiment_id}/process-excel"))
-                .header(
-                    "content-type",
-                    format!("multipart/form-data; boundary={boundary}"),
-                )
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let status_code = response.status();
-    let response_body = axum::body::to_bytes(response.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let body_str = String::from_utf8(response_body.to_vec()).unwrap();
-
-    json!({
-        "status_code": status_code.as_u16(),
-        "body": body_str
-    })
+    // Use the new upload + reprocess flow
+    match process_excel_file_via_api(app, experiment_id).await {
+        Ok(processing_result) => {
+            // Convert processing result to the format expected by tests
+            let body_str = serde_json::to_string(&processing_result).unwrap_or_default();
+            json!({
+                "status_code": 200,
+                "body": body_str
+            })
+        }
+        Err(e) => {
+            json!({
+                "status_code": 500,
+                "body": format!("Upload and processing failed: {}", e)
+            })
+        }
+    }
 }
 
 #[tokio::test]
@@ -3399,7 +3369,7 @@ async fn create_test_experiment_via_api(
     Ok(experiment_id.to_string())
 }
 
-/// Helper function to process Excel file via API
+/// Helper function to process Excel file via API using upload + reprocess flow
 async fn process_excel_file_via_api(app: &Router, experiment_id: &str) -> Result<Value, String> {
     // Load test Excel file
     let excel_path = "src/experiments/test_resources/merged.xlsx";
@@ -3410,18 +3380,18 @@ async fn process_excel_file_via_api(app: &Router, experiment_id: &str) -> Result
     let mut multipart_body = Vec::new();
 
     multipart_body.extend_from_slice(format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"excel_file\"; filename=\"merged.xlsx\"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n"
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"merged.xlsx\"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n"
     ).as_bytes());
     multipart_body.extend_from_slice(&excel_data);
     multipart_body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
-    // Process Excel file via API
-    let processing_response = app
+    // 1. Upload the file via API
+    let upload_response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/experiments/{experiment_id}/process-excel"))
+                .uri(format!("/api/experiments/{experiment_id}/uploads"))
                 .header(
                     "content-type",
                     format!("multipart/form-data; boundary={boundary}"),
@@ -3432,20 +3402,53 @@ async fn process_excel_file_via_api(app: &Router, experiment_id: &str) -> Result
         .await
         .unwrap();
 
-    let status = processing_response.status();
-    let processing_body = to_bytes(processing_response.into_body(), usize::MAX)
+    let status = upload_response.status();
+    let upload_body = to_bytes(upload_response.into_body(), usize::MAX)
         .await
         .unwrap();
 
     if status != StatusCode::OK {
-        let error_text = String::from_utf8_lossy(&processing_body);
+        let error_text = String::from_utf8_lossy(&upload_body);
         return Err(format!(
-            "Excel processing failed with status {status}: {error_text}"
+            "Excel upload failed with status {status}: {error_text}"
         ));
     }
 
-    let processing_result: Value = serde_json::from_slice(&processing_body)
-        .map_err(|e| format!("Failed to parse processing result: {e}"))?;
+    let upload_result: Value = serde_json::from_slice(&upload_body)
+        .map_err(|e| format!("Failed to parse upload result: {e}"))?;
+
+    // Extract asset ID from upload response
+    let asset_id = upload_result.get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "No asset ID in upload response".to_string())?;
+
+    // 2. Reprocess the asset to trigger Excel processing
+    let reprocess_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/assets/{asset_id}/reprocess"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let status = reprocess_response.status();
+    let reprocess_body = to_bytes(reprocess_response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+
+    if status != StatusCode::OK {
+        let error_text = String::from_utf8_lossy(&reprocess_body);
+        return Err(format!(
+            "Excel reprocessing failed with status {status}: {error_text}"
+        ));
+    }
+
+    let processing_result: Value = serde_json::from_slice(&reprocess_body)
+        .map_err(|e| format!("Failed to parse reprocessing result: {e}"))?;
 
     Ok(processing_result)
 }

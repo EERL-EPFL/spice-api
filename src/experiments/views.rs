@@ -293,10 +293,6 @@ where
     // Excel processing endpoints (previously in excel_upload_router)
     mutating_router = mutating_router
         .route(
-            "/{experiment_id}/process-excel",
-            post(super::excel_upload::process_excel_upload).with_state(state.clone()),
-        )
-        .route(
             "/{experiment_id}/process-asset",
             post(process_asset_data).with_state(state.clone()),
         )
@@ -338,6 +334,7 @@ where
 #[derive(Serialize, serde::Deserialize, ToSchema)]
 pub struct UploadResponse {
     success: bool,
+    id: String,
     filename: String,
     size: u64,
     auto_processed: bool,
@@ -425,7 +422,9 @@ pub async fn upload_file(
         );
 
         // Insert a record into the local DB
+        let asset_id = Uuid::new_v4();
         let asset = s3_assets::ActiveModel {
+            id: Set(asset_id),
             original_filename: Set(upload_data.file_name.clone()),
             experiment_id: Set(Some(experiment_id)),
             s3_key: Set(upload_data.s3_key.clone()),
@@ -447,7 +446,7 @@ pub async fn upload_file(
                 )
             })?;
 
-        let asset_id = asset_result.last_insert_id;
+        let _asset_result_id = asset_result.last_insert_id;
 
         // Process Excel file if needed using helper function
         let processing_result =
@@ -455,6 +454,7 @@ pub async fn upload_file(
 
         return Ok(Json(UploadResponse {
             success: true,
+            id: asset_id.to_string(),
             filename: upload_data.file_name,
             size: upload_data.size,
             auto_processed: processing_result.auto_processed,
@@ -956,6 +956,7 @@ mod view_helper_tests {
         // Test that UploadResponse can be serialized/deserialized
         let response = UploadResponse {
             success: true,
+            id: "test-id".to_string(),
             filename: "test.xlsx".to_string(),
             size: 1024,
             auto_processed: true,
@@ -986,6 +987,7 @@ mod view_helper_tests {
         // Test UploadResponse with None message
         let response = UploadResponse {
             success: false,
+            id: "failed-id".to_string(),
             filename: "failed.txt".to_string(),
             size: 0,
             auto_processed: false,
@@ -1082,7 +1084,6 @@ mod view_helper_tests {
     fn test_route_path_constants() {
         // Test that route paths follow expected patterns
         let route_patterns = vec![
-            "/{experiment_id}/process-excel",
             "/{experiment_id}/process-asset",
             "/{experiment_id}/clear-results",
             "/{experiment_id}/results",
