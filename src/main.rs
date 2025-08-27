@@ -48,7 +48,7 @@ async fn main() {
 
     // Initialize S3 bucket if needed
     if let Err(e) = external::s3::ensure_bucket_exists(&config).await {
-        eprintln!("Warning: Failed to initialize S3 bucket: {}", e);
+        eprintln!("Warning: Failed to initialize S3 bucket: {e}");
     } else if !config.tests_running {
         println!("S3 bucket '{}' ready", config.s3_bucket_id);
     }

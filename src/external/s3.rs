@@ -1,5 +1,5 @@
-use crate::config::Config;
 use crate::assets::models::Model as S3Assets;
+use crate::config::Config;
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::Credentials;
 use aws_sdk_s3::{Client as S3Client, config::Region};
@@ -87,7 +87,7 @@ pub async fn get_client(config: &Config) -> Arc<S3Client> {
         .endpoint_url(&config.s3_url)
         .load()
         .await;
-    
+
     // Use path-style addressing for MinIO compatibility
     let s3_config = aws_sdk_s3::config::Builder::from(&shared_config)
         .force_path_style(true)
@@ -116,10 +116,10 @@ pub async fn ensure_bucket_exists(config: &Config) -> Result<(), String> {
             // Bucket doesn't exist or isn't accessible, try to create it
             match client.create_bucket().bucket(bucket).send().await {
                 Ok(_) => {
-                    println!("Created S3 bucket: {}", bucket);
+                    println!("Created S3 bucket: {bucket}");
                     Ok(())
                 }
-                Err(err) => Err(format!("Failed to create S3 bucket {}: {err}", bucket)),
+                Err(err) => Err(format!("Failed to create S3 bucket {bucket}: {err}")),
             }
         }
     }
