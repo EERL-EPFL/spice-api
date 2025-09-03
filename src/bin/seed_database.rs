@@ -6,13 +6,17 @@
 //! experiments, and processes the actual merged.xlsx file from test resources.
 //!
 //! Usage:
-//!   `cargo run --bin seed_database -- --url http://localhost:3000 --token YOUR_JWT_TOKEN`
+//!   `cargo run --bin seed_database -- --url http://spice:88`
+//!   `cargo run --bin seed_database -- --url http://localhost:3005`
+//!   `cargo run --bin seed_database -- --url http://localhost:3005 --token YOUR_JWT_TOKEN`
+//!
+//! Note: The tool automatically adds `/api` to the base URL if not present.
 //!
 //! Features:
 //! - Realistic scientific data based on ice nucleation research patterns
 //! - Processes actual Excel test file (merged.xlsx)
 //! - Beautiful terminal UI with progress indicators
-//! - JWT authentication for secured endpoints
+//! - Interactive JWT authentication (prompts for username/password if no token provided)
 //! - Comprehensive error handling and logging
 
 use chrono::{Duration as ChronoDuration, Utc};
@@ -22,13 +26,28 @@ use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::Rng;
 use reqwest::{Client, multipart};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::time::{Duration, sleep};
+
+#[derive(Debug, Deserialize)]
+struct KeycloakConfig {
+    url: String,
+    #[serde(rename = "clientId")]
+    client_id: String,
+    realm: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenResponse {
+    access_token: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct SeedingConfig {
@@ -84,7 +103,7 @@ impl DatabaseSeeder {
 
         Self {
             config: SeedingConfig {
-                base_url: base_url.trim_end_matches('/').to_string(),
+                base_url: ensure_api_prefix(&base_url),
                 jwt_token,
                 client,
             },
@@ -1284,6 +1303,94 @@ impl DatabaseSeeder {
     }
 }
 
+/// Ensure URL has /api prefix if not already present
+fn ensure_api_prefix(base_url: &str) -> String {
+    let url = base_url.trim_end_matches('/');
+    if url.ends_with("/api") {
+        url.to_string()
+    } else {
+        format!("{}/api", url)
+    }
+}
+
+/// Fetch Keycloak configuration from the API
+async fn get_keycloak_config(base_url: &str) -> Result<KeycloakConfig, Box<dyn std::error::Error>> {
+    let client = Client::new();
+    let api_base = ensure_api_prefix(base_url);
+    let url = format!("{}/config", api_base);
+    
+    println!("Fetching Keycloak configuration from: {}", style(&url).dim());
+    
+    let response = client.get(&url).send().await?;
+    if !response.status().is_success() {
+        return Err(format!("Failed to fetch config: {}", response.status()).into());
+    }
+    
+    let config: KeycloakConfig = response.json().await?;
+    Ok(config)
+}
+
+/// Authenticate with Keycloak using username/password (direct grant flow)
+async fn authenticate_with_keycloak(config: &KeycloakConfig) -> Result<String, Box<dyn std::error::Error>> {
+    let client = Client::new();
+    
+    // Prompt for credentials
+    print!("Username: ");
+    io::stdout().flush()?;
+    let mut username = String::new();
+    io::stdin().read_line(&mut username)?;
+    let username = username.trim();
+    
+    let password = rpassword::prompt_password("Password: ")?;
+    
+    // Build token endpoint URL
+    let token_url = format!(
+        "{}/realms/{}/protocol/openid-connect/token",
+        config.url.trim_end_matches('/'),
+        config.realm
+    );
+    
+    println!("Authenticating with Keycloak...");
+    
+    // Request token using direct grant flow
+    let params = [
+        ("grant_type", "password"),
+        ("client_id", &config.client_id),
+        ("username", username),
+        ("password", &password),
+    ];
+    
+    let response = client
+        .post(&token_url)
+        .form(&params)
+        .send()
+        .await?;
+    
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("Authentication failed: {}", error_text).into());
+    }
+    
+    let token_response: TokenResponse = response.json().await?;
+    
+    println!("{} Successfully authenticated!", style("✓").green());
+    
+    Ok(token_response.access_token)
+}
+
+/// Get JWT token either from command line argument or by authenticating
+async fn get_jwt_token(base_url: &str, provided_token: Option<String>) -> Result<String, Box<dyn std::error::Error>> {
+    if let Some(token) = provided_token {
+        println!("Using provided JWT token");
+        return Ok(token);
+    }
+    
+    println!("{}", style("No JWT token provided. Starting authentication flow...").yellow());
+    
+    let config = get_keycloak_config(base_url).await?;
+    authenticate_with_keycloak(&config).await
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("SPICE Database Seeder")
@@ -1296,29 +1403,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .long("url")
                 .value_name("URL")
                 .help("API base URL")
-                .default_value("http://localhost:3000"),
+                .default_value("http://localhost:3005"),
         )
         .arg(
             Arg::new("token")
                 .short('t')
                 .long("token")
                 .value_name("JWT_TOKEN")
-                .help("JWT authentication token")
-                .required(true),
+                .help("JWT authentication token (optional - will prompt for login if not provided)")
+                .required(false),
         )
         .get_matches();
 
     let base_url = matches.get_one::<String>("url").unwrap().clone();
-    let jwt_token = matches.get_one::<String>("token").unwrap().clone();
+    let provided_token = matches.get_one::<String>("token").cloned();
 
     println!("{}", style("SPICE Database Seeder v1.0").bold());
     println!("{}", style("━".repeat(40)).dim());
     println!("API URL: {}", style(&base_url).cyan());
+    
+    // Get JWT token (either provided or through authentication)
+    let jwt_token = get_jwt_token(&base_url, provided_token).await?;
+    
     println!(
         "Token:   {}...{}",
         style("*".repeat(8)).dim(),
         style(&jwt_token[jwt_token.len().saturating_sub(8)..]).dim()
     );
+    println!();
 
     let mut seeder = DatabaseSeeder::new(base_url, jwt_token);
     seeder.seed_database().await?;

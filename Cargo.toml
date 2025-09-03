@@ -82,6 +82,8 @@ clap = { version = "4.5.46", features = ["derive"] }
 console = "0.16.0"
 indicatif = "0.18.0"
 reqwest = { version = "0.12.23", features = ["json", "multipart", "rustls-tls"] }
+# Simple auth for seed_database (direct grant flow)
+rpassword = "7.3.1"
 
 [dev-dependencies]
 futures-util = "0.3.31"
