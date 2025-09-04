@@ -305,8 +305,8 @@ async fn process_phase_transitions(
 // Helper function to load experiment wells and trays
 async fn load_experiment_wells_and_trays(
     experiment_id: Uuid,
-    wells_with_transitions: &std::collections::HashSet<Uuid>,
-    phase_transitions_data: &[(well_phase_transitions::Model, Option<wells::Model>)],
+    _wells_with_transitions: &std::collections::HashSet<Uuid>,
+    _phase_transitions_data: &[(well_phase_transitions::Model, Option<wells::Model>)],
     db: &impl ConnectionTrait,
 ) -> Result<
     (
@@ -315,44 +315,36 @@ async fn load_experiment_wells_and_trays(
     ),
     DbErr,
 > {
-    // Get wells for this experiment
-    let experiment_wells = if wells_with_transitions.is_empty() {
-        let experiment = experiments::Entity::find_by_id(experiment_id)
-            .one(db)
-            .await?;
+    // Always load ALL wells for this experiment from tray configuration
+    // This ensures we show both wells that froze and wells that never froze (important scientific data)
+    let experiment = experiments::Entity::find_by_id(experiment_id)
+        .one(db)
+        .await?;
 
-        if let Some(exp) = experiment {
-            if let Some(tray_config_id) = exp.tray_configuration_id {
-                let tray_list = trays::Entity::find()
-                    .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
-                    .all(db)
-                    .await?;
+    let experiment_wells = if let Some(exp) = experiment {
+        if let Some(tray_config_id) = exp.tray_configuration_id {
+            let tray_list = trays::Entity::find()
+                .filter(trays::Column::TrayConfigurationId.eq(tray_config_id))
+                .all(db)
+                .await?;
 
-                let tray_ids: Vec<Uuid> = tray_list.into_iter().map(|tray| tray.id).collect();
+            let tray_ids: Vec<Uuid> = tray_list.into_iter().map(|tray| tray.id).collect();
 
-                wells::Entity::find()
-                    .filter(wells::Column::TrayId.is_in(tray_ids))
-                    .all(db)
-                    .await?
-            } else {
-                vec![]
-            }
+            wells::Entity::find()
+                .filter(wells::Column::TrayId.is_in(tray_ids))
+                .all(db)
+                .await?
         } else {
             vec![]
         }
     } else {
-        wells::Entity::find()
-            .filter(
-                wells::Column::Id.is_in(wells_with_transitions.iter().copied().collect::<Vec<_>>()),
-            )
-            .all(db)
-            .await?
+        vec![]
     };
 
-    // Get all trays for this experiment's wells
-    let tray_ids: Vec<Uuid> = phase_transitions_data
+    // Get all trays for this experiment's wells (use actual experiment wells, not just transition wells)
+    let tray_ids: Vec<Uuid> = experiment_wells
         .iter()
-        .filter_map(|(_, well_opt)| well_opt.as_ref().map(|w| w.tray_id))
+        .map(|w| w.tray_id)
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();

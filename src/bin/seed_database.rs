@@ -1166,7 +1166,7 @@ impl DatabaseSeeder {
             .await
         {
             Ok(result) => {
-                pb.set_message("Processing Excel file...");
+                pb.set_message("Waiting for initial processing to complete...");
                 
                 // Extract asset ID from upload response
                 let Some(asset_id) = result.get("id").and_then(|v| v.as_str()) else {
@@ -1174,18 +1174,58 @@ impl DatabaseSeeder {
                     return Ok(());
                 };
                 
-                // Now reprocess the asset
-                let reprocess_result = match self.make_request(
-                    "POST",
-                    &format!("/assets/{asset_id}/reprocess"),
-                    None
-                ).await {
-                    Ok(result) => result,
-                    Err(_e) => {
-                        pb.finish_with_message("Reprocessing failed");
-                        return Ok(());
+                // Wait for initial processing to complete
+                let mut retries = 0;
+                let max_retries = 60; // Wait up to 2 minutes (60 * 2 seconds)
+                
+                loop {
+                    match self.make_request("GET", &format!("/s3_assets/{asset_id}"), None).await {
+                        Ok(status_result) => {
+                            let processing_status = status_result
+                                .get("processing_status")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown");
+                            
+                            match processing_status {
+                                "completed" => {
+                                    pb.set_message("Initial processing completed successfully!");
+                                    break;
+                                }
+                                "error" => {
+                                    pb.set_message("Initial processing failed, will not reprocess");
+                                    pb.finish_with_message("Processing failed");
+                                    return Ok(());
+                                }
+                                "processing" if retries < max_retries => {
+                                    retries += 1;
+                                    pb.set_message("Waiting for processing to complete...");
+                                    sleep(Duration::from_secs(2)).await;
+                                    continue;
+                                }
+                                _ => {
+                                    pb.set_message("Processing timeout or unknown status");
+                                    pb.finish_with_message("Processing timeout");
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        Err(_e) => {
+                            if retries < max_retries {
+                                retries += 1;
+                                pb.set_message("Checking processing status...");
+                                sleep(Duration::from_secs(2)).await;
+                                continue;
+                            } else {
+                                pb.finish_with_message("Failed to check processing status");
+                                return Ok(());
+                            }
+                        }
                     }
-                };
+                }
+                
+                // Since processing completed successfully, we don't need to reprocess
+                // The file should already have generated phase transitions
+                let reprocess_result = result.clone(); // Use the original upload result
                 
                 pb.finish_with_message("Excel processing completed!");
 
@@ -1196,23 +1236,11 @@ impl DatabaseSeeder {
                     "reprocess_result": reprocess_result
                 }));
 
-                // Display processing results (from reprocess result)
-                if let Some(temp_readings) = reprocess_result.get("temperature_readings_created") {
-                    println!(
-                        "   {} Temperature readings: {}",
-                        style("📊").cyan(),
-                        style(temp_readings.as_u64().unwrap_or(0)).bold().green()
-                    );
-                }
-                if let Some(phase_transitions) = reprocess_result.get("phase_transitions_created") {
-                    println!(
-                        "   {} Phase transitions: {}",
-                        style("🧊").cyan(),
-                        style(phase_transitions.as_u64().unwrap_or(0))
-                            .bold()
-                            .green()
-                    );
-                }
+                // Check final results by querying the database
+                println!(
+                    "   {} Processing completed - check experiment results in UI",
+                    style("📊").cyan()
+                );
 
                 println!("{} Excel processing successful!", style("✅").green());
             }

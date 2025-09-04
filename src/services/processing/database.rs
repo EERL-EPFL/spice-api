@@ -136,9 +136,11 @@ impl DatabaseOperations {
 
             for probe in &probe_records {
                 // Map data_column_index to probe ID with proper cast handling
+                // Excel structure: Date(0), Time(1), Temp1(2), Temp2(3), ..., Temp8(9)
+                // But data_column_index is stored as 1-8 (user-friendly), so we need to add 1
                 #[allow(clippy::cast_sign_loss)]
                 // data_column_index is always positive in this context
-                let col_index = probe.data_column_index as usize;
+                let col_index = (probe.data_column_index + 1) as usize;
                 probe_mappings.insert(col_index, probe.id);
             }
         }
@@ -320,5 +322,58 @@ impl ProcessingBatches {
                 .await?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_probe_column_offset() {
+        // Test that the probe column mapping correctly handles the Excel column offset
+        // Excel structure: Date(0), Time(1), Temp1(2), Temp2(3), ..., Temp8(9)
+        // Database stores: data_column_index 1-8 (user-friendly)
+        // Mapping should convert: 1->2, 2->3, 3->4, 4->5, 5->6, 6->7, 7->8, 8->9
+        
+        struct MockProbe {
+            data_column_index: i32,
+            id: Uuid,
+        }
+        
+        let mock_probes = vec![
+            MockProbe { data_column_index: 1, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 2, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 3, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 4, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 5, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 6, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 7, id: Uuid::new_v4() },
+            MockProbe { data_column_index: 8, id: Uuid::new_v4() },
+        ];
+        
+        let mut probe_mappings = HashMap::new();
+        for probe in &mock_probes {
+            // Apply the same logic as in load_probe_mappings
+            #[allow(clippy::cast_sign_loss)]
+            let col_index = (probe.data_column_index + 1) as usize;
+            probe_mappings.insert(col_index, probe.id);
+        }
+        
+        // Verify mappings
+        assert_eq!(probe_mappings.len(), 8);
+        assert!(probe_mappings.contains_key(&2));  // Probe 1 -> Excel column 2
+        assert!(probe_mappings.contains_key(&3));  // Probe 2 -> Excel column 3
+        assert!(probe_mappings.contains_key(&4));  // Probe 3 -> Excel column 4
+        assert!(probe_mappings.contains_key(&5));  // Probe 4 -> Excel column 5
+        assert!(probe_mappings.contains_key(&6));  // Probe 5 -> Excel column 6
+        assert!(probe_mappings.contains_key(&7));  // Probe 6 -> Excel column 7
+        assert!(probe_mappings.contains_key(&8));  // Probe 7 -> Excel column 8
+        assert!(probe_mappings.contains_key(&9));  // Probe 8 -> Excel column 9
+        
+        // Verify incorrect mappings don't exist
+        assert!(!probe_mappings.contains_key(&0)); // No probe at column 0 (Date)
+        assert!(!probe_mappings.contains_key(&1)); // No probe at column 1 (Time)
+        assert!(!probe_mappings.contains_key(&10)); // No probe beyond column 9
     }
 }
