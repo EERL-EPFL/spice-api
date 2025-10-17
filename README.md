@@ -61,7 +61,7 @@ cargo run --bin seed_database -- --url http://localhost:3000 --token YOUR_JWT_TO
 
 **Features:**
 - Realistic GPS coordinates with geographic distribution within 1km radius
-- Diverse sample types including procedural blanks and quality controls
+- Diverse sample types including blanks and quality controls
 - Varied collection dates spanning several months
 - Production-ready INP freezing assay tray configuration with precise probe positioning
 - Proper tray configuration linking for experiments

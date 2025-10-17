@@ -197,7 +197,7 @@ async fn test_sample_type_validation() {
     for (sample_type, expected_type) in [
         ("bulk", "bulk"),
         ("filter", "filter"),
-        ("procedural_blank", "procedural_blank"),
+        ("blank", "blank"),
     ] {
         let sample_data = json!({
             "name": format!("Test {} Sample", expected_type),

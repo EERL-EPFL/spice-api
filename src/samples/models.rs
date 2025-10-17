@@ -19,8 +19,8 @@ pub enum SampleType {
     Bulk,
     #[sea_orm(string_value = "filter")]
     Filter,
-    #[sea_orm(string_value = "procedural_blank")]
-    ProceduralBlank,
+    #[sea_orm(string_value = "blank")]
+    Blank,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, EntityToModels)]

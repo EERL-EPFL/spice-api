@@ -502,10 +502,10 @@ impl DatabaseSeeder {
             ("TSP Collection", "filter"),
             ("Precipitation Sample", "bulk"),
             ("Surface Water Sample", "bulk"),
-            ("Demineralised Water Blank", "procedural_blank"),
-            ("Filter Blank Control", "procedural_blank"),
-            ("Collection System Blank", "procedural_blank"),
-            ("Field Blank Control", "procedural_blank"),
+            ("Demineralised Water Blank", "blank"),
+            ("Filter Blank Control", "blank"),
+            ("Collection System Blank", "blank"),
+            ("Field Blank Control", "blank"),
         ];
 
         let samples_per_location = 100; // Generate 100 samples per location for geographic spread
@@ -575,7 +575,7 @@ impl DatabaseSeeder {
                     );
 
                     let remarks = match *sample_type {
-                        "procedural_blank" => format!(
+                        "blank" => format!(
                             "Quality control {} (S{:03}) processed alongside environmental samples on {}. GPS: {:.6}°, {:.6}°",
                             pattern_name.to_lowercase(),
                             i + 1,
@@ -604,8 +604,8 @@ impl DatabaseSeeder {
 
                     // Type-specific fields based on INSEKT document specifications
                     match *sample_type {
-                        "procedural_blank" => {
-                            // Procedural blanks have no location, dates, or volumes per INSEKT
+                        "blank" => {
+                            // Blank samples have no location, dates, or volumes per INSEKT
                             sample_data["location_id"] = json!(null);
                         }
                         "filter" => {
@@ -725,7 +725,7 @@ impl DatabaseSeeder {
                 .and_then(|v| v.as_str())
                 .unwrap_or("bulk");
             let treatment_count = match sample_type {
-                "procedural_blank" | "pure_water" => 1, // only "none"
+                "blank" | "pure_water" => 1, // only "none"
                 "filter" | "bulk" => 3,                 // none, heat, h2o2
                 _ => 2,                                 // none, heat
             };
@@ -750,7 +750,7 @@ impl DatabaseSeeder {
 
             // Determine treatments based on sample type
             let treatments = match sample_type {
-                "procedural_blank" | "pure_water" => vec!["none"], // Both only get "none" treatment
+                "blank" | "pure_water" => vec!["none"], // Both only get "none" treatment
                 "filter" | "bulk" => vec!["none", "heat", "h2o2"],
                 _ => vec!["none", "heat"],
             };
