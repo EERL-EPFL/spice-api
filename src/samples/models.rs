@@ -69,8 +69,6 @@ pub struct Model {
     #[crudcrate(sortable, filterable)]
     pub air_volume_litres: Option<Decimal>,
     #[crudcrate(sortable, filterable)]
-    pub water_volume_litres: Option<Decimal>,
-    #[crudcrate(sortable, filterable)]
     pub initial_concentration_gram_l: Option<Decimal>,
     #[crudcrate(sortable, filterable)]
     pub well_volume_litres: Option<Decimal>,
