@@ -21,6 +21,8 @@ pub enum SampleType {
     Filter,
     #[sea_orm(string_value = "blank")]
     Blank,
+    #[sea_orm(string_value = "filter_blank")]
+    FilterBlank,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, EntityToModels)]

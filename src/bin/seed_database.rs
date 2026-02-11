@@ -506,6 +506,7 @@ impl DatabaseSeeder {
             ("Filter Blank Control", "blank"),
             ("Collection System Blank", "blank"),
             ("Field Blank Control", "blank"),
+            ("Filter Blank", "filter_blank"),
         ];
 
         let samples_per_location = 100; // Generate 100 samples per location for geographic spread
@@ -635,6 +636,26 @@ impl DatabaseSeeder {
                                 _ => "Quartz fiber",
                             });
                         }
+                        "filter_blank" => {
+                            // Filter blank: like filter but no stop_time, flow, or total_volume
+                            let mut rng = rand::rng();
+                            sample_data["location_id"] = json!(location_id);
+                            sample_data["latitude"] = json!(format!("{:.6}", sample_lat));
+                            sample_data["longitude"] = json!(format!("{:.6}", sample_lon));
+                            sample_data["start_time"] = json!(format!(
+                                "{}T{:02}:{:02}:00Z",
+                                collection_date,
+                                8 + (i % 8),
+                                (i * 11) % 60
+                            ));
+                            sample_data["suspension_volume_litres"] =
+                                json!(rng.random_range(0.008..0.020));
+                            sample_data["filter_substrate"] = json!(match i % 3 {
+                                0 => "PTFE",
+                                1 => "Polycarbonate",
+                                _ => "Quartz fiber",
+                            });
+                        }
                         "bulk" => {
                             // Bulk sample fields from INSEKT document
                             let mut rng = rand::rng();
@@ -726,8 +747,8 @@ impl DatabaseSeeder {
                 .unwrap_or("bulk");
             let treatment_count = match sample_type {
                 "blank" | "pure_water" => 1, // only "none"
-                "filter" | "bulk" => 3,                 // none, heat, h2o2
-                _ => 2,                                 // none, heat
+                "filter" | "filter_blank" | "bulk" => 3, // none, heat, h2o2
+                _ => 2,                                  // none, heat
             };
             total_treatments += treatment_count;
         }
@@ -751,7 +772,7 @@ impl DatabaseSeeder {
             // Determine treatments based on sample type
             let treatments = match sample_type {
                 "blank" | "pure_water" => vec!["none"], // Both only get "none" treatment
-                "filter" | "bulk" => vec!["none", "heat", "h2o2"],
+                "filter" | "filter_blank" | "bulk" => vec!["none", "heat", "h2o2"],
                 _ => vec!["none", "heat"],
             };
 

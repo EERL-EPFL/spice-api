@@ -198,6 +198,7 @@ async fn test_sample_type_validation() {
         ("bulk", "bulk"),
         ("filter", "filter"),
         ("blank", "blank"),
+        ("filter_blank", "filter_blank"),
     ] {
         let sample_data = json!({
             "name": format!("Test {} Sample", expected_type),
@@ -255,6 +256,84 @@ async fn test_sample_type_validation() {
         status.is_client_error(),
         "Invalid sample type should be rejected"
     );
+}
+
+#[tokio::test]
+async fn test_filter_blank_creation() {
+    let app = setup_test_app().await;
+
+    let (_project_id, location_id) =
+        create_test_project_and_location(&app, "FILTER_BLANK").await;
+
+    let sample_data = json!({
+        "name": "Test Filter Blank Sample",
+        "type": "filter_blank",
+        "start_time": "2025-01-15T10:00:00Z",
+        "filter_substrate": "PTFE",
+        "suspension_volume_litres": 0.010,
+        "well_volume_litres": 0.00005,
+        "location_id": location_id,
+        "latitude": 46.5,
+        "longitude": 6.6,
+        "treatments": [{ "name": "none" }]
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/samples")
+                .header("content-type", "application/json")
+                .body(Body::from(sample_data.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = extract_response_body(response).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "Filter blank sample should be created: {body:?}"
+    );
+    assert_eq!(body["type"], "filter_blank");
+    assert_eq!(body["name"], "Test Filter Blank Sample");
+    assert_eq!(body["filter_substrate"], "PTFE");
+    assert_eq!(body["start_time"], "2025-01-15T10:00:00Z");
+    assert!(
+        body["stop_time"].is_null(),
+        "Filter blank should have no stop_time"
+    );
+    assert!(
+        body["air_volume_litres"].is_null(),
+        "Filter blank should have no air_volume"
+    );
+    assert!(
+        body["total_volume"].is_null(),
+        "Filter blank should have no total_volume"
+    );
+
+    // Verify round-trip via GET
+    let sample_id = body["id"].as_str().unwrap();
+    let get_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let (get_status, get_body) = extract_response_body(get_response).await;
+    assert_eq!(get_status, StatusCode::OK);
+    assert_eq!(get_body["type"], "filter_blank");
+    assert_eq!(get_body["filter_substrate"], "PTFE");
+    assert_eq!(get_body["suspension_volume_litres"], "0.01");
+    assert_eq!(get_body["location_id"], location_id.to_string());
 }
 
 #[tokio::test]

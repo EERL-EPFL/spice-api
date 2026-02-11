@@ -4,6 +4,7 @@ mod m20250808_000001_consolidated_schema;
 mod m20250826_000001_add_pg_trgm_extension;
 mod m20251017_000001_rename_procedural_blank_to_blank;
 mod m20251017_000002_remove_water_volume_field;
+mod m20260211_000001_add_filter_blank_sample_type;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -14,6 +15,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250826_000001_add_pg_trgm_extension::Migration),
             Box::new(m20251017_000001_rename_procedural_blank_to_blank::Migration),
             Box::new(m20251017_000002_remove_water_volume_field::Migration),
+            Box::new(m20260211_000001_add_filter_blank_sample_type::Migration),
         ]
     }
 }
