@@ -4220,3 +4220,105 @@ async fn test_temperature_readings_during_phase_changes() {
         "Expected at least {expected_min_probe_readings} probe readings ({wells_with_temperatures}+ wells × 3+ probes), got {total_probe_readings_checked}"
     );
 }
+
+#[tokio::test]
+async fn test_experiment_delete_with_regions() {
+    let app = setup_test_app().await;
+
+    // 1. Setup: create tray config, experiment, sample with treatments, and link regions
+    let tray_config_id =
+        create_simple_tray_configuration(&app, "Delete Test Config")
+            .await
+            .expect("Failed to create tray configuration");
+
+    let experiment_id = create_test_experiment_via_api(&app, &tray_config_id)
+        .await
+        .expect("Failed to create experiment");
+
+    let sample_id = create_test_sample_and_treatments(&app)
+        .await
+        .expect("Failed to create sample and treatments");
+
+    update_experiment_with_regions(&app, &experiment_id, &sample_id)
+        .await
+        .expect("Failed to update experiment with regions");
+
+    // 2. Verify preconditions: experiment has regions
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let experiment: Value = serde_json::from_slice(&body).unwrap();
+    let regions = experiment["regions"].as_array().unwrap();
+    assert!(
+        !regions.is_empty(),
+        "Experiment should have regions before delete"
+    );
+
+    // 3. Delete the experiment
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::NO_CONTENT,
+        "Delete should succeed even with regions"
+    );
+
+    // 4. Verify cleanup: experiment is gone
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/experiments/{experiment_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "Deleted experiment should return 404"
+    );
+
+    // 5. Verify sample still exists (regions deleted, but sample/treatments untouched)
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/api/samples/{sample_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Sample should still exist after experiment delete"
+    );
+}

@@ -3,8 +3,8 @@ use chrono::{DateTime, Utc};
 use crudcrate::{CRUDResource, EntityToModels, traits::MergeIntoActiveModel};
 use rust_decimal::Decimal;
 use sea_orm::{
-    ActiveValue::Set, Condition, EntityTrait, Order, QueryOrder, QuerySelect, TransactionTrait,
-    entity::prelude::*,
+    ActiveValue::Set, ColumnTrait, Condition, EntityTrait, IntoActiveModel, Order, QueryFilter,
+    QueryOrder, QuerySelect, TransactionTrait, entity::prelude::*,
 };
 use uuid::Uuid;
 
@@ -19,7 +19,9 @@ use uuid::Uuid;
     fn_get_one = get_one_experiment,
     fn_create = create_experiment,
     fn_update = update_experiment,
-    fn_get_all = get_all_experiments
+    fn_get_all = get_all_experiments,
+    fn_delete = delete_experiment,
+    fn_delete_many = delete_many_experiments
 )]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -447,4 +449,61 @@ pub(super) async fn get_all_experiments(
     }
 
     Ok(experiment_lists)
+}
+
+async fn cleanup_experiment_dependencies(
+    db: &impl sea_orm::ConnectionTrait,
+    experiment_id: Uuid,
+) -> Result<(), DbErr> {
+    // Delete regions belonging to this experiment
+    crate::tray_configurations::regions::models::Entity::delete_many()
+        .filter(crate::tray_configurations::regions::models::Column::ExperimentId.eq(experiment_id))
+        .exec(db)
+        .await?;
+
+    // Nullify experiment_id on assets (preserve assets, just unlink them)
+    let assets = crate::assets::models::Entity::find()
+        .filter(crate::assets::models::Column::ExperimentId.eq(experiment_id))
+        .all(db)
+        .await?;
+    for asset in assets {
+        let mut active: crate::assets::models::ActiveModel = asset.into_active_model();
+        active.experiment_id = Set(None);
+        active.update(db).await?;
+    }
+
+    Ok(())
+}
+
+pub(super) async fn delete_experiment(
+    db: &DatabaseConnection,
+    id: Uuid,
+) -> Result<Uuid, DbErr> {
+    let txn = db.begin().await?;
+
+    cleanup_experiment_dependencies(&txn, id).await?;
+
+    Entity::delete_by_id(id).exec(&txn).await?;
+
+    txn.commit().await?;
+    Ok(id)
+}
+
+pub(super) async fn delete_many_experiments(
+    db: &DatabaseConnection,
+    ids: Vec<Uuid>,
+) -> Result<Vec<Uuid>, DbErr> {
+    let txn = db.begin().await?;
+
+    for id in &ids {
+        cleanup_experiment_dependencies(&txn, *id).await?;
+    }
+
+    Entity::delete_many()
+        .filter(Column::Id.is_in(ids.clone()))
+        .exec(&txn)
+        .await?;
+
+    txn.commit().await?;
+    Ok(ids)
 }
