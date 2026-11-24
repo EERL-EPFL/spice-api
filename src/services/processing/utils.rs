@@ -140,6 +140,54 @@ pub fn load_excel(file_data: Vec<u8>) -> Result<Vec<Vec<Data>>> {
 mod tests {
     use super::*;
 
+    const WORKBOOK: &[u8] = include_bytes!("../../experiments/test_resources/merged.xlsx");
+    const EXPECTED_TEXT_CELLS: usize = 7427;
+    const EXPECTED_NUMERIC_SUM: f64 = 621_560_022.552_938_5;
+
+    // A uniform cell-by-cell digest of a sheet: text, numbers and dates as the processor reads them.
+    fn sheet_digest(rows: &[Vec<Data>]) -> (usize, usize, f64, usize) {
+        let (mut sum, mut texts) = (0.0, 0);
+        for cell in rows.iter().flatten() {
+            match cell {
+                Data::Float(f) => sum += f,
+                Data::Int(i) => sum += *i as f64,
+                Data::DateTime(d) => sum += d.as_f64(),
+                Data::String(_) => texts += 1,
+                _ => {}
+            }
+        }
+        (rows.len(), rows[0].len(), sum, texts)
+    }
+
+    #[test]
+    fn load_excel_reads_the_instrument_export_cell_for_cell() {
+        let rows = load_excel(WORKBOOK.to_vec()).unwrap();
+        assert_eq!(rows[0][2], Data::String("RTDTempX8".into()));
+        assert_eq!(rows[6][0], Data::String("Date".into()));
+        assert_eq!(rows[6][2], Data::String("Temperature 1 (°C)".into()));
+        assert_eq!(rows[7][2], Data::Float(29.827));
+        assert_eq!(rows[7][10], Data::String("INP_49640_2025-03-20_15-14-17".into()));
+        match &rows[7][0] {
+            Data::DateTime(d) => assert!((d.as_f64() - 45_736.634_571_759_26).abs() < 1e-9),
+            other => panic!("first timestamp read as {other:?}"),
+        }
+        let last = rows.last().unwrap();
+        assert_eq!(last[2], Data::Float(-18.988));
+        assert_eq!(last[10], Data::String("INP_56492_2025-03-20_17-08-16".into()));
+        let (n_rows, n_cols, sum, texts) = sheet_digest(&rows);
+        assert_eq!((n_rows, n_cols), (6793, 205));
+        assert_eq!(texts, EXPECTED_TEXT_CELLS);
+        assert!((sum - EXPECTED_NUMERIC_SUM).abs() < 1e-3, "numeric sum {sum}");
+    }
+
+    #[test]
+    fn load_excel_refuses_a_truncated_workbook_without_panicking() {
+        let truncated = WORKBOOK[..WORKBOOK.len() / 2].to_vec();
+        assert!(load_excel(truncated).is_err());
+        assert!(load_excel(b"PK\x03\x04 not a zip".to_vec()).is_err());
+        assert!(load_excel(Vec::new()).is_err());
+    }
+
     #[test]
     fn test_extract_decimal() {
         assert_eq!(
