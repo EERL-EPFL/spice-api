@@ -26,12 +26,12 @@ anyhow = "1.0.99"
 async-stream = "0.3.6"
 async-trait = "0.1.89"
 aws-config = "1.8.6"
-aws-sdk-s3 = "1.104.0"
+aws-sdk-s3 = { version = "1.104.0", default-features = false, features = ["sigv4a", "http-1x", "default-https-client", "rt-tokio"] }
 axum = { version = "0.8.4", features = ["multipart"] }
 axum-keycloak-auth = "0.8.3"
 base64 = "0.22.1"
 byteorder = "1.5.0"
-calamine = "0.30.0"
+calamine = "0.38.0"
 chrono = { version = "0.4.41", features = ["serde"] }
 crc32fast = "1.5.0"
 crudcrate = "0.5.0"
